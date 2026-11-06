@@ -87,6 +87,10 @@ public struct ShelfRowFramesPreferenceKey: PreferenceKey {
     }
 }
 
+private struct ShelfMoveBannerState: Equatable {
+    let itemIDs: [String]
+}
+
 public struct DropShelfDrawerView: View {
     public static let supportedStashDropTypes: [UTType] = [
         .fileURL, .image, .png, .tiff, .url, .utf8PlainText, .plainText
@@ -94,8 +98,8 @@ public struct DropShelfDrawerView: View {
 
     public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
-    /// Which half of the card the drag is currently over. Both highlights are
-    /// derived from this one value so the split can never show two winners.
+    /// Which third of the card the drag is currently over. All highlights are
+    /// derived from this value so the zones can never show two winners.
     @State private var activeDropZone: ShelfDropZone? = nil
     @State private var dropSessionConcluded: Bool = false
     @State private var cardHeight: CGFloat = 200
@@ -103,8 +107,12 @@ public struct DropShelfDrawerView: View {
     @State private var marqueeCurrentPoint: CGPoint? = nil
     @State private var rowFrames: [String: CGRect] = [:]
     @State private var isHoveringAirDropButton = false
+    @State private var moveBanner: ShelfMoveBannerState? = nil
+    @State private var moveBannerDismissTask: Task<Void, Never>? = nil
+    @State private var hasWarnedMoveFallback = false
 
-    private var isStashTargeted: Bool { activeDropZone == .stash }
+    private var isLinkTargeted: Bool { activeDropZone == .link }
+    private var isMoveTargeted: Bool { activeDropZone == .move }
     private var isAirDropTargeted: Bool { activeDropZone == .airDrop }
 
     private var palette: ThemePalette {
@@ -155,73 +163,48 @@ public struct DropShelfDrawerView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if state.files.isEmpty {
-                // Two dedicated spacious drop zones: Stash & Direct AirDrop
+                // Three equal invisible targets cover the whole card while the
+                // labels make each drop's consequence explicit.
                 GeometryReader { proxy in
-                    let isCompact = proxy.size.height <= 120
-                    VStack(spacing: isCompact ? 4 : 10) {
-                        // Zone 1: Stash Holding Area
-                        VStack(spacing: isCompact ? 3 : 6) {
-                            Image(systemName: "tray.and.arrow.down.fill")
-                                .font(.system(size: isCompact ? 14 : 24))
-                                .foregroundColor(shelfColor.opacity(0.85))
-
-                            Text("dropshelf.dropToStash".localized)
-                                .font(.system(size: isCompact ? 11 : 12, weight: .bold, design: .rounded))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                            if !isCompact {
-                                Text("dropshelf.holdFiles".localized)
-                                    .font(.system(size: 9.5))
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 16)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(isStashTargeted ? shelfColor.opacity(0.15) : shelfColor.opacity(0.04))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(
-                                    isStashTargeted ? shelfColor : shelfColor.opacity(0.35),
-                                    style: StrokeStyle(lineWidth: isStashTargeted ? 1.8 : 1.2, dash: [4, 4])
-                                )
+                    let isCompact = ShelfDropZoneGeometry.isCompact(forCardHeight: proxy.size.height)
+                    let showsHint = ShelfDropZoneGeometry.showsHint(forCardHeight: proxy.size.height)
+                    VStack(spacing: ShelfDropZoneGeometry.spacing) {
+                        emptyDropZone(
+                            icon: "link",
+                            titleKey: "dropshelf.dropToLink",
+                            hintKey: "dropshelf.dropToLinkHint",
+                            tint: shelfColor,
+                            isTargeted: isLinkTargeted,
+                            isCompact: isCompact,
+                            showsHint: showsHint
                         )
-                        .contentShape(Rectangle())
-
-                        // Zone 2: Instant AirDrop Target
-                        VStack(spacing: isCompact ? 3 : 6) {
-                            Image(systemName: "airplayaudio")
-                                .font(.system(size: isCompact ? 14 : 24))
-                                .foregroundColor(Color.blue)
-
-                            Text("dropshelf.dropToAirDrop".localized)
-                                .font(.system(size: isCompact ? 11 : 12, weight: .bold, design: .rounded))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                            if !isCompact {
-                                Text("dropshelf.immediatelyBeam".localized)
-                                    .font(.system(size: 9.5))
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 16)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(isAirDropTargeted ? Color.blue.opacity(0.18) : Color.blue.opacity(0.05))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(
-                                    isAirDropTargeted ? Color.cyan : Color.blue.opacity(0.35),
-                                    style: StrokeStyle(lineWidth: isAirDropTargeted ? 1.8 : 1.2, dash: [4, 4])
-                                )
+                        emptyDropZone(
+                            icon: "tray.and.arrow.down.fill",
+                            titleKey: "dropshelf.dropToMove",
+                            hintKey: "dropshelf.dropToMoveHint",
+                            tint: Color.orange,
+                            isTargeted: isMoveTargeted,
+                            isCompact: isCompact,
+                            showsHint: showsHint
                         )
-                        .contentShape(Rectangle())
+                        emptyDropZone(
+                            icon: "paperplane.fill",
+                            titleKey: "dropshelf.dropToAirDrop",
+                            hintKey: "dropshelf.dropToAirDropHint",
+                            tint: Color.blue,
+                            isTargeted: isAirDropTargeted,
+                            isCompact: isCompact,
+                            showsHint: showsHint
+                        )
                     }
+                    .padding(ShelfDropZoneGeometry.padding)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else {
+                if let moveBanner {
+                    moveUndoBanner(moveBanner)
+                }
+
                 // Hidden Spacebar shortcut for Quick Look preview
                 Button("") {
                     let urls = state.filesForBatchExport().map { Self.ensureDragURL(for: $0) }
@@ -315,17 +298,20 @@ public struct DropShelfDrawerView: View {
                                 .allowsHitTesting(false)
                         }
 
-                        if isStashTargeted {
+                        if isLinkTargeted || isMoveTargeted {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(shelfColor.opacity(0.12))
+                                    .fill((isMoveTargeted ? Color.orange : shelfColor).opacity(0.12))
                                 RoundedRectangle(cornerRadius: 8)
-                                    .stroke(shelfColor, style: StrokeStyle(lineWidth: 1.8, dash: [4, 4]))
+                                    .stroke(
+                                        isMoveTargeted ? Color.orange : shelfColor,
+                                        style: StrokeStyle(lineWidth: 1.8, dash: [4, 4])
+                                    )
                                 HStack(spacing: 6) {
-                                    Image(systemName: "tray.and.arrow.down.fill")
+                                    Image(systemName: isMoveTargeted ? "tray.and.arrow.down.fill" : "link")
                                         .font(.system(size: 14))
-                                        .foregroundColor(shelfColor)
-                                    Text("dropshelf.dropFilesEmpty".localized)
+                                        .foregroundColor(isMoveTargeted ? Color.orange : shelfColor)
+                                    Text((isMoveTargeted ? "dropshelf.dropToMove" : "dropshelf.dropToLink").localized)
                                         .font(.system(size: 11, weight: .bold, design: .rounded))
                                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                                 }
@@ -339,9 +325,8 @@ public struct DropShelfDrawerView: View {
                 .coordinateSpace(name: "dropShelfList")
 
                 // One footer row, two jobs: drag everything out on the left,
-                // send it on the right. It doubles as the drawer's two drop
-                // zones — the list above stashes, this row AirDrops — and the
-                // row that is not the current target gets out of the way.
+                // send it on the right. The row that is not the current target
+                // gets out of the way while the full-card zones are showing.
                 HStack(spacing: 6) {
                     BatchShelfDragPillView(
                         state: state,
@@ -399,8 +384,9 @@ public struct DropShelfDrawerView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 26)
                 .contentShape(Rectangle())
-                .opacity(isStashTargeted ? 0.4 : 1)
-                .animation(PurahMotionPolicy.surface, value: isStashTargeted)
+                .opacity(isLinkTargeted || isMoveTargeted ? 0.4 : 1)
+                .animation(PurahMotionPolicy.surface, value: isLinkTargeted)
+                .animation(PurahMotionPolicy.surface, value: isMoveTargeted)
                 .animation(PurahMotionPolicy.surface, value: isAirDropTargeted)
             }
         }
@@ -419,7 +405,9 @@ public struct DropShelfDrawerView: View {
                 store: store,
                 cardHeight: cardHeight,
                 activeZone: $activeDropZone,
-                dropSessionConcluded: $dropSessionConcluded
+                dropSessionConcluded: $dropSessionConcluded,
+                onDragStarted: dismissMoveBanner,
+                onIngestOutcome: handleIngestOutcome
             )
         )
         .background(
@@ -430,54 +418,226 @@ public struct DropShelfDrawerView: View {
             }
         )
         .onDisappear {
+            dismissMoveBanner()
             ClipboardHoverPreviewController.shared.forceHide()
         }
     }
 
-    // MARK: - Transient Stash / AirDrop Split
+    // MARK: - Transient Link / Move / AirDrop Split
 
-    /// Shown only while a drag hovers the card: the whole drawer becomes two
-    /// half-height targets so neither needs to be aimed at, and the file list
-    /// comes back untouched the moment the drag leaves or lands.
+    /// Shown only while a drag hovers the card. The three boxes are decoration;
+    /// the card's single drop target owns routing.
     @ViewBuilder
     private func splitDropOverlay(activeZone: ShelfDropZone) -> some View {
-        VStack(spacing: 8) {
+        let isCompact = ShelfDropZoneGeometry.isCompact(forCardHeight: cardHeight)
+        let showsHint = ShelfDropZoneGeometry.showsHint(forCardHeight: cardHeight)
+        VStack(spacing: ShelfDropZoneGeometry.spacing) {
             dropZoneBox(
-                isTargeted: activeZone == .stash,
+                isTargeted: activeZone == .link,
+                icon: "link",
+                titleKey: "dropshelf.dropToLink",
+                hintKey: "dropshelf.dropToLinkHint",
+                tint: shelfColor,
+                isCompact: isCompact,
+                showsHint: showsHint
+            )
+            dropZoneBox(
+                isTargeted: activeZone == .move,
                 icon: "tray.and.arrow.down.fill",
-                titleKey: "dropshelf.dropToStash",
-                tint: shelfColor
+                titleKey: "dropshelf.dropToMove",
+                hintKey: "dropshelf.dropToMoveHint",
+                tint: Color.orange,
+                isCompact: isCompact,
+                showsHint: showsHint
             )
             dropZoneBox(
                 isTargeted: activeZone == .airDrop,
                 icon: "paperplane.fill",
                 titleKey: "dropshelf.dropToAirDrop",
-                tint: Color.blue
+                hintKey: "dropshelf.dropToAirDropHint",
+                tint: Color.blue,
+                isCompact: isCompact,
+                showsHint: showsHint
             )
         }
-        .padding(6)
+        .padding(ShelfDropZoneGeometry.padding)
         .background(Color.black.opacity(0.60))
         .cornerRadius(10)
         .animation(PurahMotionPolicy.surface, value: activeZone)
     }
 
     @ViewBuilder
-    private func dropZoneBox(isTargeted: Bool, icon: String, titleKey: String, tint: Color) -> some View {
+    private func emptyDropZone(
+        icon: String,
+        titleKey: String,
+        hintKey: String,
+        tint: Color,
+        isTargeted: Bool,
+        isCompact: Bool,
+        showsHint: Bool
+    ) -> some View {
+        Group {
+            if isCompact {
+                // At the 130pt minimum drawer height each zone gets ~34pt;
+                // an icon stacked over a label needs ~40pt, so it clips.
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(tint.opacity(0.9))
+                    Text(titleKey.localized)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
+                }
+                .frame(minHeight: 20)
+            } else {
+                VStack(spacing: showsHint ? 2 : 3) {
+                    Image(systemName: icon)
+                        .font(.system(size: 20))
+                        .foregroundColor(tint.opacity(0.9))
+                    Text(titleKey.localized)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    if showsHint {
+                        // Says what the drop does to the file. The box keeps
+                        // `maxHeight: .infinity`, so this never decides its height.
+                        Text(hintKey.localized)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(palette.style == .native ? .secondary : Color.white.opacity(0.6))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(isTargeted ? tint.opacity(0.16) : tint.opacity(0.04))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(
+                    isTargeted ? tint : tint.opacity(0.35),
+                    style: StrokeStyle(lineWidth: isTargeted ? 1.8 : 1.2, dash: [4, 4])
+                )
+        )
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func moveUndoBanner(_ banner: ShelfMoveBannerState) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "tray.and.arrow.down.fill")
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundColor(shelfColor)
+            Text(String(format: "dropshelf.movedBanner".localized, Int64(banner.itemIDs.count)))
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Button("dropshelf.undo".localized) {
+                let outcome = state.undoMove(itemIDs: banner.itemIDs)
+                dismissMoveBanner()
+                store.triggerControlHaptic(.alignment)
+                if !outcome.failedIDs.isEmpty {
+                    store.onCapacityWarningToast?("dropshelf.undoFailed".localized)
+                }
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+            .foregroundColor(shelfColor)
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 26)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(shelfColor.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(shelfColor.opacity(0.32), lineWidth: 0.8)
+        )
+    }
+
+    private func handleIngestOutcome(_ outcome: ShelfIngestOutcome) {
+        if !outcome.fallbackURLs.isEmpty, !hasWarnedMoveFallback {
+            hasWarnedMoveFallback = true
+            store.onCapacityWarningToast?("dropshelf.moveFallback".localized)
+        }
+        guard !outcome.movedIDs.isEmpty else { return }
+
+        // The provider-based drop path reports one URL at a time, so a
+        // multi-file drop arrives as several outcomes. Merge them into one
+        // banner, or Undo would only cover the last file that landed.
+        let existingIDs = Set(moveBanner?.itemIDs ?? [])
+        let mergedIDs = (moveBanner?.itemIDs ?? [])
+            + outcome.movedIDs.filter { !existingIDs.contains($0) }
+        moveBanner = ShelfMoveBannerState(itemIDs: mergedIDs)
+
+        moveBannerDismissTask?.cancel()
+        moveBannerDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            moveBanner = nil
+        }
+    }
+
+    private func dismissMoveBanner() {
+        moveBannerDismissTask?.cancel()
+        moveBannerDismissTask = nil
+        moveBanner = nil
+        hasWarnedMoveFallback = false
+    }
+
+    @ViewBuilder
+    private func dropZoneBox(
+        isTargeted: Bool,
+        icon: String,
+        titleKey: String,
+        hintKey: String,
+        tint: Color,
+        isCompact: Bool,
+        showsHint: Bool
+    ) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(isTargeted ? tint.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.2, dash: [6, 4]))
                 .foregroundColor(isTargeted ? tint : Color.white.opacity(0.35))
-            VStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
-                Text(titleKey.localized)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 12)
+            if isCompact {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
+                    Text(titleKey.localized)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .frame(minHeight: 20)
+            } else {
+                VStack(spacing: showsHint ? 2 : 5) {
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
+                    Text(titleKey.localized)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .padding(.horizontal, 12)
+                    if showsHint {
+                        Text(hintKey.localized)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(Color.white.opacity(0.6))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .padding(.horizontal, 8)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -598,11 +758,21 @@ public struct ShelfStashDropDelegate: DropDelegate {
     @Binding public var isTargeted: Bool
     public let state: ShelfPluginState
     public let store: PurahWorkspaceStore
+    public let ingestMode: ShelfIngestMode
+    public let onIngestOutcome: ((ShelfIngestOutcome) -> Void)?
 
-    public init(isTargeted: Binding<Bool>, state: ShelfPluginState, store: PurahWorkspaceStore) {
+    public init(
+        isTargeted: Binding<Bool>,
+        state: ShelfPluginState,
+        store: PurahWorkspaceStore,
+        ingestMode: ShelfIngestMode = .link,
+        onIngestOutcome: ((ShelfIngestOutcome) -> Void)? = nil
+    ) {
         self._isTargeted = isTargeted
         self.state = state
         self.store = store
+        self.ingestMode = ingestMode
+        self.onIngestOutcome = onIngestOutcome
     }
 
     public func dropEntered(info: DropInfo) {
@@ -635,8 +805,31 @@ public struct ShelfStashDropDelegate: DropDelegate {
     public static func ingestPasteboard(
         _ pasteboard: NSPasteboard,
         state: ShelfPluginState,
-        store: PurahWorkspaceStore? = nil
+        store: PurahWorkspaceStore? = nil,
+        mode: ShelfIngestMode = .link
     ) -> Bool {
+        guard let outcome = ingestPasteboardOutcome(
+            pasteboard,
+            state: state,
+            store: store,
+            mode: mode
+        ) else {
+            return false
+        }
+        if outcome.didIngest {
+            store?._shelfFiles = state.files
+            store?.triggerControlHaptic(.alignment)
+        }
+        return outcome.didIngest
+    }
+
+    @MainActor
+    public static func ingestPasteboardOutcome(
+        _ pasteboard: NSPasteboard,
+        state: ShelfPluginState,
+        store: PurahWorkspaceStore? = nil,
+        mode: ShelfIngestMode = .link
+    ) -> ShelfIngestOutcome? {
         // 1. Check for file URLs first
         if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !fileURLs.isEmpty {
@@ -646,28 +839,19 @@ public struct ShelfStashDropDelegate: DropDelegate {
             if ShelfDragSession.shared.carriesAny(of: fileURLs) {
                 ShelfDragSession.shared.claimSelfDrop()
             }
-            for url in fileURLs {
-                state.addFile(url: url)
-            }
-            store?._shelfFiles = state.files
-            store?.triggerControlHaptic(.alignment)
-            return true
+            return state.ingest(urls: fileURLs, mode: mode)
         }
 
         // 2. Check for raw image data (.png or .tiff) when no file URL is present
         if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
-            if state.addDroppedImageData(pngData) != nil {
-                store?._shelfFiles = state.files
-                store?.triggerControlHaptic(.alignment)
-                return true
+            if let item = state.addDroppedImageData(pngData) {
+                return ShelfIngestOutcome(itemIDs: [item.id])
             }
         }
         if let tiffData = pasteboard.data(forType: .tiff), !tiffData.isEmpty {
             let pngConverted = NSBitmapImageRep(data: tiffData)?.representation(using: .png, properties: [:]) ?? tiffData
-            if state.addDroppedImageData(pngConverted) != nil {
-                store?._shelfFiles = state.files
-                store?.triggerControlHaptic(.alignment)
-                return true
+            if let item = state.addDroppedImageData(pngConverted) {
+                return ShelfIngestOutcome(itemIDs: [item.id])
             }
         }
 
@@ -677,10 +861,8 @@ public struct ShelfStashDropDelegate: DropDelegate {
                let scheme = $0.scheme?.lowercased()
                return scheme == "http" || scheme == "https"
            }) {
-            if state.addDroppedWebLink(webURL) != nil {
-                store?._shelfFiles = state.files
-                store?.triggerControlHaptic(.alignment)
-                return true
+            if let item = state.addDroppedWebLink(webURL) {
+                return ShelfIngestOutcome(itemIDs: [item.id])
             }
         }
         if let urlString = pasteboard.string(forType: .URL) ?? pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -688,30 +870,36 @@ public struct ShelfStashDropDelegate: DropDelegate {
            let scheme = candidateURL.scheme?.lowercased(),
            (scheme == "http" || scheme == "https"),
            candidateURL.host != nil {
-            if state.addDroppedWebLink(candidateURL) != nil {
-                store?._shelfFiles = state.files
-                store?.triggerControlHaptic(.alignment)
-                return true
+            if let item = state.addDroppedWebLink(candidateURL) {
+                return ShelfIngestOutcome(itemIDs: [item.id])
             }
         }
 
         // 4. Check for plain text string snippet
         if let str = pasteboard.string(forType: .string),
            !str.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if state.addDroppedTextSnippet(str) != nil {
-                store?._shelfFiles = state.files
-                store?.triggerControlHaptic(.alignment)
-                return true
+            if let item = state.addDroppedTextSnippet(str) {
+                return ShelfIngestOutcome(itemIDs: [item.id])
             }
         }
 
-        return false
+        return nil
     }
 
     public func performDrop(info: DropInfo) -> Bool {
         isTargeted = false
         let pasteboard = NSPasteboard(name: .drag)
-        if Self.ingestPasteboard(pasteboard, state: state, store: store) {
+        if let outcome = Self.ingestPasteboardOutcome(
+            pasteboard,
+            state: state,
+            store: store,
+            mode: ingestMode
+        ) {
+            if outcome.didIngest {
+                store._shelfFiles = state.files
+                store.triggerControlHaptic(.alignment)
+            }
+            onIngestOutcome?(outcome)
             return true
         }
 
@@ -730,9 +918,21 @@ public struct ShelfStashDropDelegate: DropDelegate {
                     }
                     if let fileURL = url {
                         Task { @MainActor in
-                            state.addFile(url: fileURL)
+                            let item = state.addFile(url: fileURL, mode: ingestMode)
                             store._shelfFiles = state.files
                             store.triggerControlHaptic(.alignment)
+                            if let item {
+                                var outcome = ShelfIngestOutcome(itemIDs: [item.id])
+                                if ingestMode == .moved, item.ingestMode == .moved {
+                                    outcome.movedIDs = [item.id]
+                                }
+                                if ingestMode == .moved, item.ingestMode == .link {
+                                    outcome.fallbackURLs = [fileURL]
+                                }
+                                onIngestOutcome?(outcome)
+                            } else {
+                                onIngestOutcome?(ShelfIngestOutcome(failedURLs: [fileURL]))
+                            }
                         }
                     }
                 }
@@ -740,9 +940,12 @@ public struct ShelfStashDropDelegate: DropDelegate {
                 provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
                     if let data, !data.isEmpty {
                         Task { @MainActor in
-                            _ = state.addDroppedImageData(data)
+                            let item = state.addDroppedImageData(data)
                             store._shelfFiles = state.files
                             store.triggerControlHaptic(.alignment)
+                            if let item {
+                                onIngestOutcome?(ShelfIngestOutcome(itemIDs: [item.id]))
+                            }
                         }
                     }
                 }
@@ -751,9 +954,23 @@ public struct ShelfStashDropDelegate: DropDelegate {
                     if let url {
                         Task { @MainActor in
                             if let scheme = url.scheme?.lowercased(), (scheme == "http" || scheme == "https") {
-                                _ = state.addDroppedWebLink(url)
+                                if let item = state.addDroppedWebLink(url) {
+                                    onIngestOutcome?(ShelfIngestOutcome(itemIDs: [item.id]))
+                                }
                             } else {
-                                state.addFile(url: url)
+                                let item = state.addFile(url: url, mode: ingestMode)
+                                if let item {
+                                    var outcome = ShelfIngestOutcome(itemIDs: [item.id])
+                                    if ingestMode == .moved, item.ingestMode == .moved {
+                                        outcome.movedIDs = [item.id]
+                                    }
+                                    if ingestMode == .moved, item.ingestMode == .link {
+                                        outcome.fallbackURLs = [url]
+                                    }
+                                    onIngestOutcome?(outcome)
+                                } else {
+                                    onIngestOutcome?(ShelfIngestOutcome(failedURLs: [url]))
+                                }
                             }
                             store._shelfFiles = state.files
                             store.triggerControlHaptic(.alignment)
@@ -764,9 +981,12 @@ public struct ShelfStashDropDelegate: DropDelegate {
                 _ = provider.loadObject(ofClass: String.self) { text, _ in
                     if let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Task { @MainActor in
-                            _ = state.addDroppedTextSnippet(text)
+                            let item = state.addDroppedTextSnippet(text)
                             store._shelfFiles = state.files
                             store.triggerControlHaptic(.alignment)
+                            if let item {
+                                onIngestOutcome?(ShelfIngestOutcome(itemIDs: [item.id]))
+                            }
                         }
                     }
                 }
@@ -778,17 +998,67 @@ public struct ShelfStashDropDelegate: DropDelegate {
 
 // MARK: - Whole-Card Split Drop Target
 
-/// Which half of the shelf card a drag is over.
+/// The one description of where the three drawn zones sit, shared by the
+/// drawing code and the drop router. The boxes are stacked with `spacing`
+/// between them inside a 6pt `padding`, so routing on plain thirds would put
+/// the boundary through the middle of a visible box — a pointer aimed at Link
+/// could land in Move, which is the destructive one.
+public enum ShelfDropZoneGeometry {
+    public static let padding: CGFloat = 6
+    public static let spacing: CGFloat = 8
+    /// Below this height per zone an icon no longer fits above its label.
+    public static let compactZoneHeight: CGFloat = 44
+    /// At or above this height per zone there is room for the line that says
+    /// what the drop actually does to the file.
+    public static let hintZoneHeight: CGFloat = 62
+
+    /// Height of one drawn box. The `max(_: 1)` floor keeps an unmeasured card
+    /// from dividing by zero.
+    public static func zoneHeight(forCardHeight height: CGFloat) -> CGFloat {
+        (max(height, 1) - 2 * padding - 2 * spacing) / 3
+    }
+
+    public static func isCompact(forCardHeight height: CGFloat) -> Bool {
+        zoneHeight(forCardHeight: height) < compactZoneHeight
+    }
+
+    /// Whether a zone is tall enough to carry the line explaining the drop.
+    public static func showsHint(forCardHeight height: CGFloat) -> Bool {
+        zoneHeight(forCardHeight: height) >= hintZoneHeight
+    }
+
+    /// Middle of the gap between the Link and Move boxes.
+    public static func linkMoveBoundary(forCardHeight height: CGFloat) -> CGFloat {
+        padding + zoneHeight(forCardHeight: height) + spacing / 2
+    }
+
+    /// Middle of the gap between the Move and AirDrop boxes.
+    public static func moveAirDropBoundary(forCardHeight height: CGFloat) -> CGFloat {
+        padding + 2 * zoneHeight(forCardHeight: height) + spacing + spacing / 2
+    }
+
+    /// A card too short to draw three boxes reports Link for every point: the
+    /// harmless zone is the only safe answer for a mis-measured card.
+    public static func zone(at y: CGFloat, cardHeight: CGFloat) -> ShelfDropZone {
+        guard zoneHeight(forCardHeight: cardHeight) > 0 else { return .link }
+        if y < linkMoveBoundary(forCardHeight: cardHeight) { return .link }
+        if y < moveAirDropBoundary(forCardHeight: cardHeight) { return .move }
+        return .airDrop
+    }
+}
+
+/// Which third of the shelf card a drag is over.
 public enum ShelfDropZone: Sendable {
-    case stash
+    case link
+    case move
     case airDrop
 }
 
 /// One drop target for the whole shelf card.
 ///
-/// The drawer splits into Stash (top) and AirDrop (bottom) while a drag hovers
-/// it, and which half receives the payload is decided from the pointer's
-/// vertical position inside `performDrop`. The halves are decoration only: they
+/// The drawer splits into Link, Move, and AirDrop while a drag hovers it, and
+/// which third receives the payload is decided from the pointer's
+/// vertical position inside `performDrop`. The zones are decoration only: they
 /// register no drop targets of their own, because nested `.onDrop` views compete
 /// for the same drag session and cancel each other out — the reason the drop
 /// zones previously worked on an empty shelf and then vanished behind a 26pt
@@ -802,19 +1072,25 @@ public struct ShelfSplitDropDelegate: DropDelegate {
     /// `dropUpdated` afterwards, which would otherwise re-arm the overlay on top
     /// of the content that just landed.
     @Binding public var dropSessionConcluded: Bool
+    public let onDragStarted: (() -> Void)?
+    public let onIngestOutcome: ((ShelfIngestOutcome) -> Void)?
 
     public init(
         state: ShelfPluginState,
         store: PurahWorkspaceStore,
         cardHeight: CGFloat,
         activeZone: Binding<ShelfDropZone?>,
-        dropSessionConcluded: Binding<Bool>
+        dropSessionConcluded: Binding<Bool>,
+        onDragStarted: (() -> Void)? = nil,
+        onIngestOutcome: ((ShelfIngestOutcome) -> Void)? = nil
     ) {
         self.state = state
         self.store = store
         self.cardHeight = cardHeight
         self._activeZone = activeZone
         self._dropSessionConcluded = dropSessionConcluded
+        self.onDragStarted = onDragStarted
+        self.onIngestOutcome = onIngestOutcome
     }
 
     public func validateDrop(info: DropInfo) -> Bool {
@@ -823,6 +1099,7 @@ public struct ShelfSplitDropDelegate: DropDelegate {
 
     public func dropEntered(info: DropInfo) {
         dropSessionConcluded = false
+        onDragStarted?()
         updateTarget(for: info)
     }
 
@@ -845,14 +1122,30 @@ public struct ShelfSplitDropDelegate: DropDelegate {
         Self.zone(at: y, cardHeight: cardHeight)
     }
 
-    /// Top half stashes, bottom half AirDrops. An exactly-centred pointer goes
-    /// to AirDrop, so the lower target's edge is inclusive.
+    /// Routing uses the same geometry the boxes are drawn with, so the box a
+    /// pointer is aimed at is the zone that receives the drop.
     public static func zone(at y: CGFloat, cardHeight: CGFloat) -> ShelfDropZone {
-        y < max(cardHeight, 1.0) * 0.5 ? .stash : .airDrop
+        ShelfDropZoneGeometry.zone(at: y, cardHeight: cardHeight)
     }
 
     private var stashDelegate: ShelfStashDropDelegate {
-        ShelfStashDropDelegate(isTargeted: .constant(false), state: state, store: store)
+        ShelfStashDropDelegate(
+            isTargeted: .constant(false),
+            state: state,
+            store: store,
+            ingestMode: .link,
+            onIngestOutcome: onIngestOutcome
+        )
+    }
+
+    private var moveDelegate: ShelfStashDropDelegate {
+        ShelfStashDropDelegate(
+            isTargeted: .constant(false),
+            state: state,
+            store: store,
+            ingestMode: .moved,
+            onIngestOutcome: onIngestOutcome
+        )
     }
 
     private var airDropDelegate: ShelfAirDropDelegate {
@@ -864,7 +1157,8 @@ public struct ShelfSplitDropDelegate: DropDelegate {
         dropSessionConcluded = true
         activeZone = nil
         switch zone {
-        case .stash: return stashDelegate.performDrop(info: info)
+        case .link: return stashDelegate.performDrop(info: info)
+        case .move: return moveDelegate.performDrop(info: info)
         case .airDrop: return airDropDelegate.performDrop(info: info)
         }
     }

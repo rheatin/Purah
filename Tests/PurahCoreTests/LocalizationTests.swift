@@ -120,12 +120,16 @@ struct LocalizationTests {
             // +8: the calendar's Up-Next countdown and Open in Calendar strings.
             // +11: the compact alert card, its channel names, captions and pod suffixes.
             // The four partial tables below gain those 11 keys plus the three alert style titles.
-            .traditionalChinese: 608,
-            .japanese: 85,
-            .korean: 85,
-            .french: 85,
-            .german: 85,
-            .spanish: 103
+            // +6: Drop Shelf's Link, Move, undo banner, and failure copy.
+            // +1: the shelf's refused-delete warning.
+            // +3: the shelf's zone hints; the partial tables also gained the
+            // AirDrop title they had been falling back to English for.
+            .traditionalChinese: 619,
+            .japanese: 96,
+            .korean: 96,
+            .french: 96,
+            .german: 96,
+            .spanish: 114
         ]
 
         for (language, expected) in pinnedCoverage {
