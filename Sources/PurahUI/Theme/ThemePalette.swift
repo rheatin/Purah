@@ -74,6 +74,21 @@ public struct ThemePalette: Sendable {
 }
 
 public extension Color {
+    @MainActor
+    static func readableTagTint(hex: String) -> Color {
+        let background = NSColor(ThemeManager.shared.palette.surfaceBackground)
+            .usingColorSpace(.sRGB)
+        let components = background.map {
+            HexColor.Components(
+                red: Double($0.redComponent),
+                green: Double($0.greenComponent),
+                blue: Double($0.blueComponent),
+                alpha: Double($0.alphaComponent)
+            )
+        } ?? HexColor.Components(red: 1, green: 1, blue: 1, alpha: 1)
+        return Color(hex: TagTintContrast.adjustedHex(hex: hex, background: components))
+    }
+
     init(hex: String) {
         let components = HexColor.parse(hex)
             ?? HexColor.Components(red: 0, green: 245.0 / 255.0, blue: 212.0 / 255.0, alpha: 1.0)
@@ -123,4 +138,69 @@ public extension Color {
     /// fill (orange, green, yellow) always want this value, so it is exposed on
     /// its own rather than spelled out as a literal at every call site.
     static let slateInk = Color(red: 0.059, green: 0.067, blue: 0.102)
+}
+
+/// Keeps a tag's identity but gives its text enough contrast on light surfaces.
+public enum TagTintContrast {
+    public static let minimumRatio = 4.5
+
+    public static func adjustedHex(
+        hex: String,
+        background: HexColor.Components
+    ) -> String {
+        guard let original = HexColor.parse(hex) else { return hex }
+        let backgroundLuminance = relativeLuminance(background)
+        guard backgroundLuminance >= 0.18 else { return hex }
+        guard contrastRatio(foreground: original, background: background) < minimumRatio else {
+            return hex
+        }
+
+        var candidate = original
+        for _ in 0..<80 {
+            candidate = HexColor.Components(
+                red: candidate.red * 0.92,
+                green: candidate.green * 0.92,
+                blue: candidate.blue * 0.92,
+                alpha: candidate.alpha
+            )
+            let candidateHex = hexString(candidate)
+            if let rounded = HexColor.parse(candidateHex),
+               contrastRatio(foreground: rounded, background: background) >= minimumRatio {
+                return candidateHex
+            }
+        }
+        return "#000000"
+    }
+
+    public static func contrastRatio(
+        foreground: HexColor.Components,
+        background: HexColor.Components
+    ) -> Double {
+        let first = relativeLuminance(foreground)
+        let second = relativeLuminance(background)
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    public static func relativeLuminance(_ color: HexColor.Components) -> Double {
+        0.2126 * linear(color.red)
+            + 0.7152 * linear(color.green)
+            + 0.0722 * linear(color.blue)
+    }
+
+    private static func linear(_ component: Double) -> Double {
+        component <= 0.04045
+            ? component / 12.92
+            : pow((component + 0.055) / 1.055, 2.4)
+    }
+
+    private static func hexString(_ color: HexColor.Components) -> String {
+        let red = byte(color.red)
+        let green = byte(color.green)
+        let blue = byte(color.blue)
+        return String(format: "#%02X%02X%02X", red, green, blue)
+    }
+
+    private static func byte(_ component: Double) -> Int {
+        min(255, max(0, Int((component * 255).rounded())))
+    }
 }

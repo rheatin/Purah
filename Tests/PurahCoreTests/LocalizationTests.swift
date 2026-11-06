@@ -142,12 +142,14 @@ struct LocalizationTests {
             // +6: the System page gains its subtitle, runtime, disk and store-count copy.
             // +2: the settings rail renames Plugins to Market and adds its subtitle;
             // -1: the deleted plugin sidebar's registered-count line.
-            .traditionalChinese: 665,
-            .japanese: 145,
-            .korean: 145,
-            .french: 145,
-            .german: 145,
-            .spanish: 163
+            // +3: Quick Notes names its untagged folder and per-tag actions.
+            // +3: the System page states what each rail percentage means next.
+            .traditionalChinese: 671,
+            .japanese: 151,
+            .korean: 151,
+            .french: 151,
+            .german: 151,
+            .spanish: 169
         ]
 
         for (language, expected) in pinnedCoverage {

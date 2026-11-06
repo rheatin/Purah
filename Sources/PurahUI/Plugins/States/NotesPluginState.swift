@@ -5,6 +5,18 @@ import Foundation
 import Observation
 import PurahCore
 
+public struct NoteGroup: Identifiable, Equatable, Sendable {
+    public static let untaggedID = "notes.group.untagged"
+
+    public let tag: NoteTag?
+    public let documents: [NoteDocument]
+    public let isCurrentTag: Bool
+
+    public var id: String {
+        tag?.name ?? Self.untaggedID
+    }
+}
+
 @Observable
 @MainActor
 public final class NotesPluginState: Sendable {
@@ -71,6 +83,39 @@ public final class NotesPluginState: Sendable {
             return matched
         }
         return documents.first
+    }
+
+    /// The note menu mirrors the `data/<Tag>/<note>.md` tree.
+    ///
+    /// Empty tags remain as folders, the current tag is lifted first, and an
+    /// untagged folder appears only when it actually holds a note.
+    public func noteGroups(currentTag: String) -> [NoteGroup] {
+        var orderedTags = availableTags
+        if let currentIndex = orderedTags.firstIndex(where: { $0.name == currentTag }),
+           currentIndex != orderedTags.startIndex {
+            let current = orderedTags.remove(at: currentIndex)
+            orderedTags.insert(current, at: orderedTags.startIndex)
+        }
+
+        var groups = orderedTags.map { tag in
+            NoteGroup(
+                tag: tag,
+                documents: documents.filter { $0.tag == tag.name },
+                isCurrentTag: tag.name == currentTag
+            )
+        }
+
+        let untagged = documents.filter { $0.tag.isEmpty }
+        if !untagged.isEmpty {
+            groups.append(
+                NoteGroup(
+                    tag: nil,
+                    documents: untagged,
+                    isCurrentTag: currentTag.isEmpty
+                )
+            )
+        }
+        return groups
     }
 
     /// The tag a note carries, if that tag still exists.

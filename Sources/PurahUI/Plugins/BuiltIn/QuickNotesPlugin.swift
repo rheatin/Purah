@@ -77,25 +77,58 @@ struct NotesHeaderNoteMenu: View {
     let state: NotesPluginState
     let accent: Color
 
+    private var currentTag: NoteTag? {
+        state.tag(named: state.currentDocument?.tag ?? "")
+    }
+
+    private var currentTagName: String {
+        state.currentDocument?.tag ?? ""
+    }
+
     var body: some View {
         Menu {
-            ForEach(state.documents) { doc in
-                Button {
-                    state.selectedNoteId = doc.id
-                    state.save()
-                } label: {
-                    if doc.isFavorite {
-                        Label(doc.title, systemImage: "star.fill")
+            ForEach(state.noteGroups(currentTag: currentTagName)) { group in
+                Menu {
+                    if group.documents.isEmpty {
+                        Button("notes.noNotesInTag".localized) {}
+                            .disabled(true)
                     } else {
-                        Text(doc.title)
+                        ForEach(group.documents) { doc in
+                            Button {
+                                state.selectedNoteId = doc.id
+                                state.save()
+                            } label: {
+                                if doc.isFavorite {
+                                    Label(doc.title, systemImage: "star.fill")
+                                } else {
+                                    Text(doc.title)
+                                }
+                            }
+                        }
                     }
+
+                    Divider()
+
+                    Button {
+                        _ = state.createNote(tag: group.tag?.name ?? "")
+                    } label: {
+                        Label(
+                            String(
+                                format: "notes.newNoteInTag".localized,
+                                group.tag?.name ?? "notes.untaggedGroup".localized
+                            ),
+                            systemImage: "plus"
+                        )
+                    }
+                } label: {
+                    Text(group.tag?.name ?? "notes.untaggedGroup".localized)
                 }
             }
 
             Divider()
 
             Button {
-                _ = state.createNote(tag: state.currentDocument?.tag ?? "")
+                _ = state.createNote(tag: currentTagName)
             } label: {
                 Label("notes.newNote".localized, systemImage: "plus")
             }
@@ -103,7 +136,7 @@ struct NotesHeaderNoteMenu: View {
             PurahHeaderMenuLabel(
                 text: state.currentDocument?.title ?? "Untitled",
                 icon: "doc.text",
-                tint: accent,
+                tint: currentTag.map { Color.readableTagTint(hex: $0.colorHex) } ?? accent,
                 maxTextWidth: 108,
                 isEmphasized: true
             )
