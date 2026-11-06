@@ -286,6 +286,12 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
    - **The draft is re-parsed from the message text, never stored.** Reopening the drawer rebuilds it from the same content, so the card cannot drift from the answer above it. `savedActionDraftIDs` is in-memory only: a persisted "saved" flag would outlive an item the person deleted in Calendar and then lie about where it is.
    - Writing fires `EKEventStoreChanged`, which the Calendar and Todo pods already observe, so no `boundStore` plumbing is involved; the pod refreshes itself.
 
+10. **Update Downloads Fall Back Through gh-proxy (`ReleaseMirror`)**
+    - `github.com/.../releases/latest/download/...` answers with a redirect to `objects.githubusercontent.com`, and that hop is routinely reset in mainland China: the updater reports "cannot reach GitHub" while the browser can. `ReleaseMirror.candidates(for:)` returns GitHub first and then one `https://gh-proxy.com/<full github URL>` style candidate per prefix, and both the manifest fetch and the archive download walk that list.
+    - **The fallback is not a setting.** GitHub is always first, and a URL that is not GitHub's is never wrapped — a self-hosted URL must not be routed through a third party. Each source gets a fresh `URLRequest`: 6s direct / 15s mirror for the manifest, 20s direct / 60s mirror for the archive (`timeoutInterval` is an idle timeout, so a slow but progressing transfer is never cut).
+    - **A mirror is a third party and can rewrite the archive and the digest alike.** Nothing treats it as trusted and nothing weakens the existing checks: the install script still verifies the bundle's signature, and the SHA-256 still only proves the transfer arrived intact. Do not add a "verified mirror" claim.
+    - A checksum mismatch ends the attempt — never "shop" for a mirror that agrees with a value the release did not publish.
+
 ---
 
 ## 8. Strict Non-Regression & User Inquiry Mandate (防破坏既有功能与主动请示法则 - Mandatory)

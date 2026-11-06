@@ -239,6 +239,17 @@ open build/Purah.app
 
 Every release publishes its SHA-256 beside the DMG; check it with `shasum -a 256`.
 
+**Downloading from mainland China**
+
+GitHub release downloads redirect to `objects.githubusercontent.com`, which is frequently reset there. Prefix the download URL with an acceleration proxy:
+
+```
+https://gh-proxy.com/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
+https://ghfast.top/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
+```
+
+Swap in the version you want. Purah's updater already does the same thing on its own: it retries through these prefixes when the direct download fails, with no setting to flip. The proxies are third-party, so compare the file against the SHA-256 published on the release page.
+
 **Using a model server on your own network?** The first time Purah reaches an address like `192.168.x.x` or `*.local`, macOS asks for Local Network access — allow it. If the AI drawer reports that it cannot connect, check **System Settings → Privacy & Security → Local Network** and turn Purah on there; a rebuild changes the app's signature, so the switch can be off again after an update.
 
 ---
