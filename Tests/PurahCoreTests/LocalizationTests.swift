@@ -132,12 +132,13 @@ struct LocalizationTests {
             // consequence, the assets caption, and their actions.
             // +3: the settings rail labels its pod and Purah groups and names
             // the System page.
-            .traditionalChinese: 643,
-            .japanese: 122,
-            .korean: 122,
-            .french: 122,
-            .german: 122,
-            .spanish: 140
+            // +6: the pod settings page points to Alerts and Storage.
+            .traditionalChinese: 649,
+            .japanese: 128,
+            .korean: 128,
+            .french: 128,
+            .german: 128,
+            .spanish: 146
         ]
 
         for (language, expected) in pinnedCoverage {

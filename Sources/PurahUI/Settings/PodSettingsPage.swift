@@ -2,6 +2,65 @@
 import SwiftUI
 import PurahCore
 
+@MainActor
+enum PodAlertSummary {
+    static func text(
+        style: PluginAlertStyle,
+        channels: Set<AlertChannel>,
+        podEnabled: Bool,
+        globalChannels: Set<AlertChannel>?
+    ) -> String {
+        guard podEnabled else {
+            return "podPage.silenced".localized
+        }
+        guard let globalChannels else {
+            return "podPage.alertsOff".localized
+        }
+
+        let effectiveChannels = channels.intersection(globalChannels)
+        guard !effectiveChannels.isEmpty else {
+            return "podPage.noChannels".localized
+        }
+
+        let channelNames = AlertChannel.allCases
+            .filter(effectiveChannels.contains)
+            .map(channelTitle)
+            .joined(separator: " + ")
+        return "\(style.localizedDisplayName) · \(channelNames)"
+    }
+
+    private static func channelTitle(_ channel: AlertChannel) -> String {
+        switch channel {
+        case .railEffect:
+            "interaction.alerts.channel.railEffect".localized
+        case .toast:
+            "interaction.alerts.channel.toast".localized
+        case .sound:
+            "interaction.alerts.channel.sound".localized
+        }
+    }
+}
+
+@MainActor
+enum PodStorageSummary {
+    static func text(
+        assetsBytes: Int64,
+        dataBytes: Int64,
+        cacheBytes: Int64
+    ) -> String {
+        String(
+            format: "podPage.storageSummary".localized,
+            compactSize(assetsBytes + dataBytes + cacheBytes),
+            compactSize(assetsBytes),
+            compactSize(cacheBytes)
+        )
+    }
+
+    private static func compactSize(_ bytes: Int64) -> String {
+        bytes == 0 ? "0" : PurahPluginFileStorage.format(bytes)
+    }
+}
+
 /// The settings detail for one pod.
 ///
 /// Preferences and the plugin center both route here so a pod has one settings
@@ -10,26 +69,39 @@ public struct PodSettingsPage: View {
     public let store: PurahWorkspaceStore
     public let pluginId: String
 
+    private let storageRoots: PluginStorageRoots
+    private let onNavigate: ((PreferencesSelection, String?) -> Void)?
     let onUninstalled: (() -> Void)?
     @State private var confirmingUninstall = false
+    @State private var storageMeasurement: PluginStorageMeasurement?
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
-    public init(store: PurahWorkspaceStore, pluginId: String) {
+    public init(
+        store: PurahWorkspaceStore,
+        pluginId: String,
+        onNavigate: ((PreferencesSelection, String?) -> Void)? = nil
+    ) {
         self.store = store
         self.pluginId = pluginId
+        self.storageRoots = .live
+        self.onNavigate = onNavigate
         self.onUninstalled = nil
     }
 
     init(
         store: PurahWorkspaceStore,
         pluginId: String,
-        onUninstalled: (() -> Void)?
+        storageRoots: PluginStorageRoots,
+        onUninstalled: (() -> Void)?,
+        onNavigate: ((PreferencesSelection, String?) -> Void)?
     ) {
         self.store = store
         self.pluginId = pluginId
+        self.storageRoots = storageRoots
+        self.onNavigate = onNavigate
         self.onUninstalled = onUninstalled
     }
 
@@ -130,11 +202,32 @@ public struct PodSettingsPage: View {
                     )
                 }
 
+                if activePlugin.manifest.supportsAlerts {
+                    pointerCard(
+                        title: "podPage.alerts".localized,
+                        icon: "bell.badge",
+                        summary: alertSummary(activePlugin, podId: podId),
+                        target: .motion,
+                        podId: podId
+                    )
+                }
+
+                pointerCard(
+                    title: "podPage.storage".localized,
+                    icon: "internaldrive",
+                    summary: storageSummary,
+                    target: .system,
+                    podId: podId
+                )
+
                 managementCard(podId: podId)
 
                 Spacer()
             }
             .padding(16)
+        }
+        .task(id: pluginId) {
+            await loadStorageMeasurement()
         }
     }
 
@@ -219,6 +312,96 @@ public struct PodSettingsPage: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
         )
+    }
+
+    private func pointerCard(
+        title: String,
+        icon: String,
+        summary: String,
+        target: PreferencesSelection,
+        podId: String
+    ) -> some View {
+        Button {
+            onNavigate?(target, podId)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(palette.primaryAccent)
+                    .frame(width: 16)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
+
+                    Text(summary)
+                        .font(.system(size: 9.5, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(palette.surfaceBackground)
+            .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.tactile)
+        .accessibilityLabel("\(title), \(summary)")
+    }
+
+    private func alertSummary(
+        _ activePlugin: any PurahPodPlugin,
+        podId: String
+    ) -> String {
+        let style = store.resolvedAlertStyle(
+            declared: activePlugin.alertStyle(store: store),
+            podId: podId
+        )
+        return PodAlertSummary.text(
+            style: style,
+            channels: store.allowedChannels(forPodId: podId),
+            podEnabled: !store.disabledAlertPodIds.contains(podId),
+            globalChannels: store.isAlertMasterEnabled ? store.alertChannels : nil
+        )
+    }
+
+    private var storageSummary: String {
+        guard let storageMeasurement else { return "…" }
+        return PodStorageSummary.text(
+            assetsBytes: storageMeasurement.assetsBytes,
+            dataBytes: storageMeasurement.dataBytes,
+            cacheBytes: storageMeasurement.cacheBytes
+        )
+    }
+
+    private func loadStorageMeasurement() async {
+        storageMeasurement = nil
+        let pluginId = pluginId
+        let roots = storageRoots
+        let worker = Task.detached(priority: .utility) {
+            PluginStorageScanner.measure(pluginId: pluginId, roots: roots)
+        }
+        let measurement = await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        guard !Task.isCancelled else { return }
+        storageMeasurement = measurement
     }
 
     private func managementCard(podId: String) -> some View {

@@ -5,20 +5,30 @@ import PurahCore
 
 public struct DiagnosticReportView: View {
     public let store: PurahWorkspaceStore
+    public var focusedPodId: String? = nil
+    public var focusNonce: Int = 0
 
     @State private var logEntries: [DiagnosticLogEntry] = []
     @State private var copyFeedback: Bool = false
+    @State private var focusTask: Task<Void, Never>?
 
     private var logger: DiagnosticLogger { DiagnosticLogger.shared }
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(
+        store: PurahWorkspaceStore,
+        focusedPodId: String? = nil,
+        focusNonce: Int = 0
+    ) {
         self.store = store
+        self.focusedPodId = focusedPodId
+        self.focusNonce = focusNonce
     }
 
     public var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 14) {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 14) {
                 // Header & Export Actions
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -92,7 +102,10 @@ public struct DiagnosticReportView: View {
                 }
 
                 // Per-plugin disk usage: what is safe to clear, and what is not
-                PluginStorageInspectorView()
+                PluginStorageInspectorView(
+                    focusedPluginId: focusedPodId,
+                    focusNonce: focusNonce
+                )
 
                 // Recent Logs Console
                 VStack(alignment: .leading, spacing: 8) {
@@ -164,16 +177,40 @@ public struct DiagnosticReportView: View {
                             .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
                     )
                 }
+                }
+                .padding(16)
             }
-            .padding(16)
-        }
-        .onAppear {
-            refreshLogs()
-        }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
+            .onAppear {
                 refreshLogs()
+                focusStoragePod(using: proxy)
+            }
+            .onChange(of: focusNonce) { _, _ in
+                focusStoragePod(using: proxy)
+            }
+            .onDisappear {
+                focusTask?.cancel()
+                focusTask = nil
+            }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    refreshLogs()
+                }
+            }
+        }
+    }
+
+    private func focusStoragePod(using proxy: ScrollViewProxy) {
+        guard let focusedPodId else { return }
+        focusTask?.cancel()
+        focusTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(PurahMotionPolicy.surface) {
+                proxy.scrollTo(
+                    PluginStorageFocus.rowID(forPluginId: focusedPodId),
+                    anchor: .center
+                )
             }
         }
     }

@@ -148,11 +148,13 @@ public struct PluginCenterSettingsView: View {
             PodSettingsPage(
                 store: store,
                 pluginId: selectedPluginId,
+                storageRoots: .live,
                 onUninstalled: {
                     if let next = PluginRegistry.shared.allPlugins.first?.manifest.id {
                         selectedPluginId = next
                     }
-                }
+                },
+                onNavigate: nil
             )
             .id(selectedPluginId)
         }

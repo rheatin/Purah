@@ -142,15 +142,37 @@ enum SettingsPodIndex {
     }
 }
 
+struct SettingsFocusHandoff: Equatable {
+    private(set) var podId: String?
+    private(set) var nonce: Int = 0
+
+    mutating func deliver(_ podId: String) {
+        self.podId = podId
+        nonce &+= 1
+    }
+
+    mutating func clearForManualSelection() {
+        podId = nil
+    }
+
+    mutating func clearIfCurrent(podId: String, nonce: Int) {
+        guard self.podId == podId, self.nonce == nonce else { return }
+        self.podId = nil
+    }
+}
+
 public struct PreferencesView: View {
     public let store: PurahWorkspaceStore
     @State public var selection: PreferencesSelection
     public let initialPluginId: String?
 
+    @State private var focus = SettingsFocusHandoff()
+    @State private var focusClearTask: Task<Void, Never>?
     @State private var isRepoBadgeHovered = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static let repositoryURL = URL(string: "https://github.com/rheatin/Purah")!
+    private let podStorageRoots: PluginStorageRoots
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -161,8 +183,23 @@ public struct PreferencesView: View {
         initialTab: PreferencesTab = .general,
         initialPluginId: String? = nil
     ) {
+        self.init(
+            store: store,
+            initialTab: initialTab,
+            initialPluginId: initialPluginId,
+            podStorageRoots: .live
+        )
+    }
+
+    init(
+        store: PurahWorkspaceStore,
+        initialTab: PreferencesTab = .general,
+        initialPluginId: String? = nil,
+        podStorageRoots: PluginStorageRoots
+    ) {
         self.store = store
         self.initialPluginId = initialPluginId
+        self.podStorageRoots = podStorageRoots
         if let initialPluginId {
             self._selection = State(initialValue: .pod(initialPluginId))
         } else {
@@ -182,6 +219,10 @@ public struct PreferencesView: View {
                 .id(LocalizationManager.shared.currentLanguage)
         }
         .background(palette.background)
+        .onDisappear {
+            focusClearTask?.cancel()
+            focusClearTask = nil
+        }
     }
 
     private var rail: some View {
@@ -192,17 +233,6 @@ public struct PreferencesView: View {
 
                     ForEach(podEntries) { entry in
                         podButton(entry)
-                    }
-
-                    Rectangle()
-                        .fill(palette.borderColor)
-                        .frame(height: 1)
-                        .padding(.vertical, 8)
-
-                    railSectionTitle("settings.rail.purah")
-
-                    ForEach(PreferencesSelection.globalCases.filter { $0 != .system }) { item in
-                        globalButton(item)
                     }
                 }
                 .padding(.horizontal, 8)
@@ -215,13 +245,18 @@ public struct PreferencesView: View {
                 .fill(palette.borderColor)
                 .frame(height: 1)
 
-            globalButton(.system)
+            VStack(alignment: .leading, spacing: 4) {
+                railSectionTitle("settings.rail.purah")
+
+                ForEach(PreferencesSelection.globalCases) { item in
+                    globalButton(item)
+                }
+            }
                 .padding(.horizontal, 8)
                 .padding(.top, 8)
+                .padding(.bottom, 8)
 
-            repoBadge
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+            signatureBlock
         }
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.55))
         .overlay(alignment: .trailing) {
@@ -246,7 +281,7 @@ public struct PreferencesView: View {
         let color = palette.podColor(for: entry.id, store: store)
 
         return Button {
-            selection = item
+            selectFromRail(item)
         } label: {
             HStack(spacing: 8) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -297,7 +332,7 @@ public struct PreferencesView: View {
         let isSelected = selection == item
 
         return Button {
-            selection = item
+            selectFromRail(item)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: item.icon ?? "circle")
@@ -340,12 +375,12 @@ public struct PreferencesView: View {
     }
 
     @ViewBuilder
-    private var repoBadge: some View {
+    private var signatureBlock: some View {
         if let appIcon = NSApp.applicationIconImage {
-            HStack {
-                Button {
-                    NSWorkspace.shared.open(Self.repositoryURL)
-                } label: {
+            Button {
+                NSWorkspace.shared.open(Self.repositoryURL)
+            } label: {
+                HStack(spacing: 8) {
                     Image(nsImage: appIcon)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -359,14 +394,30 @@ public struct PreferencesView: View {
                         )
                         .scaleEffect(isRepoBadgeHovered && !reduceMotion ? 1.06 : 1.0)
                         .animation(PurahMotionPolicy.hover, value: isRepoBadgeHovered)
-                }
-                .buttonStyle(.plain)
-                .onHover { isRepoBadgeHovered = $0 }
-                .help("View Purah on GitHub")
-                .accessibilityLabel("View Purah on GitHub")
 
-                Spacer()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Purah")
+                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                            .foregroundColor(
+                                palette.style == .native ? Color.primary : .white
+                            )
+
+                        Text("v\(PurahCore.version)")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .onHover { isRepoBadgeHovered = $0 }
+            .help("View Purah on GitHub")
+            .accessibilityLabel("View Purah v\(PurahCore.version) on GitHub")
         }
     }
 
@@ -374,21 +425,61 @@ public struct PreferencesView: View {
     private var selectedContent: some View {
         switch selection {
         case .pod(let id):
-            PodSettingsPage(store: store, pluginId: id)
+            PodSettingsPage(
+                store: store,
+                pluginId: id,
+                storageRoots: podStorageRoots,
+                onUninstalled: nil,
+                onNavigate: focusTarget
+            )
                 .id(id)
         case .layout:
             VisualLayoutSimulatorView(store: store)
         case .general:
             GeneralSettingsView(store: store)
         case .motion:
-            InteractionSettingsView(store: store)
+            InteractionSettingsView(
+                store: store,
+                focusedPodId: focus.podId,
+                focusNonce: focus.nonce
+            )
         case .plugins:
             PluginMarketplaceView(store: store, initialPluginId: initialPluginId)
         case .permissions:
             SystemAccessSettingsView(store: store)
         case .system:
-            DiagnosticReportView(store: store)
+            DiagnosticReportView(
+                store: store,
+                focusedPodId: focus.podId,
+                focusNonce: focus.nonce
+            )
         }
+    }
+
+    private func focusTarget(_ target: PreferencesSelection, podId: String?) {
+        focusClearTask?.cancel()
+        focusClearTask = nil
+        selection = target
+        guard let podId else {
+            focus.clearForManualSelection()
+            return
+        }
+
+        focus.deliver(podId)
+        let expected = focus
+        focusClearTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_300_000_000)
+            guard !Task.isCancelled, let expectedPodId = expected.podId else { return }
+            focus.clearIfCurrent(podId: expectedPodId, nonce: expected.nonce)
+            focusClearTask = nil
+        }
+    }
+
+    private func selectFromRail(_ item: PreferencesSelection) {
+        focusClearTask?.cancel()
+        focusClearTask = nil
+        focus.clearForManualSelection()
+        selection = item
     }
 
     private var podEntries: [SettingsPodIndexEntry] {

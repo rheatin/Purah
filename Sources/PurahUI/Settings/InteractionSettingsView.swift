@@ -21,16 +21,33 @@ private struct AlertStyleChoice: Hashable {
     }
 }
 
+private enum AlertFocus {
+    static func rowID(for podId: String) -> String {
+        "alert-pod:\(podId)"
+    }
+}
+
 public struct InteractionSettingsView: View {
     public let store: PurahWorkspaceStore
+    public var focusedPodId: String? = nil
+    public var focusNonce: Int = 0
+
     @State private var expandedAlertPodId: String?
+    @State private var flashingAlertPodId: String?
+    @State private var focusTask: Task<Void, Never>?
 
     private var theme: ThemeManager {
         ThemeManager.shared
     }
 
-    public init(store: PurahWorkspaceStore) {
+    public init(
+        store: PurahWorkspaceStore,
+        focusedPodId: String? = nil,
+        focusNonce: Int = 0
+    ) {
         self.store = store
+        self.focusedPodId = focusedPodId
+        self.focusNonce = focusNonce
     }
 
     private var alertingPods: [AlertingPodEntry] {
@@ -117,8 +134,9 @@ public struct InteractionSettingsView: View {
     public var body: some View {
         let palette = theme.palette
 
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(spacing: 20) {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(spacing: 20) {
                 // Top Header
                 HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -373,6 +391,7 @@ public struct InteractionSettingsView: View {
                             VStack(spacing: 0) {
                                 ForEach(alertingPods) { entry in
                                     let isExpanded = expandedAlertPodId == entry.pod.id
+                                    let isFlashing = flashingAlertPodId == entry.pod.id
 
                                     VStack(spacing: 0) {
                                         HStack(spacing: 7) {
@@ -456,6 +475,24 @@ public struct InteractionSettingsView: View {
                                             }
                                         }
                                     }
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                            .fill(
+                                                isFlashing
+                                                    ? palette.primaryAccent.opacity(0.14)
+                                                    : Color.clear
+                                            )
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                            .stroke(
+                                                isFlashing
+                                                    ? palette.primaryAccent.opacity(0.55)
+                                                    : Color.clear,
+                                                lineWidth: 1
+                                            )
+                                    )
+                                    .id(AlertFocus.rowID(for: entry.pod.id))
                                 }
                             }
                         }
@@ -569,22 +606,57 @@ public struct InteractionSettingsView: View {
                         }
                     }
                 }
+                }
+                .padding(24)
+                .frame(width: 680)
             }
-            .padding(24)
-            .frame(width: 680)
+            .frame(minHeight: 560)
+            .onAppear {
+                store.isInteractionSettingsTelemetryActive = true
+                store.onboardingGateState = .idle
+                store.onboardingGateProgress = 0.0
+                store.onboardingGateCurrentValue = 0
+                store.onboardingGateTargetValue = store.edgeTriggerMode == .hoverDwell
+                    ? Int(store.activeInitialDwellSeconds * 1000)
+                    : Int(store.activePushResistanceBarrier)
+                focusPodIfNeeded(using: proxy)
+            }
+            .onChange(of: focusNonce) { _, _ in
+                focusPodIfNeeded(using: proxy)
+            }
+            .onDisappear {
+                store.isInteractionSettingsTelemetryActive = false
+                focusTask?.cancel()
+                focusTask = nil
+            }
         }
-        .frame(minHeight: 560)
-        .onAppear {
-            store.isInteractionSettingsTelemetryActive = true
-            store.onboardingGateState = .idle
-            store.onboardingGateProgress = 0.0
-            store.onboardingGateCurrentValue = 0
-            store.onboardingGateTargetValue = store.edgeTriggerMode == .hoverDwell
-                ? Int(store.activeInitialDwellSeconds * 1000)
-                : Int(store.activePushResistanceBarrier)
+    }
+
+    private func focusPodIfNeeded(using proxy: ScrollViewProxy) {
+        guard let focusedPodId,
+              alertingPods.contains(where: { $0.pod.id == focusedPodId }) else {
+            return
         }
-        .onDisappear {
-            store.isInteractionSettingsTelemetryActive = false
+
+        focusTask?.cancel()
+        withAnimation(PurahMotionPolicy.surface) {
+            expandedAlertPodId = focusedPodId
+            flashingAlertPodId = focusedPodId
+        }
+
+        focusTask = Task { @MainActor in
+            // Let the accordion finish making room before scrolling to it.
+            try? await Task.sleep(nanoseconds: 240_000_000)
+            guard !Task.isCancelled else { return }
+            proxy.scrollTo(AlertFocus.rowID(for: focusedPodId), anchor: .center)
+
+            try? await Task.sleep(nanoseconds: 960_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(PurahMotionPolicy.surface) {
+                if flashingAlertPodId == focusedPodId {
+                    flashingAlertPodId = nil
+                }
+            }
         }
     }
 

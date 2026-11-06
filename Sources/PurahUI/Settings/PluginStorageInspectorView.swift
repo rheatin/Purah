@@ -30,29 +30,72 @@ public struct PluginStorageRoots: Sendable {
     }
 }
 
+enum PluginStorageFocus {
+    static func rowID(forPluginId pluginId: String) -> String {
+        "storage-pod:\(pluginId)"
+    }
+
+    static func rowID(for kind: PluginStorageRowKind) -> String {
+        switch kind {
+        case .plugin(let id):
+            return rowID(forPluginId: id)
+        case .clipboard, .vitals, .leftovers:
+            return "storage-row:\(kind.id)"
+        }
+    }
+}
+
 /// The storage page joins plugin-owned sandboxes with the two app-level stores
 /// that were previously missing from the totals.
 public struct PluginStorageInspectorView: View {
     @State private var rows: [PluginStorageRow] = []
     @State private var pendingDeletion: PendingStorageDeletion?
     @State private var reloadTask: Task<Void, Never>?
+    @State private var flashingPluginId: String?
+    @State private var focusTask: Task<Void, Never>?
 
     private let roots: PluginStorageRoots
     private let injectedPlugins: [PluginStoragePluginSpec]?
+    private let focusedPluginId: String?
+    private let focusNonce: Int
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
-    public init() {
-        self.init(roots: .live, plugins: nil)
+    public init(
+        focusedPluginId: String? = nil,
+        focusNonce: Int = 0
+    ) {
+        self.init(
+            roots: .live,
+            plugins: nil,
+            focusedPluginId: focusedPluginId,
+            focusNonce: focusNonce
+        )
     }
 
-    public init(roots: PluginStorageRoots) {
-        self.init(roots: roots, plugins: nil)
+    public init(
+        roots: PluginStorageRoots,
+        focusedPluginId: String? = nil,
+        focusNonce: Int = 0
+    ) {
+        self.init(
+            roots: roots,
+            plugins: nil,
+            focusedPluginId: focusedPluginId,
+            focusNonce: focusNonce
+        )
     }
 
-    init(roots: PluginStorageRoots, plugins: [PluginStoragePluginSpec]?) {
+    init(
+        roots: PluginStorageRoots,
+        plugins: [PluginStoragePluginSpec]?,
+        focusedPluginId: String? = nil,
+        focusNonce: Int = 0
+    ) {
         self.roots = roots
         self.injectedPlugins = plugins
+        self.focusedPluginId = focusedPluginId
+        self.focusNonce = focusNonce
     }
 
     private var totalAssets: Int64? { total(\.assetsBytes) }
@@ -114,10 +157,18 @@ public struct PluginStorageInspectorView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(palette.borderColor.opacity(0.3), lineWidth: 1)
         )
-        .onAppear(perform: reload)
+        .onAppear {
+            reload()
+            focusPluginIfNeeded()
+        }
+        .onChange(of: focusNonce) { _, _ in
+            focusPluginIfNeeded()
+        }
         .onDisappear {
             reloadTask?.cancel()
             reloadTask = nil
+            focusTask?.cancel()
+            focusTask = nil
         }
         .confirmationDialog(
             pendingDeletion?.title ?? "",
@@ -171,7 +222,9 @@ public struct PluginStorageInspectorView: View {
     }
 
     private func rowView(_ row: PluginStorageRow) -> some View {
-        HStack(spacing: StorageInspectorLayout.spacing) {
+        let isFlashing = flashingPluginId == row.kind.pluginId
+
+        return HStack(spacing: StorageInspectorLayout.spacing) {
             Image(systemName: row.icon)
                 .font(.system(size: 11))
                 .foregroundColor(row.color)
@@ -229,8 +282,22 @@ public struct PluginStorageInspectorView: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.025))
+                .fill(
+                    isFlashing
+                        ? palette.primaryAccent.opacity(0.14)
+                        : Color.primary.opacity(0.025)
+                )
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(
+                    isFlashing
+                        ? palette.primaryAccent.opacity(0.55)
+                        : Color.clear,
+                    lineWidth: 1
+                )
+        )
+        .id(PluginStorageFocus.rowID(for: row.kind))
     }
 
     private func storageValue(_ bytes: Int64?) -> some View {
@@ -334,6 +401,28 @@ public struct PluginStorageInspectorView: View {
     private func clearAllCaches() {
         PluginStorageScanner.clearContents(of: rows.flatMap(\.cacheLocations))
         reload()
+    }
+
+    private func focusPluginIfNeeded() {
+        guard let focusedPluginId,
+              rows.contains(where: { $0.kind.pluginId == focusedPluginId }) else {
+            return
+        }
+
+        focusTask?.cancel()
+        withAnimation(PurahMotionPolicy.surface) {
+            flashingPluginId = focusedPluginId
+        }
+
+        focusTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(PurahMotionPolicy.surface) {
+                if flashingPluginId == focusedPluginId {
+                    flashingPluginId = nil
+                }
+            }
+        }
     }
 
     private func reload() {
@@ -466,6 +555,11 @@ enum PluginStorageRowKind: Sendable, Equatable {
         case .leftovers: return "app:leftovers"
         }
     }
+
+    var pluginId: String? {
+        guard case .plugin(let id) = self else { return nil }
+        return id
+    }
 }
 
 enum PluginStorageConfirmationCopy {
@@ -505,6 +599,19 @@ struct PluginStorageMeasurement: Sendable {
 }
 
 enum PluginStorageScanner {
+    static func measure(
+        pluginId: String,
+        roots: PluginStorageRoots
+    ) -> PluginStorageMeasurement? {
+        guard PurahPluginFileStorage.isValidPluginId(pluginId) else { return nil }
+        return measurePlugin(
+            PluginStorageTarget(
+                kind: .plugin(pluginId),
+                rootURL: roots.pluginsBase.appendingPathComponent(pluginId, isDirectory: true)
+            )
+        )
+    }
+
     static func targets(
         plugins: [PluginStoragePluginSpec],
         roots: PluginStorageRoots
