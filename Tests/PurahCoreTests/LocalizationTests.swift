@@ -144,7 +144,8 @@ struct LocalizationTests {
             // -1: the deleted plugin sidebar's registered-count line.
             // +3: Quick Notes names its untagged folder and per-tag actions.
             // +3: the System page states what each rail percentage means next.
-            .traditionalChinese: 671,
+            // -1: the orphaned plugin-selection hint left with the old sidebar.
+            .traditionalChinese: 670,
             .japanese: 151,
             .korean: 151,
             .french: 151,
