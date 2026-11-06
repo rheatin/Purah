@@ -128,7 +128,9 @@ struct CalendarUpNextTests {
         )
 
         let state = makeState(events: [later, allDay, sooner])
-        state.scope = .today
+        // Keep the future fixtures inside the scope even when this runs late
+        // at night; `.today` made the ordering assertion time-of-day dependent.
+        state.scope = .next7Days
         state.isDecomposed = true
         state.maxRailEvents = 5
 
