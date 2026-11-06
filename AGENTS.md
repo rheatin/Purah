@@ -303,6 +303,13 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     - **A mirror is a third party and can rewrite the archive and the digest alike.** Nothing treats it as trusted and nothing weakens the existing checks: the install script still verifies the bundle's signature, and the SHA-256 still only proves the transfer arrived intact. Do not add a "verified mirror" claim.
     - A checksum mismatch ends the attempt — never "shop" for a mirror that agrees with a value the release did not publish.
 
+11. **Storage Numbers Are Allocated Bytes, and Assets Are Never Deleted Here (`PluginStorageInspectorView`)**
+    - The Diagnostics page reports what files **occupy** (`totalFileAllocatedSize` → `fileAllocatedSize` → `fileSize`), for the same reason memory is `phys_footprint` and not RSS: a sparse or cloned file claims bytes it never took. The three buckets — Assets / Data / Cache — must stay disjoint, and the total is their sum, so a byte is never counted twice or missed.
+    - **A pod keeps bytes in more than `data/` and `cache/`.** `…/Purah/Clipboard` and `…/Purah/Vitals` are app-level stores, and `PurahDiskRepository` writes `index.json` **directly in the plugin root** — counting only the two managed subdirectories under-reported the single largest file on the machine (AI's index). Every entry directly under a plugin root that is not one of `assets/`, `data/`, `cache/` counts as **data**.
+    - **`assets/` is shown, never deleted from this page.** It holds shelf items ingested in Move mode, which may be the person's only copy; the deletion reaches `data/` and root entries only. The row gets a Reveal button and the caption sends the person to the pod, which recycles to the Trash. Leftover folders from uninstalled plugins are the one exception (the pod no longer exists to delete from), and they too are confirmed first.
+    - **A destructive action names its own consequence.** The confirmation is chosen by row kind — clipboard images, the vitals chart starting over, leftover plugin folders — not one generic "notes cannot be recovered" for all three. A consequence sentence that would be wrong for the row it is attached to is worse than none: it trains the person to click through.
+    - **The walk runs off the main actor** (`Task.detached(priority: .utility)`, cancelled on disappearance), because assets can be tens of thousands of files and the settings window must not stall for the truth.
+
 ---
 
 ## 8. Strict Non-Regression & User Inquiry Mandate (防破坏既有功能与主动请示法则 - Mandatory)
