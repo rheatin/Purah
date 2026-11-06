@@ -64,6 +64,7 @@ public struct PluginStorageInspectorView: View {
     private let injectedPlugins: [PluginStoragePluginSpec]?
     private let focusedPluginId: String?
     private let focusNonce: Int
+    private let onMeasurements: (([PluginStorageMeasurement]) -> Void)?
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
@@ -75,7 +76,8 @@ public struct PluginStorageInspectorView: View {
             roots: .live,
             plugins: nil,
             focusedPluginId: focusedPluginId,
-            focusNonce: focusNonce
+            focusNonce: focusNonce,
+            onMeasurements: nil
         )
     }
 
@@ -88,7 +90,8 @@ public struct PluginStorageInspectorView: View {
             roots: roots,
             plugins: nil,
             focusedPluginId: focusedPluginId,
-            focusNonce: focusNonce
+            focusNonce: focusNonce,
+            onMeasurements: nil
         )
     }
 
@@ -96,12 +99,14 @@ public struct PluginStorageInspectorView: View {
         roots: PluginStorageRoots,
         plugins: [PluginStoragePluginSpec]?,
         focusedPluginId: String? = nil,
-        focusNonce: Int = 0
+        focusNonce: Int = 0,
+        onMeasurements: (([PluginStorageMeasurement]) -> Void)? = nil
     ) {
         self.roots = roots
         self.injectedPlugins = plugins
         self.focusedPluginId = focusedPluginId
         self.focusNonce = focusNonce
+        self.onMeasurements = onMeasurements
     }
 
     private var totalAssets: Int64? { total(\.assetsBytes) }
@@ -111,15 +116,11 @@ public struct PluginStorageInspectorView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Label("diagnostics.cache.title".localized, systemImage: "internaldrive")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                Spacer()
-
                 Text(summaryText)
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .foregroundColor(.secondary)
+
+                Spacer()
 
                 Button {
                     reload()
@@ -156,12 +157,12 @@ public struct PluginStorageInspectorView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
         }
-        .padding(10)
-        .background(Color.primary.opacity(0.03))
+        .padding(12)
+        .background(palette.surfaceBackground)
         .cornerRadius(10)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke(palette.borderColor.opacity(0.3), lineWidth: 1)
+                .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
         )
         .onAppear {
             reload()
@@ -474,6 +475,7 @@ public struct PluginStorageInspectorView: View {
                     makeRow(for: leftovers.target, plugins: plugins, measurement: leftovers)
                 )
             }
+            onMeasurements?(measurements)
             reloadTask = nil
         }
     }

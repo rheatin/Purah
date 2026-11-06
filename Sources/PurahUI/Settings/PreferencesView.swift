@@ -451,7 +451,8 @@ public struct PreferencesView: View {
             DiagnosticReportView(
                 store: store,
                 focusedPodId: focus.podId,
-                focusNonce: focus.nonce
+                focusNonce: focus.nonce,
+                storageRoots: podStorageRoots
             )
         }
     }

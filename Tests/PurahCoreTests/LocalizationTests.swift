@@ -139,12 +139,13 @@ struct LocalizationTests {
             // +6: the pod settings page points to Alerts and Storage.
             // +9: Notifications gain their default and per-pod sound controls,
             // and the sound menu now covers all 14 system sounds.
-            .traditionalChinese: 658,
-            .japanese: 137,
-            .korean: 137,
-            .french: 137,
-            .german: 137,
-            .spanish: 155
+            // +6: the System page gains its subtitle, runtime, disk and store-count copy.
+            .traditionalChinese: 664,
+            .japanese: 143,
+            .korean: 143,
+            .french: 143,
+            .german: 143,
+            .spanish: 161
         ]
 
         for (language, expected) in pinnedCoverage {

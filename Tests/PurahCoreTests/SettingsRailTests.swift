@@ -206,6 +206,39 @@ struct SettingsRailTests {
         #expect(measured.target.rootURL == alpha.rootDirectory)
     }
 
+    @Test("Rail capacity reads as a percentage and warns only over capacity")
+    func railCapacityReadout() {
+        let over = SystemRailCapacityReadout(ratio: 1.08)
+        #expect(over.text == "108 %")
+        #expect(over.tone == .warning)
+        #expect(over.isOverCapacity)
+
+        let within = SystemRailCapacityReadout(ratio: 0.64)
+        #expect(within.text == "64 %")
+        #expect(within.tone == .ok)
+        #expect(!within.isOverCapacity)
+    }
+
+    @Test("Store count uses the singular sentence for one store")
+    @MainActor
+    func storeCountSentence() {
+        let localization = LocalizationManager.shared
+        let savedLanguage = localization.currentLanguage
+        defer { localization.currentLanguage = savedLanguage }
+        localization.currentLanguage = .english
+
+        #expect(SystemStoreCount.text(1) == "1 store")
+        #expect(SystemStoreCount.text(0) == "0 stores")
+        #expect(SystemStoreCount.text(4) == "4 stores")
+    }
+
+    @Test("Main-thread stalls are healthy at zero and warn above it")
+    func mainThreadStallTone() {
+        #expect(SystemRuntimeSummary.stallTone(0) == .ok)
+        #expect(SystemRuntimeSummary.stallTone(1) == .warning)
+        #expect(SystemRuntimeSummary.stallTone(9) == .warning)
+    }
+
     private func entry(
         _ id: String,
         _ name: String,
