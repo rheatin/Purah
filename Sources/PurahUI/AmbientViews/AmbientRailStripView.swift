@@ -44,7 +44,10 @@ public struct AmbientRailStripView: View {
                               let plugin = PluginRegistry.shared.plugin(for: offPageAlert.pod.id) else {
                             return .subtleGlow
                         }
-                        return store.resolvedAlertStyle(declared: plugin.alertStyle(store: store))
+                        return store.resolvedAlertStyle(
+                            declared: plugin.alertStyle(store: store),
+                            podId: offPageAlert.pod.id
+                        )
                     }()
                     let isTopPortalAlerting = offPageAlertStyle != .off
                         && (offPageAlert.map { $0.pageIndex < currentPage } ?? false)
@@ -197,7 +200,7 @@ public struct AmbientRailStripView: View {
         let color = palette.podColor(for: pod.id, store: store)
         let slotH = max(totalHeight, 36.0)
         let alertStyle = PluginRegistry.shared.plugin(for: pod.id).map {
-            store.resolvedAlertStyle(declared: $0.alertStyle(store: store))
+            store.resolvedAlertStyle(declared: $0.alertStyle(store: store), podId: pod.id)
         } ?? .subtleGlow
 
         return PurahPluginContext(
@@ -296,7 +299,8 @@ public struct AmbientRailStripView: View {
         let barSlotH = max(barHeight, 22.0)
         let drawerSlotH = max(drawerHeight, 36.0)
         let resolvedAlertStyle = store.resolvedAlertStyle(
-            declared: plugin.alertStyle(store: store)
+            declared: plugin.alertStyle(store: store),
+            podId: pod.id
         )
         let color = plugin.dynamicBarColor(context: PurahPluginContext(
             pod: pod, edge: edge, railWidth: railWidth, slotHeight: barSlotH,

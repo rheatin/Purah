@@ -81,8 +81,9 @@ public final class CalendarPluginState: Sendable {
             await CalendarPluginState.fetchEventKitEvents(in: interval)
         }
         self.scope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
-        let savedStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self)
-        self.alertStyle = (savedStyle == .off ? nil : savedStyle) ?? .sonarWave
+        // A declaration, not a setting: the person's choice lives in the
+        // store's per-pod map. `mount` migrates the old plugin-scoped key once.
+        self.alertStyle = .sonarWave
         self.alertLeadTime = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
@@ -104,9 +105,6 @@ public final class CalendarPluginState: Sendable {
         if let savedScope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) {
             self.scope = savedScope
         }
-        if let savedStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) {
-            self.alertStyle = savedStyle == .off ? .sonarWave : savedStyle
-        }
         if let savedLead = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) {
             self.alertLeadTime = savedLead
         }
@@ -124,7 +122,6 @@ public final class CalendarPluginState: Sendable {
 
     public func save() {
         storage.setCodable(scope, forKey: "scope")
-        storage.setCodable(alertStyle, forKey: "alertStyle")
         storage.setCodable(alertLeadTime, forKey: "alertLeadTime")
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(overflowStrategy, forKey: "overflowStrategy")
@@ -345,6 +342,7 @@ public final class CalendarPluginState: Sendable {
 
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
+        migrateLegacyAlertStyle(into: store)
         if !store._calendarEvents.isEmpty && self.events.isEmpty {
             self.events = store._calendarEvents
         }
@@ -364,6 +362,19 @@ public final class CalendarPluginState: Sendable {
         syncEvents(into: store) { [weak self] in
             self?.checkUpcomingAlerts()
         }
+    }
+
+    /// The style pills on the calendar's own settings page used to write a
+    /// plugin-scoped key. That value was the person's choice, not the plugin's
+    /// declaration, so it moves into the store's per-pod map — once. The key is
+    /// removed either way, otherwise a choice made later in the Alerts card
+    /// would be overwritten by this stale copy on the next mount.
+    private func migrateLegacyAlertStyle(into store: PurahWorkspaceStore) {
+        guard let legacy = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) else { return }
+        if store.podAlertStyles["calendar"] == nil, legacy != .off {
+            store.setAlertStyle(legacy, forPodId: "calendar")
+        }
+        storage.removeObject(forKey: "alertStyle")
     }
 
     public func unmount(store: PurahWorkspaceStore) {

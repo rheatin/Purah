@@ -216,7 +216,7 @@ public struct PurahPluginContext: Sendable {
             self.alertStyle = alertStyle
         } else if let storeRef {
             let declared = PluginRegistry.shared.plugin(for: podIdRef)?.alertStyle(store: storeRef)
-            self.alertStyle = storeRef.resolvedAlertStyle(declared: declared)
+            self.alertStyle = storeRef.resolvedAlertStyle(declared: declared, podId: podIdRef)
         } else {
             self.alertStyle = .subtleGlow
         }

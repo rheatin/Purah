@@ -235,6 +235,18 @@ extension PurahWorkspaceStore {
             }
             self.podAlertChannels = parsed
         }
+        if let storedPodStyles = defaults.dictionary(forKey: "purah.podAlertStyles") {
+            var parsed: [String: PluginAlertStyle] = [:]
+            for (podId, rawStyle) in storedPodStyles {
+                // An unknown name (a style that was renamed or deleted) drops
+                // that pod back to the default instead of failing the load.
+                guard let rawStyle = rawStyle as? String,
+                      let style = PluginAlertStyle(rawValue: rawStyle),
+                      style != .off else { continue }
+                parsed[podId] = style
+            }
+            self.podAlertStyles = parsed
+        }
         // The calendar's old per-plugin switches become its channel choices, once.
         if defaults.object(forKey: "purah.alertChannels") == nil {
             let calendarStorage = ScopedPluginStorage(pluginId: "calendar", defaults: defaults)
@@ -352,6 +364,10 @@ extension PurahWorkspaceStore {
             podAlertChannels.mapValues { $0.map(\.rawValue).sorted() },
             forKey: "purah.podAlertChannels"
         )
+        defaults.set(
+            podAlertStyles.mapValues(\.rawValue),
+            forKey: "purah.podAlertStyles"
+        )
         if let quietData = try? JSONEncoder().encode(quietHours) {
             defaults.set(quietData, forKey: "purah.quietHours")
         }
@@ -414,6 +430,7 @@ extension PurahWorkspaceStore {
         alertChannels = Set(AlertChannel.allCases)
         disabledAlertPodIds.removeAll()
         podAlertChannels.removeAll()
+        podAlertStyles.removeAll()
         // Backing storage, so the setters do not save halfway through a reset.
         _quietHours = QuietHours()
         _contextProfiles = ContextProfileStore()

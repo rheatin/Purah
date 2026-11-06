@@ -73,8 +73,17 @@ public struct InteractionSettingsView: View {
         choice.style?.localizedDisplayName ?? "interaction.alerts.followEachPod".localized
     }
 
+    /// The per-pod picker's empty choice is "follow the default", not "follow
+    /// each pod": a pod has exactly one default to follow.
+    private func podAlertStyleTitle(_ choice: AlertStyleChoice) -> String {
+        choice.style?.localizedDisplayName ?? "interaction.alerts.style.followDefault".localized
+    }
+
     private func podAlertDetail(_ entry: AlertingPodEntry) -> String {
-        let style = store.resolvedAlertStyle(declared: entry.plugin.alertStyle(store: store))
+        let style = store.resolvedAlertStyle(
+            declared: entry.plugin.alertStyle(store: store),
+            podId: entry.pod.id
+        )
         let allowed = store.allowedChannels(forPodId: entry.pod.id)
         guard allowed != Set(AlertChannel.allCases) else {
             return style.localizedDisplayName
@@ -410,14 +419,36 @@ public struct InteractionSettingsView: View {
                                         .frame(height: 26)
 
                                         if isExpanded {
-                                            HStack(spacing: 12) {
-                                                podChannelToggle(.railEffect, podId: entry.pod.id)
-                                                podChannelToggle(.toast, podId: entry.pod.id)
-                                                podChannelToggle(.sound, podId: entry.pod.id)
-                                                Spacer(minLength: 0)
+                                            VStack(spacing: 0) {
+                                                HStack(spacing: 12) {
+                                                    Text("interaction.alerts.pods.style".localized)
+                                                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                                                    PurahThemedMenuPicker(
+                                                        options: alertStyleChoices,
+                                                        selection: Binding(
+                                                            get: { AlertStyleChoice(style: store.podAlertStyles[entry.pod.id]) },
+                                                            set: { store.setAlertStyle($0.style, forPodId: entry.pod.id) }
+                                                        ),
+                                                        titleForOption: podAlertStyleTitle
+                                                    )
+                                                    .frame(width: 142)
+
+                                                    Spacer(minLength: 0)
+                                                }
+                                                .padding(.leading, 23)
+                                                .frame(height: 26)
+
+                                                HStack(spacing: 12) {
+                                                    podChannelToggle(.railEffect, podId: entry.pod.id)
+                                                    podChannelToggle(.toast, podId: entry.pod.id)
+                                                    podChannelToggle(.sound, podId: entry.pod.id)
+                                                    Spacer(minLength: 0)
+                                                }
+                                                .padding(.leading, 23)
+                                                .frame(height: 26)
                                             }
-                                            .padding(.leading, 23)
-                                            .frame(height: 26)
                                         }
                                     }
                                 }
