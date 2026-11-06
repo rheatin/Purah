@@ -182,7 +182,8 @@ public struct VisualLayoutSimulatorView: View {
                     .padding(.top, 8)
             }
             .padding(24)
-            .frame(width: 680)
+            .frame(maxWidth: 680, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(minHeight: 560)
     }
@@ -238,18 +239,52 @@ public struct VisualLayoutSimulatorView: View {
     private var sharedMajorPodToolbar: some View {
         let palette = theme.palette
 
-        return HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "square.stack.3d.down.right.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(.orange)
+        return ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "square.stack.3d.down.right.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.orange)
 
-            Text("overflow.majorPod.editorSubtitle".localized)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .lineLimit(1)
+                sharedMajorPodBannerText
+                    .layoutPriority(1)
 
-            Spacer(minLength: 8)
+                Spacer(minLength: 8)
 
+                sharedMajorPodButtons(palette: palette)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "square.stack.3d.down.right.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.orange)
+
+                    sharedMajorPodBannerText
+                }
+
+                sharedMajorPodButtons(palette: palette)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.orange.opacity(0.08))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.4), lineWidth: 1.0)
+        )
+    }
+
+    private var sharedMajorPodBannerText: some View {
+        Text("overflow.majorPod.editorSubtitle".localized)
+            .font(.caption2)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private func sharedMajorPodButtons(palette: ThemePalette) -> some View {
+        HStack(spacing: 8) {
             Button {
                 withAnimation(PurahMotionPolicy.surface) {
                     store.autoStackMajorPods(for: .left)
@@ -292,14 +327,6 @@ public struct VisualLayoutSimulatorView: View {
             }
             .buttonStyle(.tactile)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08))
-        .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.4), lineWidth: 1.0)
-        )
     }
 
     private func majorPodClusters(for edge: MountEdge) -> [[SlotPod]] {
@@ -327,19 +354,42 @@ public struct VisualLayoutSimulatorView: View {
                 }
 
                 // 1. Mounted Pods Split by Left Rail & Right Rail
-                HStack(alignment: .top, spacing: 12) {
-                    railAssemblyColumn(
-                        edge: .left,
-                        title: "Left Rail",
-                        pods: leftMountedPods,
-                        pages: railPages(for: .left)
-                    )
-                    railAssemblyColumn(
-                        edge: .right,
-                        title: "Right Rail",
-                        pods: rightMountedPods,
-                        pages: railPages(for: .right)
-                    )
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        railAssemblyColumn(
+                            edge: .left,
+                            title: "Left Rail",
+                            pods: leftMountedPods,
+                            pages: railPages(for: .left)
+                        )
+                        .frame(minWidth: 0)
+
+                        railAssemblyColumn(
+                            edge: .right,
+                            title: "Right Rail",
+                            pods: rightMountedPods,
+                            pages: railPages(for: .right)
+                        )
+                        .frame(minWidth: 0)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        railAssemblyColumn(
+                            edge: .left,
+                            title: "Left Rail",
+                            pods: leftMountedPods,
+                            pages: railPages(for: .left)
+                        )
+                        .frame(maxWidth: .infinity)
+
+                        railAssemblyColumn(
+                            edge: .right,
+                            title: "Right Rail",
+                            pods: rightMountedPods,
+                            pages: railPages(for: .right)
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
                 }
 
                 // 2. Unmounted Pods Tray (if any exist)
@@ -577,203 +627,43 @@ public struct VisualLayoutSimulatorView: View {
         isStackedInCluster: Bool
     ) -> some View {
         let palette = theme.palette
-        let otherPods = railPods.filter { $0.id != pod.id }
 
-        VStack(alignment: .leading, spacing: 6) {
-            // Row 1: Module Identity & Unmount
-            HStack(spacing: 6) {
-                if isStackedInCluster {
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Color.orange)
-                        .frame(width: 3, height: 14)
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 8) {
+                assemblyPodIdentity(
+                    pod: pod,
+                    isStackedInCluster: isStackedInCluster,
+                    palette: palette
+                )
 
-                Image(systemName: pod.systemIcon)
-                    .font(.system(size: 12))
-                    .foregroundColor(palette.podColor(for: pod.id, store: store))
+                Spacer(minLength: 8)
 
-                Text(pod.name)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-
-                Spacer(minLength: 4)
-
-                // Unmount button
-                Button {
-                    withAnimation(PurahMotionPolicy.surface) {
-                        store.togglePodEnabled(id: pod.id)
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color.red.opacity(0.85))
-                }
-                .buttonStyle(.tactile)
-                .help(String(format: "help.unmountFromRail".localized, pod.name))
-                .accessibilityLabel(String(format: "help.unmountFromRail".localized, pod.name))
+                assemblyPodControls(
+                    pod: pod,
+                    railPods: railPods,
+                    maxExistingPage: maxExistingPage,
+                    isStackedInCluster: isStackedInCluster,
+                    palette: palette
+                )
             }
 
-            // Row 2: Tactile Action Pill Bar
-            HStack(spacing: 6) {
-                // Page Pill Menu
-                Menu {
-                    ForEach(0...max(maxExistingPage, 2), id: \.self) { pageIdx in
-                        Button("Page \(pageIdx + 1)\(pod.pageIndex == pageIdx ? " ✓" : "")") {
-                            withAnimation(PurahMotionPolicy.surface) {
-                                store.setPodPage(id: pod.id, pageIndex: pageIdx)
-                            }
-                        }
-                    }
-                    Divider()
-                    Button("+ New Page (P\(maxExistingPage + 2))") {
-                        withAnimation(PurahMotionPolicy.surface) {
-                            store.setPodPage(id: pod.id, pageIndex: maxExistingPage + 1)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 8.5))
-                        Text(String(format: "simulator.page".localized, pod.pageIndex + 1))
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 7, weight: .bold))
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(palette.primaryAccent.opacity(0.12))
-                    .foregroundColor(palette.primaryAccent)
-                    .cornerRadius(5)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize(horizontal: true, vertical: false)
-                .help(String(format: "help.assignPage".localized, pod.name))
-                .accessibilityLabel(String(format: "help.assignPage".localized, pod.name))
+            VStack(alignment: .leading, spacing: 6) {
+                assemblyPodIdentity(
+                    pod: pod,
+                    isStackedInCluster: isStackedInCluster,
+                    palette: palette
+                )
 
-                // Stack / Unstack Pill
-                if isStackedInCluster {
-                    Button {
-                        withAnimation(PurahMotionPolicy.surface) {
-                            store.splitPodFromMajorGroup(id: pod.id)
-                            store.triggerControlHaptic(.alignment)
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "scissors")
-                                .font(.system(size: 8.5, weight: .bold))
-                            Text("overflow.majorPod.unstack".localized)
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.orange.opacity(0.18))
-                        .foregroundColor(.orange)
-                        .cornerRadius(5)
-                    }
-                    .buttonStyle(.tactile)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .help(String(format: "help.unstackNamed".localized, pod.name))
-                    .accessibilityLabel(String(format: "help.unstackNamed".localized, pod.name))
-                } else if !otherPods.isEmpty {
-                    Menu {
-                        ForEach(otherPods) { otherPod in
-                            Button("Stack with \(otherPod.name)") {
-                                withAnimation(PurahMotionPolicy.surface) {
-                                    store.addPodToMajorGroup(podId: otherPod.id, targetPodId: pod.id)
-                                    store.triggerControlHaptic(.alignment)
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "square.stack.3d.up.fill")
-                                .font(.system(size: 8.5, weight: .bold))
-                            Text("simulator.stackWith".localized)
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .lineLimit(1)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 7, weight: .bold))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.orange.opacity(0.14))
-                        .foregroundColor(.orange)
-                        .cornerRadius(5)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .help(String(format: "help.stackWithModule".localized, pod.name))
-                    .accessibilityLabel(String(format: "help.stackWithModule".localized, pod.name))
-                }
-
-                Spacer(minLength: 2)
-
-                // Reorder: Move Up
-                if store.canMovePod(id: pod.id, direction: .up) {
-                    Button {
-                        withAnimation(PurahMotionPolicy.surface) {
-                            store.movePodInOrder(id: pod.id, direction: .up)
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 8.5, weight: .bold))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 20, height: 20)
-                            .background(Color.primary.opacity(0.08))
-                            .cornerRadius(4)
-                    }
-                    .buttonStyle(.tactile)
-                    .help(String(format: "help.moveUpNamed".localized, pod.name))
-                    .accessibilityLabel(String(format: "help.moveUpNamed".localized, pod.name))
-                }
-
-                // Reorder: Move Down
-                if store.canMovePod(id: pod.id, direction: .down) {
-                    Button {
-                        withAnimation(PurahMotionPolicy.surface) {
-                            store.movePodInOrder(id: pod.id, direction: .down)
-                        }
-                    } label: {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 8.5, weight: .bold))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .frame(width: 20, height: 20)
-                            .background(Color.primary.opacity(0.08))
-                            .cornerRadius(4)
-                    }
-                    .buttonStyle(.tactile)
-                    .help(String(format: "help.moveDownNamed".localized, pod.name))
-                    .accessibilityLabel(String(format: "help.moveDownNamed".localized, pod.name))
-                }
-
-                // Transfer Edge (Switch Rail Button)
-                Button {
-                    withAnimation(PurahMotionPolicy.surface) {
-                        store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
-                    }
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: pod.edge == .left ? "arrow.right" : "arrow.left")
-                            .font(.system(size: 8, weight: .bold))
-                        Text(pod.edge == .left ? "To Right" : "To Left")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(palette.primaryAccent.opacity(0.15))
-                    .foregroundColor(palette.primaryAccent)
-                    .cornerRadius(5)
-                }
-                .buttonStyle(.tactile)
-                .fixedSize(horizontal: true, vertical: false)
-                .help(String(format: "help.moveOtherRail".localized, pod.name, pod.edge == .left ? "Right" : "Left"))
-                .accessibilityLabel(String(format: "help.moveOtherRail".localized, pod.name, pod.edge == .left ? "Right" : "Left"))
+                assemblyPodControls(
+                    pod: pod,
+                    railPods: railPods,
+                    maxExistingPage: maxExistingPage,
+                    isStackedInCluster: isStackedInCluster,
+                    palette: palette
+                )
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(Color(nsColor: .controlBackgroundColor))
@@ -782,6 +672,268 @@ public struct VisualLayoutSimulatorView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isStackedInCluster ? Color.orange.opacity(0.4) : palette.primaryAccent.opacity(0.25), lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private func assemblyPodIdentity(
+        pod: SlotPod,
+        isStackedInCluster: Bool,
+        palette: ThemePalette
+    ) -> some View {
+        HStack(spacing: 6) {
+            if isStackedInCluster {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.orange)
+                    .frame(width: 3, height: 14)
+            }
+
+            Image(systemName: pod.systemIcon)
+                .font(.system(size: 12))
+                .foregroundColor(palette.podColor(for: pod.id, store: store))
+
+            Text(pod.name)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(minWidth: 0, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func assemblyPodControls(
+        pod: SlotPod,
+        railPods: [SlotPod],
+        maxExistingPage: Int,
+        isStackedInCluster: Bool,
+        palette: ThemePalette
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                assemblyPodPageControl(pod: pod, maxExistingPage: maxExistingPage, palette: palette)
+                assemblyPodStackControl(
+                    pod: pod,
+                    railPods: railPods,
+                    isStackedInCluster: isStackedInCluster
+                )
+                Spacer(minLength: 2)
+                assemblyPodReorderButtons(pod: pod, palette: palette)
+                assemblyPodTransferButton(pod: pod, palette: palette)
+                assemblyPodUnmountButton(pod: pod)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    assemblyPodPageControl(pod: pod, maxExistingPage: maxExistingPage, palette: palette)
+                    assemblyPodStackControl(
+                        pod: pod,
+                        railPods: railPods,
+                        isStackedInCluster: isStackedInCluster
+                    )
+                    Spacer(minLength: 0)
+                    assemblyPodUnmountButton(pod: pod)
+                }
+
+                HStack(spacing: 6) {
+                    assemblyPodReorderButtons(pod: pod, palette: palette)
+                    assemblyPodTransferButton(pod: pod, palette: palette)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func assemblyPodPageControl(
+        pod: SlotPod,
+        maxExistingPage: Int,
+        palette: ThemePalette
+    ) -> some View {
+        Menu {
+            ForEach(0...max(maxExistingPage, 2), id: \.self) { pageIdx in
+                Button("Page \(pageIdx + 1)\(pod.pageIndex == pageIdx ? " ✓" : "")") {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        store.setPodPage(id: pod.id, pageIndex: pageIdx)
+                    }
+                }
+            }
+            Divider()
+            Button("+ New Page (P\(maxExistingPage + 2))") {
+                withAnimation(PurahMotionPolicy.surface) {
+                    store.setPodPage(id: pod.id, pageIndex: maxExistingPage + 1)
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 8.5))
+                Text(String(format: "simulator.page".localized, pod.pageIndex + 1))
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .bold))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(palette.primaryAccent.opacity(0.12))
+            .foregroundColor(palette.primaryAccent)
+            .cornerRadius(5)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize(horizontal: true, vertical: false)
+        .help(String(format: "help.assignPage".localized, pod.name))
+        .accessibilityLabel(String(format: "help.assignPage".localized, pod.name))
+    }
+
+    @ViewBuilder
+    private func assemblyPodStackControl(
+        pod: SlotPod,
+        railPods: [SlotPod],
+        isStackedInCluster: Bool
+    ) -> some View {
+        let otherPods = railPods.filter { $0.id != pod.id }
+
+        if isStackedInCluster {
+            Button {
+                withAnimation(PurahMotionPolicy.surface) {
+                    store.splitPodFromMajorGroup(id: pod.id)
+                    store.triggerControlHaptic(.alignment)
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "scissors")
+                        .font(.system(size: 8.5, weight: .bold))
+                    Text("overflow.majorPod.unstack".localized)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.orange.opacity(0.18))
+                .foregroundColor(.orange)
+                .cornerRadius(5)
+            }
+            .buttonStyle(.tactile)
+            .fixedSize(horizontal: true, vertical: false)
+            .help(String(format: "help.unstackNamed".localized, pod.name))
+            .accessibilityLabel(String(format: "help.unstackNamed".localized, pod.name))
+        } else if !otherPods.isEmpty {
+            Menu {
+                ForEach(otherPods) { otherPod in
+                    Button("Stack with \(otherPod.name)") {
+                        withAnimation(PurahMotionPolicy.surface) {
+                            store.addPodToMajorGroup(podId: otherPod.id, targetPodId: pod.id)
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "square.stack.3d.up.fill")
+                        .font(.system(size: 8.5, weight: .bold))
+                    Text("simulator.stackWith".localized)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.orange.opacity(0.14))
+                .foregroundColor(.orange)
+                .cornerRadius(5)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize(horizontal: true, vertical: false)
+            .help(String(format: "help.stackWithModule".localized, pod.name))
+            .accessibilityLabel(String(format: "help.stackWithModule".localized, pod.name))
+        }
+    }
+
+    @ViewBuilder
+    private func assemblyPodReorderButtons(
+        pod: SlotPod,
+        palette: ThemePalette
+    ) -> some View {
+        HStack(spacing: 6) {
+            if store.canMovePod(id: pod.id, direction: .up) {
+                Button {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        store.movePodInOrder(id: pod.id, direction: .up)
+                    }
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .frame(width: 20, height: 20)
+                        .background(Color.primary.opacity(0.08))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.tactile)
+                .help(String(format: "help.moveUpNamed".localized, pod.name))
+                .accessibilityLabel(String(format: "help.moveUpNamed".localized, pod.name))
+            }
+
+            if store.canMovePod(id: pod.id, direction: .down) {
+                Button {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        store.movePodInOrder(id: pod.id, direction: .down)
+                    }
+                } label: {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .frame(width: 20, height: 20)
+                        .background(Color.primary.opacity(0.08))
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.tactile)
+                .help(String(format: "help.moveDownNamed".localized, pod.name))
+                .accessibilityLabel(String(format: "help.moveDownNamed".localized, pod.name))
+            }
+        }
+    }
+
+    private func assemblyPodTransferButton(
+        pod: SlotPod,
+        palette: ThemePalette
+    ) -> some View {
+        Button {
+            withAnimation(PurahMotionPolicy.surface) {
+                store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: pod.edge == .left ? "arrow.right" : "arrow.left")
+                    .font(.system(size: 8, weight: .bold))
+                Text(pod.edge == .left ? "To Right" : "To Left")
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(palette.primaryAccent.opacity(0.15))
+            .foregroundColor(palette.primaryAccent)
+            .cornerRadius(5)
+        }
+        .buttonStyle(.tactile)
+        .fixedSize(horizontal: true, vertical: false)
+        .help(String(format: "help.moveOtherRail".localized, pod.name, pod.edge == .left ? "Right" : "Left"))
+        .accessibilityLabel(String(format: "help.moveOtherRail".localized, pod.name, pod.edge == .left ? "Right" : "Left"))
+    }
+
+    private func assemblyPodUnmountButton(pod: SlotPod) -> some View {
+        Button {
+            withAnimation(PurahMotionPolicy.surface) {
+                store.togglePodEnabled(id: pod.id)
+            }
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 11))
+                .foregroundColor(Color.red.opacity(0.85))
+        }
+        .buttonStyle(.tactile)
+        .help(String(format: "help.unmountFromRail".localized, pod.name))
+        .accessibilityLabel(String(format: "help.unmountFromRail".localized, pod.name))
     }
 
     // MARK: - Context Profiles

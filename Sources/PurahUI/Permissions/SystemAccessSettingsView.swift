@@ -116,7 +116,6 @@ public struct SystemAccessSettingsView: View {
                 }
                 .padding(.trailing, 4)
             }
-            .frame(maxHeight: 280)
 
             Divider()
                 .background(palette.borderColor)
@@ -161,8 +160,9 @@ public struct SystemAccessSettingsView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(20)
-        .frame(width: 580, height: 440)
+        .padding(24)
+        .frame(maxWidth: 680, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var summaryText: String {

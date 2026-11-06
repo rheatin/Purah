@@ -657,7 +657,8 @@ public struct InteractionSettingsView: View {
                 }
                 }
                 .padding(24)
-                .frame(width: 680)
+                .frame(maxWidth: 680, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(minHeight: 560)
             .onAppear {
