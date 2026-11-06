@@ -17,7 +17,9 @@ public struct TerminalPlugin: PurahPodPlugin {
         minLengthRatio: 0.20,
         defaultColorHex: "#00F5D4",
         defaultDrawerWidth: 520.0,
-        permissions: [.shellExecution]
+        permissions: [.shellExecution],
+        supportsAlerts: true,
+        alertStyle: .subtleGlow
     )
 
     public let state: TerminalPluginState

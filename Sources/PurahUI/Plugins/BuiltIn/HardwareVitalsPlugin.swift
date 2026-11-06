@@ -16,7 +16,9 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         ergonomicWeight: 35.0,
         minLengthRatio: 0.22,
         defaultColorHex: "#00E5A3",
-        permissions: [.machTelemetry]
+        permissions: [.machTelemetry],
+        supportsAlerts: true,
+        alertStyle: .breathingBeacon
     )
 
     public let state: VitalsPluginState

@@ -53,7 +53,9 @@ public struct CalendarDrawerView: View {
         let isImminent = event.isImminent(leadTime: state.alertLeadTime)
         let minsUntilStart = max(Int(ceil(event.startTime.timeIntervalSince(Date()) / 60.0)), 1)
         let isAcknowledged = state.isAlertAcknowledged(id: event.id) || store.isAlertAcknowledged(id: event.id)
-        let isAlerting = (isOngoing || isImminent) && (state.isEventGlowAlertEnabled || store.isEventGlowAlertEnabled) && !isAcknowledged
+        let isAlerting = (isOngoing || isImminent)
+            && store.isAlertChannelEnabled(.railEffect, forPodId: "calendar")
+            && !isAcknowledged
         let calColor: Color = {
             if let hex = event.colorHex {
                 return Color(hex: hex)

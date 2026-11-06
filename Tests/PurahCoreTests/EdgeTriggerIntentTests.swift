@@ -593,13 +593,14 @@ struct EdgeTriggerIntentTests {
         #expect(accumulator.accumulatedForce == 0.0)
     }
 
-    @Test("Event toast notification fires when event starts and deduplicates")
+    @Test("Alert delivery fires on the toast channel and deduplicates")
     @MainActor
     func testEventToastAlertNotification() {
         let store = PurahWorkspaceStore()
         var toastReceived: String?
-        store.onCapacityWarningToast = { toastReceived = $0 }
-        store.isEventToastAlertEnabled = true
+        store.onAlertToast = { message, _ in toastReceived = message }
+        store.isAlertMasterEnabled = true
+        store.alertChannels = [.toast]
 
         let event = CalendarEventItem(
             id: "toast-event-1",
@@ -610,16 +611,24 @@ struct EdgeTriggerIntentTests {
         )
 
         // 1. First alert notification
-        store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
+        store.deliverAlert(
+            forPodId: "calendar",
+            id: event.id,
+            message: event.alertMessage()
+        )
         #expect(toastReceived?.contains("Executive Standup") == true)
 
         // 2. Subsequent alert for same event should deduplicate
         toastReceived = nil
-        store.postToastNotification(id: event.id, message: "📅 \(event.title) is starting now")
+        store.deliverAlert(
+            forPodId: "calendar",
+            id: event.id,
+            message: event.alertMessage()
+        )
         #expect(toastReceived == nil, "Duplicate toast for same event must be suppressed")
 
-        // 3. When disabled, no toast is fired
-        store.isEventToastAlertEnabled = false
+        // 3. When the toast channel is off, nothing is delivered
+        store.alertChannels.remove(.toast)
         let event2 = CalendarEventItem(
             id: "toast-event-2",
             title: "Product Launch",
@@ -627,8 +636,12 @@ struct EdgeTriggerIntentTests {
             startTime: Date(),
             endTime: Date().addingTimeInterval(3600)
         )
-        store.postToastNotification(id: event2.id, message: "📅 \(event2.title) is starting now")
-        #expect(toastReceived == nil, "Toast must not fire when isEventToastAlertEnabled is false")
+        store.deliverAlert(
+            forPodId: "calendar",
+            id: event2.id,
+            message: event2.alertMessage()
+        )
+        #expect(toastReceived == nil, "Toast must not fire when the toast channel is off")
     }
 
     @Test("Seamless re-entry after retraction: multiple successive entries and exits work repeatedly without locking out")

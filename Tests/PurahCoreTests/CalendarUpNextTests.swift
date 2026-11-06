@@ -175,7 +175,7 @@ struct CalendarUpNextTests {
         #expect(status(minutes: 0) == .danger)
     }
 
-    @Test("The alert check runs after sync and never repeats the same event id")
+    @Test("A synced calendar event reaches the monitor once")
     func syncCompletionChecksAlertsOnce() async throws {
         let ongoing = event(
             id: "cold-start-meeting",
@@ -183,27 +183,41 @@ struct CalendarUpNextTests {
             start: Date().addingTimeInterval(-60),
             duration: 3_600
         )
-        let store = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "calendar_up_next_alerts_\(UUID().uuidString)")!
-        )
+        let suite = "calendar_up_next_alerts_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        store._calendarEvents = []
+        if let manifest = PurahPluginManifest.builtInCatalog.first(where: { $0.id == "calendar" }) {
+            store.pods.append(manifest.makeDefaultSlotPod(isEnabled: true))
+        }
         var messages: [String] = []
-        store.onCapacityWarningToast = { messages.append($0) }
+        store.onAlertToast = { message, _ in messages.append(message) }
+        store.isAlertMasterEnabled = true
+        store.alertChannels = [.toast]
 
         let state = CalendarPluginState(
-            storage: ScopedPluginStorage(pluginId: "calendar_up_next_alerts_\(UUID().uuidString)"),
+            storage: ScopedPluginStorage(
+                pluginId: "calendar_up_next_alerts_\(UUID().uuidString)",
+                defaults: defaults
+            ),
             permissionStatus: { .authorized },
             eventFetcher: { _ in [ongoing] }
         )
         state.mount(store: store)
 
-        for _ in 0..<200 where messages.isEmpty {
+        for _ in 0..<200 where store._calendarEvents.isEmpty {
             try await Task.sleep(for: .milliseconds(5))
         }
+        #expect(store._calendarEvents.count == 1)
+
+        store.evaluateAlertDeliveries()
 
         #expect(messages.count == 1)
         #expect(messages.first?.contains(ongoing.title) == true)
 
         state.checkUpcomingAlerts(store: store)
+        store.evaluateAlertDeliveries()
         #expect(messages.count == 1, "the same event id must not notify twice")
         state.unmount(store: store)
     }

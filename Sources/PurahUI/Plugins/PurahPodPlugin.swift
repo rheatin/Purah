@@ -6,6 +6,7 @@ import PurahCore
 @MainActor
 public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendable {
     nonisolated var manifest: PurahPluginManifest { get }
+    func alertStyle(store: PurahWorkspaceStore) -> PluginAlertStyle?
 
     @ViewBuilder func makeRailBarView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
@@ -74,6 +75,7 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 public extension PurahPodPlugin {
     nonisolated var id: String { manifest.id }
     var podId: String { manifest.id }
+    func alertStyle(store: PurahWorkspaceStore) -> PluginAlertStyle? { manifest.alertStyle }
 
     /// Whether the pod starts in stepped (chips) mode. A plugin that wants
     /// that must say so explicitly — declaring `supportedDrawerModes` only

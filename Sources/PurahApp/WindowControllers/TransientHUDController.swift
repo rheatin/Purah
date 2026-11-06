@@ -5,13 +5,20 @@ import PurahCore
 
 public struct TransientHUDCapsuleView: View {
     public let text: String
+    public let icon: String?
 
-    public init(text: String) {
+    public init(text: String, icon: String? = nil) {
         self.text = text
+        self.icon = icon
     }
 
     public var body: some View {
         HStack(spacing: 8) {
+            if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+            }
             Text(text)
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundColor(.white)
@@ -43,15 +50,22 @@ public final class TransientHUDController {
 
     private init() {}
 
-    public func showWarning(message: String, durationSeconds: Double = 2.8) {
-        store?.triggerToastSound()
+    public func showWarning(
+        message: String,
+        icon: String? = nil,
+        playsSound: Bool = true,
+        durationSeconds: Double = 2.8
+    ) {
+        if playsSound {
+            store?.triggerToastSound()
+        }
         self.currentText = message
 
         fadeTask?.cancel()
         fadeTask = nil
 
         let panel = getOrCreatePanel()
-        let hudView = TransientHUDCapsuleView(text: message)
+        let hudView = TransientHUDCapsuleView(text: message, icon: icon)
         let hostingView = NSHostingView(rootView: hudView)
         hostingView.wantsLayer = true
         panel.contentView = hostingView

@@ -58,8 +58,16 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
     public var defaultDrawerWidth: Double   // 抽屉展开宽度，标准卡片推荐 280~320pt，超宽型(如终端)可声明 520pt
     public var category: PluginFootprintCategory // 性能足迹分类：.lightweight, .systemMonitor, .workspace, .multimedia
     public var permissions: [PluginPermission]   // 所需系统权限：如 [.fileSystem, .calendar, .reminders]
+    public var supportsAlerts: Bool         // 是否会触发 Pod 提醒；默认 false，内置的 ai / terminal / calendar / vitals 为 true
+    public var alertStyle: PluginAlertStyle? // 默认边缘提醒风格；nil 表示使用宿主的 .subtleGlow 回退
 }
 ```
+
+**提醒权限与通道**：清单声明 `supportsAlerts: true` 后，该 Pod 才会出现在设置页的单个 Pod 提醒列表中；未声明时保持 `false`，不会占用一行设置。全局提醒总开关和全局通道（边缘 / 弹窗 / 声音）是硬上限；每个 Pod 的通道选择只能在此基础上做减法，不能打开全局已关闭的通道。关闭某个 Pod 的开关会确认其待处理提醒，重新开启后不会补播旧事件，只有新事件才会再次提醒。把已无任何通道的 Pod 总开关重新打开时，会恢复该 Pod 的全部三个通道，避免开关看起来无效。
+
+**单一真相**：插件不得再保留自己的「是否弹窗 / 是否发光」开关并据此拦截投递。旧的此类字段只在首次升级时读取一次，折算进该 Pod 的通道集合，之后不再参与任何判断；插件设置页若仍想暴露这个选择，读写 `store.allowedChannels(forPodId:)` / `store.setAlertChannel(_:isEnabled:forPodId:)`，而不是另存一份。两个开关管一个决定，就会出现「卡片里勾着弹窗、实际静音」的谎报状态。
+
+**边缘风格解析**：实际风格统一按 `alertStyleOverride ?? plugin.alertStyle(store:) ?? .subtleGlow` 解析。全局覆盖存在时覆盖所有 Pod；否则使用插件声明；两者都没有时回退到微弱光晕。`PurahPluginManifest.alertStyle` 缺失、非法或解码为 `.off` 时按 `nil` 处理；设置页的全局风格选择提供「跟随各插件」加三种非关闭风格，关闭提醒统一由全局总开关表达。
 
 ---
 
@@ -110,6 +118,8 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     var usesAdaptiveTelemetryColor: Bool { get }
     /// 插件自主声明动态实时强调色（如硬件监视器根据实时负载返回绿/黄/红状态色），宿主 ThemePalette 多态解析，零硬编码 ID
     func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?
+    /// 插件声明自己的默认边缘提醒风格；全局 override 优先，未声明时宿主回退到 .subtleGlow
+    func alertStyle(store: PurahWorkspaceStore) -> PluginAlertStyle?
     /// 用户在轨条或抽屉上发生交互或显式悬停确认时触发，用于批量清除该插件产生的所有注意力告警
     func acknowledgeAllAlerts(context: PurahPluginContext)
 

@@ -187,14 +187,15 @@ struct CalendarOverflowStrategyTests {
         #expect(CalendarAlertLeadTime.sameDay.isAlertWindow(startTime: tomorrow, now: now) == false)
     }
 
-    @Test("CalendarPluginState checkUpcomingAlerts dispatches toast and triggers live alerting without app restart")
+    @Test("Calendar delivery uses the monitor's single path and deduplicates")
     @MainActor
     func testCheckUpcomingAlertsRealTimeDispatch() {
-        let storage = ScopedPluginStorage(pluginId: "cal_alert_test_\(UUID().uuidString)")
+        let suite = "calendar_alert_delivery_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let storage = ScopedPluginStorage(pluginId: "cal_alert_test_\(UUID().uuidString)", defaults: defaults)
         let state = CalendarPluginState(storage: storage)
         state.alertLeadTime = .fourHours
-        state.isEventToastAlertEnabled = true
-        state.isEventGlowAlertEnabled = true
 
         let now = Date()
         let event = CalendarEventItem(
@@ -206,18 +207,27 @@ struct CalendarOverflowStrategyTests {
         )
         state.events = [event]
 
-        let store = PurahWorkspaceStore()
+        let store = PurahWorkspaceStore(userDefaults: defaults)
         var receivedToast: String?
-        store.onCapacityWarningToast = { receivedToast = $0 }
+        store.onAlertToast = { message, _ in receivedToast = message }
+        store.isAlertMasterEnabled = true
+        store.alertChannels = [.toast]
+        store.calendarAlertLeadTime = .fourHours
+        store._calendarEvents = [event]
 
-        // 1. Check alerts: should detect that 2h is within 4h lead time and trigger toast
+        // The state only advances its display clock; it must not deliver.
         state.checkUpcomingAlerts(store: store, now: now)
+        #expect(receivedToast == nil)
+
+        // The host monitor owns the toast path.
+        store.evaluateAlertDeliveries(now: now)
         #expect(receivedToast?.contains("Sprint Retrospective") == true)
         #expect(receivedToast?.contains("starts in 2h") == true)
 
-        // 2. Second check without time moving: deduplicates and does not re-toast
+        // A second tick without time moving deduplicates and does not re-toast.
         receivedToast = nil
         state.checkUpcomingAlerts(store: store, now: now)
+        store.evaluateAlertDeliveries(now: now)
         #expect(receivedToast == nil, "Toast must be deduplicated across consecutive ticks")
 
         // 3. When acknowledged, isAlerting becomes false

@@ -63,6 +63,10 @@ public final class PurahWorkspaceStore {
     public var isDynamicBreathingEnabled: Bool = true
     @ObservationIgnored
     public var onToast: ((String, String?) -> Void)? = nil
+    @ObservationIgnored
+    public var onAlertToast: ((String, String?) -> Void)? = nil
+    @ObservationIgnored
+    public var onAlertSound: (() -> Void)? = nil
 
     public var isOnboardingGuideActive: Bool = false
     public var onboardingStep: OnboardingGuideStep = .mountPods
@@ -1050,11 +1054,27 @@ public final class PurahWorkspaceStore {
     public var edgeTriggerMode: EdgeTriggerMode = .hoverDwell
 
     // Dynamic Attention Alert Settings
+    /// Legacy persisted style, read only while migrating older defaults.
+    /// Rendering resolves `alertStyleOverride` plus each plugin's declaration.
     public var alertStyle: PluginAlertStyle = .breathingBeacon
-    public var isEventToastAlertEnabled: Bool = true
+    /// `nil` follows each plugin's declared edge voice.
+    public var alertStyleOverride: PluginAlertStyle? = nil
+    public var isAlertMasterEnabled: Bool = true
+    public var alertChannels: Set<AlertChannel> = Set(AlertChannel.allCases)
+
+    /// Per-pod channel choices. A missing key means every channel is allowed.
+    public var podAlertChannels: [String: Set<AlertChannel>] = [:]
+
+    /// Pods whose alerts the person silenced individually.
+    ///
+    /// The master switch still wins: this set only records per-pod
+    /// choices, so turning alerts off globally and back on restores them.
+    public var disabledAlertPodIds: Set<String> = []
+
     public var activePluginAlertIds: Set<String> = []
     public var acknowledgedAlertIds: Set<String> = []
     public var notifiedToastEventIds: Set<String> = []
+    public var announcedAlertIds: Set<String> = []
 
     /// A daily window during which no attention is demanded.
     ///
@@ -1360,7 +1380,21 @@ public final class PurahWorkspaceStore {
 
 
     // Sensory Feedback Settings
-    public var isToastSoundEnabled: Bool = true
+    /// Backwards-compatible name for the sound channel.
+    ///
+    /// The old key and the Sensory card both used this property; it now reads
+    /// and writes the one channel set so the two can never disagree.
+    public var isToastSoundEnabled: Bool {
+        get { alertChannels.contains(.sound) }
+        set {
+            if newValue {
+                alertChannels.insert(.sound)
+            } else {
+                alertChannels.remove(.sound)
+            }
+            scheduleSavePersistentState()
+        }
+    }
     public var toastNotificationSound: ToastNotificationSound = .glass
     public var isTrackpadHapticsEnabled: Bool = true
     public var isDrawerPopHapticEnabled: Bool = true
@@ -1419,7 +1453,7 @@ public final class PurahWorkspaceStore {
             liveEventIDs.contains(id) || podIDs.contains(id) || id.hasPrefix("vitals-")
         }
         acknowledgedAlertIds = acknowledgedAlertIds.filter(isLive)
-        notifiedToastEventIds = notifiedToastEventIds.filter { liveEventIDs.contains($0) }
+        notifiedToastEventIds = notifiedToastEventIds.filter(isLive)
     }
 
     public func acknowledgeAlert(id: String) {
@@ -1439,6 +1473,9 @@ public final class PurahWorkspaceStore {
         if isAlerting {
             activePluginAlertIds.insert(id)
             acknowledgedAlertIds.remove(id)
+            // Acknowledging before the next monitor tick consumes the old
+            // edge. A new trigger is a new edge and must be deliverable.
+            notifiedToastEventIds.remove(id)
         } else {
             activePluginAlertIds.remove(id)
         }
@@ -1448,33 +1485,77 @@ public final class PurahWorkspaceStore {
         setPluginAlert(id: id, isAlerting: true)
     }
 
-    public func isPodAlerting(podId: String) -> Bool {
+    public func isAlertEnabled(forPodId podId: String) -> Bool {
+        isAlertMasterEnabled && !disabledAlertPodIds.contains(podId)
+    }
+
+    public func isAlertChannelEnabled(_ channel: AlertChannel) -> Bool {
+        isAlertMasterEnabled && alertChannels.contains(channel)
+    }
+
+    public func allowedChannels(forPodId podId: String) -> Set<AlertChannel> {
+        podAlertChannels[podId] ?? Set(AlertChannel.allCases)
+    }
+
+    public func isAlertChannelEnabled(_ channel: AlertChannel, forPodId podId: String) -> Bool {
+        isAlertEnabled(forPodId: podId)
+            && alertChannels.contains(channel)
+            && allowedChannels(forPodId: podId).contains(channel)
+    }
+
+    public func setAlertChannel(_ channel: AlertChannel, isEnabled: Bool, forPodId podId: String) {
+        var channels = allowedChannels(forPodId: podId)
+        if isEnabled {
+            channels.insert(channel)
+        } else {
+            channels.remove(channel)
+        }
+        podAlertChannels[podId] = channels
+        scheduleSavePersistentState()
+    }
+
+    public func setAlertEnabled(_ enabled: Bool, forPodId podId: String) {
+        let wasDisabled = disabledAlertPodIds.contains(podId)
+        if enabled {
+            if allowedChannels(forPodId: podId).isEmpty {
+                podAlertChannels[podId] = Set(AlertChannel.allCases)
+            }
+            disabledAlertPodIds.remove(podId)
+            // An event that arrived while the pod was silenced must not replay
+            // the moment the switch is turned back on.
+            if wasDisabled {
+                acknowledgeAllAlerts(forPodId: podId)
+            }
+        } else {
+            disabledAlertPodIds.insert(podId)
+            acknowledgeAllAlerts(forPodId: podId)
+        }
+        scheduleSavePersistentState()
+    }
+
+    /// The raw alarm state, before the person's presentation choices.
+    private func hasActiveAlertEvent(podId: String) -> Bool {
         if activePluginAlertIds.contains(podId) && !isAlertAcknowledged(id: podId) {
             return true
         }
         if podId == "calendar" {
-            if isEventGlowAlertEnabled && alertStyle != .off {
-                // The window is the person's setting. A hardcoded 15 minutes
-                // lit the rail for an event the drawer, reading the setting,
-                // did not consider imminent.
-                if _calendarEvents.contains(where: {
-                    ($0.isOngoing || $0.isImminent(leadTime: calendarAlertLeadTime)) && !isAlertAcknowledged(id: $0.id)
-                }) {
-                    return true
-                }
+            // The window is the person's setting. A hardcoded 15 minutes lit
+            // the rail for an event the drawer did not consider imminent.
+            if !calendarAlertEvents(now: Date()).isEmpty {
+                return true
             }
         }
         if podId == "vitals" {
-            if alertStyle != .off && !isAlertAcknowledged(id: "vitals") {
-                let m = HardwareVitalsService.shared.metrics
-                let t = _vitalsThresholds
-                if (m.cpuUsage > t.cpuDanger && !isAlertAcknowledged(id: "vitals-cpu")) ||
-                   (m.memoryUsage > t.ramDanger && !isAlertAcknowledged(id: "vitals-ram")) {
-                    return true
-                }
+            if !vitalsAlertBreaches().isEmpty {
+                return true
             }
         }
         return false
+    }
+
+    public func isPodAlerting(podId: String) -> Bool {
+        hasActiveAlertEvent(podId: podId)
+            && isAlertChannelEnabled(.railEffect, forPodId: podId)
     }
 
     /// True when any enabled pod on either rail currently demands attention.
@@ -1482,22 +1563,25 @@ public final class PurahWorkspaceStore {
     /// Reading through `isPodAlerting` keeps this in sync with plugin alerts,
     /// calendar events, vitals thresholds, and the shared acknowledgment set.
     public var isAnyRailAlerting: Bool {
-        guard alertStyle != .off else { return false }
         return pods.contains { $0.isEnabled && isPodAlerting(podId: $0.id) }
     }
 
     public func acknowledgeAllAlerts(forPodId podId: String) {
-        acknowledgedAlertIds.insert(podId)
+        var acknowledgedIDs: Set<String> = [podId]
         if podId == "calendar" {
             for event in _calendarEvents where (event.isOngoing || event.isImminent(leadTime: calendarAlertLeadTime)) {
-                acknowledgedAlertIds.insert(event.id)
+                acknowledgedIDs.insert(event.id)
             }
         }
         if podId == "vitals" {
             for metricId in ["vitals-cpu", "vitals-ram", "vitals-gpu", "vitals-power", "vitals-disk", "vitals-network"] {
-                acknowledgedAlertIds.insert(metricId)
+                acknowledgedIDs.insert(metricId)
             }
         }
+        acknowledgedAlertIds.formUnion(acknowledgedIDs)
+        // Acknowledgment means the person saw the alert. If the monitor has
+        // not ticked yet, consume it now so it cannot arrive a frame later.
+        notifiedToastEventIds.formUnion(acknowledgedIDs)
     }
 
     /// Returns the set of page indices (0..<pages.count) on `edge` that contain at least one alerting pod.
@@ -1525,20 +1609,191 @@ public final class PurahWorkspaceStore {
         return nil
     }
 
-    public func postToastNotification(id: String, message: String) {
-        guard isEventToastAlertEnabled, !notifiedToastEventIds.contains(id) else { return }
-        // A toast is the most intrusive thing this app does, so quiet hours
-        // suppress it outright. The id is still consumed: replaying the same
-        // toast when the window ends would be a backlog dump of everything
-        // that happened while the user was away.
-        guard !isQuietNow() else {
+    /// The single delivery entry point for every alert channel.
+    ///
+    /// Reading `isPodAlerting` must never deliver anything: it runs on every
+    /// render and every layout pass. Delivery happens here, from one caller,
+    /// so a new channel cannot quietly acquire a second path.
+    public func deliverAlert(forPodId podId: String, id: String, message: String, icon: String? = nil) {
+        deliverAlert(forPodId: podId, id: id, message: message, icon: icon, now: Date())
+    }
+
+    package func deliverAlert(
+        forPodId podId: String,
+        id: String,
+        message: String,
+        icon: String?,
+        now: Date
+    ) {
+        guard !notifiedToastEventIds.contains(id) else { return }
+
+        // A silenced pod consumes the event instead of holding it. Re-enabling
+        // the switch must not replay something that arrived while it was off.
+        guard isAlertEnabled(forPodId: podId) else {
             notifiedToastEventIds.insert(id)
             pruneStaleAlertIDs()
             return
         }
+
+        // A toast is the most intrusive thing this app does, so quiet hours
+        // suppress it outright. The id is still consumed: replaying the same
+        // toast when the window ends would be a backlog dump of everything
+        // that happened while the user was away.
+        guard !isQuietNow(at: now) else {
+            notifiedToastEventIds.insert(id)
+            pruneStaleAlertIDs()
+            return
+        }
+
         notifiedToastEventIds.insert(id)
         pruneStaleAlertIDs()
-        onCapacityWarningToast?(message)
+
+        if isAlertChannelEnabled(.toast, forPodId: podId) {
+            onAlertToast?(message, icon)
+        }
+        if isAlertChannelEnabled(.sound, forPodId: podId) {
+            onAlertSound?()
+        }
+    }
+
+    public func resolvedAlertStyle(declared: PluginAlertStyle?) -> PluginAlertStyle {
+        alertStyleOverride ?? declared ?? .subtleGlow
+    }
+
+    /// Delivers alerts that became active since the previous tick.
+    ///
+    /// Event-driven alerts (an AI answer, a finished shell command) and
+    /// sustained conditions (a breached vitals metric, an imminent calendar
+    /// event) take the same path. Sustained danger alerts once; acknowledgment
+    /// or the condition ending clears the receipt so a later re-entry alerts
+    /// again.
+    public func evaluateAlertDeliveries(now: Date = Date()) {
+        let events = currentAlertEvents(now: now)
+        let activeIDs = Set(events.map { $0.id })
+
+        for event in events where !announcedAlertIds.contains(event.id) {
+            deliverAlert(
+                forPodId: event.podId,
+                id: event.id,
+                message: event.message,
+                icon: event.icon,
+                now: now
+            )
+        }
+
+        notifiedToastEventIds.subtract(announcedAlertIds.subtracting(activeIDs))
+        announcedAlertIds = activeIDs
+    }
+
+    /// Marks everything already active at launch as seen without delivering.
+    ///
+    /// A sustained condition such as low battery or an ongoing meeting is not
+    /// a new edge just because the process started while it was true.
+    public func primeAlertDeliveries(now: Date = Date()) {
+        let activeIDs = Set(currentAlertEvents(now: now).map { $0.id })
+        announcedAlertIds.formUnion(activeIDs)
+        notifiedToastEventIds.formUnion(activeIDs)
+    }
+
+    private func isAlertSourceMounted(_ podId: String) -> Bool {
+        pods.contains { $0.id == podId && $0.isEnabled }
+    }
+
+    private func currentAlertEvents(now: Date) -> [(podId: String, id: String, message: String, icon: String?)] {
+        var events: [(podId: String, id: String, message: String, icon: String?)] = []
+
+        for podId in activePluginAlertIds
+        where isAlertSourceMounted(podId) && !isAlertAcknowledged(id: podId) {
+            events.append((
+                podId: podId,
+                id: podId,
+                message: "alert.message.generic".localized,
+                icon: pods.first(where: { $0.id == podId })?.systemIcon
+            ))
+        }
+
+        if isAlertSourceMounted("calendar") {
+            for event in calendarAlertEvents(now: now) {
+                events.append((
+                    podId: "calendar",
+                    id: event.id,
+                    message: event.alertMessage(now: now),
+                    icon: "calendar"
+                ))
+            }
+        }
+
+        if isAlertSourceMounted("vitals") {
+            for breach in vitalsAlertBreaches() {
+                events.append((
+                    podId: "vitals",
+                    id: breach.id,
+                    message: breach.message,
+                    icon: "bolt"
+                ))
+            }
+        }
+
+        var seen: Set<String> = []
+        return events.filter { seen.insert($0.id).inserted }
+    }
+
+    private func calendarAlertEvents(now: Date) -> [CalendarEventItem] {
+        _calendarEvents.filter { event in
+            let isActive = (now >= event.startTime && now <= event.endTime)
+                || event.isImminent(leadTime: calendarAlertLeadTime, now: now)
+            return isActive && !isAlertAcknowledged(id: event.id)
+        }
+    }
+
+    /// Every danger-level vitals metric, in the same order the rail shows them.
+    private func vitalsAlertBreaches() -> [(id: String, message: String)] {
+        guard !isAlertAcknowledged(id: "vitals") else { return [] }
+
+        let enabled = Set(_vitalsEnabledMetrics)
+        guard !enabled.isEmpty else { return [] }
+
+        let metrics = _vitalsMetricsOverride ?? HardwareVitalsService.shared.metrics
+        let thresholds = _vitalsThresholds
+        var breaches: [(id: String, message: String)] = []
+
+        func add(_ id: String, _ message: String) {
+            guard !isAlertAcknowledged(id: id) else { return }
+            breaches.append((id: id, message: message))
+        }
+
+        if enabled.contains(.cpu), metrics.cpuUsage > thresholds.cpuDanger {
+            add("vitals-cpu", String(format: "vitals.barCpuLabel".localized, Int(metrics.cpuUsage * 100)))
+        }
+        if enabled.contains(.gpu), metrics.gpuUsage > thresholds.gpuDanger {
+            add("vitals-gpu", String(format: "vitals.pill.gpu".localized, Int(metrics.gpuUsage * 100)))
+        }
+        if enabled.contains(.ram), metrics.memoryUsage > thresholds.ramDanger {
+            add("vitals-ram", String(format: "vitals.barRamLabel".localized, Int(metrics.memoryUsage * 100)))
+        }
+        if enabled.contains(.power) {
+            let battery = Double(metrics.batteryLevel) / 100.0
+            if !metrics.isCharging && battery <= thresholds.batteryLow / 2.0 {
+                add("vitals-power", String(format: "vitals.pill.power".localized, metrics.batteryLevel))
+            }
+        }
+        if enabled.contains(.disk), metrics.diskTotalGB > 0 {
+            let usedRatio = (metrics.diskTotalGB - metrics.diskFreeGB) / metrics.diskTotalGB
+            if usedRatio > thresholds.diskDanger {
+                add("vitals-disk", String(format: "vitals.pill.disk".localized, Int(usedRatio * 100)))
+            }
+        }
+        if enabled.contains(.network) {
+            let totalMB = (metrics.networkDownSpeed + metrics.networkUpSpeed) / 1_048_576.0
+            if totalMB > thresholds.networkDangerMB {
+                add("vitals-network", String(
+                    format: "vitals.pill.network".localized,
+                    String(format: "%.1f", totalMB)
+                ))
+            }
+        }
+
+        return breaches
     }
 
     // Edge Trigger Intentionality Sensitivity & Calibration
@@ -1686,19 +1941,6 @@ public final class PurahWorkspaceStore {
             _pluginStorageRevision &+= 1
             let storage = ScopedPluginStorage(pluginId: "music", defaults: userDefaults)
             storage.setCodable(newValue, forKey: "isWaveformAnimationEnabled")
-        }
-    }
-
-    public var isEventGlowAlertEnabled: Bool {
-        get {
-            _ = _pluginStorageRevision
-            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
-            return storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
-        }
-        set {
-            _pluginStorageRevision &+= 1
-            let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
-            storage.setCodable(newValue, forKey: "isEventGlowAlertEnabled")
         }
     }
 
@@ -2973,6 +3215,11 @@ public final class PurahWorkspaceStore {
             storage.setCodable(newValue, forKey: "thresholds")
         }
     }
+
+    /// Test seam for deterministic alert enumeration. Production reads the
+    /// live singleton; alert tests inject a known breach.
+    @ObservationIgnored
+    package var _vitalsMetricsOverride: HardwareVitalsInfo?
     package var _isScriptsDecomposed: Bool {
         get {
             _ = _pluginStorageRevision

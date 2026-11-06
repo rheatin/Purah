@@ -187,9 +187,66 @@ extension PurahWorkspaceStore {
            let mode = EdgeTriggerMode(rawValue: modeStr) {
             self.edgeTriggerMode = mode
         }
-        if let alertStr = defaults.string(forKey: "purah.alertStyle"),
-           let style = PluginAlertStyle(rawValue: alertStr) {
-            self.alertStyle = style
+        let legacyAlertStyle = defaults.string(forKey: "purah.alertStyle")
+            .flatMap(PluginAlertStyle.init(rawValue:))
+        if let legacyAlertStyle {
+            self.alertStyle = legacyAlertStyle
+        }
+        if defaults.object(forKey: "purah.alertMasterEnabled") != nil {
+            self.isAlertMasterEnabled = defaults.bool(forKey: "purah.alertMasterEnabled")
+        } else {
+            // Existing "Off" users chose silence, not a separate master switch.
+            self.isAlertMasterEnabled = (legacyAlertStyle != .off)
+        }
+        if self.isAlertMasterEnabled && self.alertStyle == .off {
+            self.alertStyle = .breathingBeacon
+        }
+        if let storedOverride = defaults.string(forKey: "purah.alertStyleOverride"),
+           let style = PluginAlertStyle(rawValue: storedOverride),
+           style != .off {
+            self.alertStyleOverride = style
+        } else if defaults.object(forKey: "purah.alertStyleOverride") == nil,
+                  let legacyAlertStyle {
+            switch legacyAlertStyle {
+            case .subtleGlow, .sonarWave:
+                self.alertStyleOverride = legacyAlertStyle
+            case .breathingBeacon, .off:
+                self.alertStyleOverride = nil
+            }
+        }
+        if let storedChannels = defaults.stringArray(forKey: "purah.alertChannels") {
+            self.alertChannels = Set(storedChannels.compactMap(AlertChannel.init(rawValue:)))
+        } else {
+            var channels = Set(AlertChannel.allCases)
+            if defaults.object(forKey: "purah.isToastSoundEnabled") != nil,
+               defaults.bool(forKey: "purah.isToastSoundEnabled") == false {
+                channels.remove(.sound)
+            }
+            self.alertChannels = channels
+        }
+        if let disabledAlertPods = defaults.stringArray(forKey: "purah.alertDisabledPods") {
+            self.disabledAlertPodIds = Set(disabledAlertPods)
+        }
+        if let storedPodChannels = defaults.dictionary(forKey: "purah.podAlertChannels") {
+            var parsed: [String: Set<AlertChannel>] = [:]
+            for (podId, rawChannels) in storedPodChannels {
+                guard let rawChannels = rawChannels as? [String] else { continue }
+                parsed[podId] = Set(rawChannels.compactMap(AlertChannel.init(rawValue:)))
+            }
+            self.podAlertChannels = parsed
+        }
+        // The calendar's old per-plugin switches become its channel choices, once.
+        if defaults.object(forKey: "purah.alertChannels") == nil {
+            let calendarStorage = ScopedPluginStorage(pluginId: "calendar", defaults: defaults)
+            let legacyGlow = calendarStorage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
+            let legacyToast = defaults.object(forKey: "purah.isEventToastAlertEnabled")
+                .map { _ in defaults.bool(forKey: "purah.isEventToastAlertEnabled") } ?? true
+            var calendarChannels = self.podAlertChannels["calendar"] ?? Set(AlertChannel.allCases)
+            if !legacyGlow { calendarChannels.remove(.railEffect) }
+            if !legacyToast { calendarChannels.remove(.toast) }
+            if calendarChannels != Set(AlertChannel.allCases) {
+                self.podAlertChannels["calendar"] = calendarChannels
+            }
         }
         if let quietData = defaults.data(forKey: "purah.quietHours") {
             if let decoded = try? JSONDecoder().decode(QuietHours.self, from: quietData) {
@@ -224,10 +281,6 @@ extension PurahWorkspaceStore {
                 )
             }
         }
-        if defaults.object(forKey: "purah.isEventToastAlertEnabled") != nil {
-            self.isEventToastAlertEnabled = defaults.bool(forKey: "purah.isEventToastAlertEnabled")
-        }
-
         if let dispModeStr = defaults.string(forKey: "purah.displayTargetMode"),
            let dispMode = DisplayTargetMode(rawValue: dispModeStr) {
             self.displayTargetMode = dispMode
@@ -252,9 +305,6 @@ extension PurahWorkspaceStore {
             self.customPushResistanceBarrier = 40.0
         }
 
-        if defaults.object(forKey: "purah.isToastSoundEnabled") != nil {
-            self.isToastSoundEnabled = defaults.bool(forKey: "purah.isToastSoundEnabled")
-        }
         if let soundStr = defaults.string(forKey: "purah.toastNotificationSound"),
            let sound = ToastNotificationSound(rawValue: soundStr) {
             self.toastNotificationSound = sound
@@ -290,7 +340,18 @@ extension PurahWorkspaceStore {
         defaults.set(Int(sculptorHotKeyShortcut.modifiers), forKey: "purah.sculptorHotkey.modifiers")
         defaults.set(displayTargetMode.rawValue, forKey: "purah.displayTargetMode")
         defaults.set(edgeTriggerMode.rawValue, forKey: "purah.edgeTriggerMode")
-        defaults.set(alertStyle.rawValue, forKey: "purah.alertStyle")
+        if let alertStyleOverride {
+            defaults.set(alertStyleOverride.rawValue, forKey: "purah.alertStyleOverride")
+        } else {
+            defaults.removeObject(forKey: "purah.alertStyleOverride")
+        }
+        defaults.set(isAlertMasterEnabled, forKey: "purah.alertMasterEnabled")
+        defaults.set(alertChannels.map(\.rawValue).sorted(), forKey: "purah.alertChannels")
+        defaults.set(disabledAlertPodIds.sorted(), forKey: "purah.alertDisabledPods")
+        defaults.set(
+            podAlertChannels.mapValues { $0.map(\.rawValue).sorted() },
+            forKey: "purah.podAlertChannels"
+        )
         if let quietData = try? JSONEncoder().encode(quietHours) {
             defaults.set(quietData, forKey: "purah.quietHours")
         }
@@ -298,7 +359,6 @@ extension PurahWorkspaceStore {
             defaults.set(profileData, forKey: "purah.contextProfiles")
         }
         defaults.set(isAppProfileSwitchingEnabled, forKey: "purah.isAppProfileSwitchingEnabled")
-        defaults.set(isEventToastAlertEnabled, forKey: "purah.isEventToastAlertEnabled")
         defaults.set(isToastSoundEnabled, forKey: "purah.isToastSoundEnabled")
         defaults.set(toastNotificationSound.rawValue, forKey: "purah.toastNotificationSound")
         defaults.set(isTrackpadHapticsEnabled, forKey: "purah.isTrackpadHapticsEnabled")
@@ -349,12 +409,15 @@ extension PurahWorkspaceStore {
         displayTargetMode = .followCursor
         edgeTriggerMode = .hoverDwell
         alertStyle = .breathingBeacon
-        isEventToastAlertEnabled = true
+        alertStyleOverride = nil
+        isAlertMasterEnabled = true
+        alertChannels = Set(AlertChannel.allCases)
+        disabledAlertPodIds.removeAll()
+        podAlertChannels.removeAll()
         // Backing storage, so the setters do not save halfway through a reset.
         _quietHours = QuietHours()
         _contextProfiles = ContextProfileStore()
         isAppProfileSwitchingEnabled = false
-        isToastSoundEnabled = true
         toastNotificationSound = .glass
         isTrackpadHapticsEnabled = true
         isDrawerPopHapticEnabled = true

@@ -98,7 +98,7 @@ struct MemoryFootprintTests {
         let store = PurahWorkspaceStore()
         // Keep this measurement on the quiet docked canvas; an active alert
         // deliberately raises it to the 48pt halo budget.
-        store.alertStyle = .off
+        store.isAlertMasterEnabled = false
         let initialMB = currentFootprintMB()
 
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
