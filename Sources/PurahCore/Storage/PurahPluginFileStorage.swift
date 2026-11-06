@@ -101,22 +101,50 @@ public struct PurahPluginFileStorage: Sendable {
     }
 
     /// Bytes held by one directory, recursively. The diagnostics page asks for
-    /// `data/` and `cache/` separately, because "this can be cleared freely" and
-    /// "this is the user's notes" must never be shown as one number.
+    /// `assets/`, `data/` and `cache/` separately, because "this can be cleared
+    /// freely" and "this is the person's only copy" must never be shown as one
+    /// number.
     public func size(of directory: URL) -> Int64 {
-        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        Self.allocatedSize(of: directory)
+    }
+
+    /// Recursively measures what the files actually occupy.
+    ///
+    /// Logical size is not storage: sparse files and clones can claim gigabytes
+    /// while occupying almost nothing. Prefer the allocator's number and only
+    /// fall back to the logical size when a file system does not expose it.
+    public static func allocatedSize(of directory: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [
+            .totalFileAllocatedSizeKey,
+            .fileAllocatedSizeKey,
+            .fileSizeKey,
+            .isDirectoryKey,
+        ]
+        if let values = try? directory.resourceValues(forKeys: keys),
+           values.isDirectory != true,
+           let size = values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize {
+            return Int64(size)
+        }
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: Array(keys)
+        ) else {
+            return 0
+        }
         var total: Int64 = 0
-        // The enumerator already prefetched the size; asking the file system
+        // The enumerator already prefetched these values; asking the file system
         // again for each one doubled the syscalls on this path.
         for case let fileURL as URL in enumerator {
-            if let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey]),
-               let size = values.fileSize {
+            if Task.isCancelled { break }
+            guard let values = try? fileURL.resourceValues(forKeys: keys) else { continue }
+            if let size = values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? values.fileSize {
                 total += Int64(size)
             }
         }
         return total
     }
 
+    public var assetsUsageBytes: Int64 { size(of: assetsDirectory) }
     public var dataUsageBytes: Int64 { size(of: dataDirectory) }
     public var cacheUsageBytes: Int64 { size(of: cacheDirectory) }
 
