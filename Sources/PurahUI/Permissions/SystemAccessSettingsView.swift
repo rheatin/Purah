@@ -77,7 +77,7 @@ public struct SystemAccessSettingsView: View {
                 Spacer(minLength: 0)
             }
             .padding(24)
-            .frame(maxWidth: 680, alignment: .topLeading)
+            .frame(maxWidth: 900, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(minHeight: 560)

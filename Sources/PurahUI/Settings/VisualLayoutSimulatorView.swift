@@ -182,7 +182,7 @@ public struct VisualLayoutSimulatorView: View {
                     .padding(.top, 8)
             }
             .padding(24)
-            .frame(maxWidth: 680, alignment: .topLeading)
+            .frame(maxWidth: 900, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(minHeight: 560)
@@ -353,43 +353,24 @@ public struct VisualLayoutSimulatorView: View {
                         .foregroundColor(palette.primaryAccent)
                 }
 
-                // 1. Mounted Pods Split by Left Rail & Right Rail
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 12) {
-                        railAssemblyColumn(
-                            edge: .left,
-                            title: "Left Rail",
-                            pods: leftMountedPods,
-                            pages: railPages(for: .left)
-                        )
-                        .frame(minWidth: 0)
+                // The two physical rails stay side by side at every window size:
+                // stacking them reads as one ordered list, not a left/right split.
+                HStack(alignment: .top, spacing: 12) {
+                    railAssemblyColumn(
+                        edge: .left,
+                        title: "Left Rail",
+                        pods: leftMountedPods,
+                        pages: railPages(for: .left)
+                    )
+                    .frame(minWidth: 0, maxWidth: .infinity)
 
-                        railAssemblyColumn(
-                            edge: .right,
-                            title: "Right Rail",
-                            pods: rightMountedPods,
-                            pages: railPages(for: .right)
-                        )
-                        .frame(minWidth: 0)
-                    }
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        railAssemblyColumn(
-                            edge: .left,
-                            title: "Left Rail",
-                            pods: leftMountedPods,
-                            pages: railPages(for: .left)
-                        )
-                        .frame(maxWidth: .infinity)
-
-                        railAssemblyColumn(
-                            edge: .right,
-                            title: "Right Rail",
-                            pods: rightMountedPods,
-                            pages: railPages(for: .right)
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
+                    railAssemblyColumn(
+                        edge: .right,
+                        title: "Right Rail",
+                        pods: rightMountedPods,
+                        pages: railPages(for: .right)
+                    )
+                    .frame(minWidth: 0, maxWidth: .infinity)
                 }
 
                 // 2. Unmounted Pods Tray (if any exist)
@@ -627,6 +608,9 @@ public struct VisualLayoutSimulatorView: View {
         isStackedInCluster: Bool
     ) -> some View {
         let palette = theme.palette
+        // Match the name's x-position in `assemblyPodIdentity`: optional stack
+        // stripe + the fixed icon column + the two 6pt gaps.
+        let controlsIndent: CGFloat = isStackedInCluster ? 29 : 20
 
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .center, spacing: 8) {
@@ -645,14 +629,21 @@ public struct VisualLayoutSimulatorView: View {
                     isStackedInCluster: isStackedInCluster,
                     palette: palette
                 )
+                assemblyPodUnmountButton(pod: pod)
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                assemblyPodIdentity(
-                    pod: pod,
-                    isStackedInCluster: isStackedInCluster,
-                    palette: palette
-                )
+                HStack(alignment: .center, spacing: 8) {
+                    assemblyPodIdentity(
+                        pod: pod,
+                        isStackedInCluster: isStackedInCluster,
+                        palette: palette
+                    )
+
+                    Spacer(minLength: 8)
+
+                    assemblyPodUnmountButton(pod: pod)
+                }
 
                 assemblyPodControls(
                     pod: pod,
@@ -661,6 +652,7 @@ public struct VisualLayoutSimulatorView: View {
                     isStackedInCluster: isStackedInCluster,
                     palette: palette
                 )
+                .padding(.leading, controlsIndent)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -690,6 +682,7 @@ public struct VisualLayoutSimulatorView: View {
             Image(systemName: pod.systemIcon)
                 .font(.system(size: 12))
                 .foregroundColor(palette.podColor(for: pod.id, store: store))
+                .frame(width: 14)
 
             Text(pod.name)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
@@ -719,7 +712,6 @@ public struct VisualLayoutSimulatorView: View {
                 Spacer(minLength: 2)
                 assemblyPodReorderButtons(pod: pod, palette: palette)
                 assemblyPodTransferButton(pod: pod, palette: palette)
-                assemblyPodUnmountButton(pod: pod)
             }
 
             VStack(alignment: .leading, spacing: 6) {
@@ -731,7 +723,6 @@ public struct VisualLayoutSimulatorView: View {
                         isStackedInCluster: isStackedInCluster
                     )
                     Spacer(minLength: 0)
-                    assemblyPodUnmountButton(pod: pod)
                 }
 
                 HStack(spacing: 6) {

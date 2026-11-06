@@ -32,6 +32,9 @@ public struct InteractionSettingsView: View {
     public var focusedPodId: String? = nil
     public var focusNonce: Int = 0
 
+    private static let alertFormLabelWidth: CGFloat = 96
+    private static let alertFormRowHeight: CGFloat = 26
+
     @State private var expandedAlertPodId: String?
     @State private var flashingAlertPodId: String?
     @State private var focusTask: Task<Void, Never>?
@@ -104,16 +107,32 @@ public struct InteractionSettingsView: View {
         sound?.localizedName ?? "interaction.alerts.pods.sound.follow".localized
     }
 
+    private func alertFormLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+            .foregroundColor(.secondary)
+            .frame(width: Self.alertFormLabelWidth, alignment: .leading)
+            .lineLimit(1)
+    }
+
+    private func alertFormRow<Content: View>(
+        _ label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 12) {
+            alertFormLabel(label)
+            content()
+            Spacer(minLength: 0)
+        }
+        .frame(height: Self.alertFormRowHeight)
+    }
+
     @ViewBuilder
     private func soundSettingsRow(store: PurahWorkspaceStore) -> some View {
         let isEnabled = store.isAlertMasterEnabled
             && store.isAlertChannelEnabled(.sound)
 
-        HStack(spacing: 10) {
-            Text("interaction.alerts.sound.title".localized)
-                .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                .foregroundColor(.secondary)
-
+        alertFormRow("interaction.alerts.sound.title".localized) {
             PurahThemedMenuPicker(
                 options: ToastNotificationSound.allCases,
                 selection: Binding(
@@ -124,7 +143,8 @@ public struct InteractionSettingsView: View {
                         _ = store.previewToastSound()
                     }
                 ),
-                titleForOption: { $0.localizedName }
+                titleForOption: { $0.localizedName },
+                fillsAvailableWidth: true
             )
             .frame(width: 190)
 
@@ -149,10 +169,7 @@ public struct InteractionSettingsView: View {
             .buttonStyle(.tactile)
             .help("help.previewSound".localized)
             .accessibilityLabel("help.previewSound".localized)
-
-            Spacer(minLength: 0)
         }
-        .padding(.leading, 18)
         .opacity(isEnabled ? 1 : 0.45)
         .disabled(!isEnabled)
     }
@@ -366,13 +383,9 @@ public struct InteractionSettingsView: View {
                 // 2. Notifications Card
                 PurahSettingsCard(title: "interaction.alerts.card".localized, icon: "bell.badge.waveform.fill") {
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 10) {
-                            Text("interaction.alerts.master.title".localized)
-                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-
+                        HStack(spacing: 12) {
+                            alertFormLabel("interaction.alerts.master.title".localized)
                             Spacer()
-
                             Toggle("interaction.alerts.master.title".localized, isOn: Binding(
                                 get: { store.isAlertMasterEnabled },
                                 set: {
@@ -383,6 +396,10 @@ public struct InteractionSettingsView: View {
                             .toggleStyle(.switch)
                             .labelsHidden()
                         }
+                        .frame(height: Self.alertFormRowHeight)
+
+                        Divider()
+                            .opacity(0.45)
 
                         VStack(alignment: .leading, spacing: 8) {
                             if !store.isAlertMasterEnabled {
@@ -392,21 +409,33 @@ public struct InteractionSettingsView: View {
                                     .lineLimit(1)
                             }
 
-                            Divider()
-                                .opacity(0.45)
+                            alertFormRow("interaction.alerts.ways.title".localized) {
+                                HStack(spacing: 18) {
+                                    Toggle(channelTitle(.railEffect), isOn: Binding(
+                                        get: { store.isAlertChannelEnabled(.railEffect) },
+                                        set: { setGlobalAlertChannel(.railEffect, enabled: $0) }
+                                    ))
+                                    .toggleStyle(.checkbox)
+                                    .controlSize(.small)
 
-                            HStack(spacing: 12) {
-                                Text("interaction.alerts.ways.title".localized)
-                                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    Toggle(channelTitle(.toast), isOn: Binding(
+                                        get: { store.isAlertChannelEnabled(.toast) },
+                                        set: { setGlobalAlertChannel(.toast, enabled: $0) }
+                                    ))
+                                    .toggleStyle(.checkbox)
+                                    .controlSize(.small)
 
-                                Toggle(channelTitle(.railEffect), isOn: Binding(
-                                    get: { store.isAlertChannelEnabled(.railEffect) },
-                                    set: { setGlobalAlertChannel(.railEffect, enabled: $0) }
-                                ))
-                                .toggleStyle(.checkbox)
-                                .controlSize(.small)
+                                    Toggle(channelTitle(.sound), isOn: Binding(
+                                        get: { store.isAlertChannelEnabled(.sound) },
+                                        set: { setGlobalAlertChannel(.sound, enabled: $0) }
+                                    ))
+                                    .toggleStyle(.checkbox)
+                                    .controlSize(.small)
+                                }
+                                .font(.system(size: 10, weight: .regular, design: .rounded))
+                            }
 
+                            alertFormRow("interaction.alerts.pods.style".localized) {
                                 PurahThemedMenuPicker(
                                     options: alertStyleChoices,
                                     selection: Binding(
@@ -416,28 +445,11 @@ public struct InteractionSettingsView: View {
                                             store.scheduleSavePersistentState()
                                         }
                                     ),
-                                    titleForOption: alertStyleTitle
+                                    titleForOption: alertStyleTitle,
+                                    fillsAvailableWidth: true
                                 )
-                                .frame(width: 142)
-
-                                Toggle(channelTitle(.toast), isOn: Binding(
-                                    get: { store.isAlertChannelEnabled(.toast) },
-                                    set: { setGlobalAlertChannel(.toast, enabled: $0) }
-                                ))
-                                .toggleStyle(.checkbox)
-                                .controlSize(.small)
-
-                                Toggle(channelTitle(.sound), isOn: Binding(
-                                    get: { store.isAlertChannelEnabled(.sound) },
-                                    set: { setGlobalAlertChannel(.sound, enabled: $0) }
-                                ))
-                                .toggleStyle(.checkbox)
-                                .controlSize(.small)
-
-                                Spacer(minLength: 0)
+                                .frame(width: 190)
                             }
-                            .font(.system(size: 10, weight: .regular, design: .rounded))
-                            .frame(height: 26)
 
                             soundSettingsRow(store: store)
 
@@ -447,153 +459,140 @@ public struct InteractionSettingsView: View {
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
                             }
-
-                            Divider()
-                                .opacity(0.45)
-
-                            VStack(spacing: 0) {
-                                ForEach(alertingPods) { entry in
-                                    let isExpanded = expandedAlertPodId == entry.pod.id
-                                    let isFlashing = flashingAlertPodId == entry.pod.id
-
-                                    VStack(spacing: 0) {
-                                        HStack(spacing: 7) {
-                                            // The whole label side opens the row. A
-                                            // 14pt chevron is a target you have to
-                                            // hunt for; the row is the control.
-                                            HStack(spacing: 7) {
-                                                Image(systemName: entry.plugin.manifest.systemIcon)
-                                                    .font(.system(size: 11, weight: .medium))
-                                                    .foregroundColor(palette.podColor(for: entry.pod.id, store: store))
-                                                    .frame(width: 16)
-
-                                                Text(entry.plugin.manifest.displayName)
-                                                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                                    .lineLimit(1)
-
-                                                Text(podAlertDetail(entry))
-                                                    .font(.system(size: 9))
-                                                    .foregroundColor(.secondary)
-                                                    .lineLimit(1)
-                                                    .truncationMode(.tail)
-
-                                                Spacer(minLength: 4)
-
-                                                Image(systemName: "chevron.right")
-                                                    .font(.system(size: 8, weight: .bold))
-                                                    .foregroundColor(.secondary)
-                                                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                                                    .frame(width: 14, height: 18)
-                                            }
-                                            .contentShape(Rectangle())
-                                            .onTapGesture {
-                                                withAnimation(PurahMotionPolicy.surface) {
-                                                    expandedAlertPodId = isExpanded ? nil : entry.pod.id
-                                                }
-                                            }
-                                            .accessibilityElement(children: .combine)
-                                            .accessibilityAddTraits(.isButton)
-
-                                            Toggle(entry.plugin.manifest.displayName, isOn: Binding(
-                                                get: { !store.disabledAlertPodIds.contains(entry.pod.id) },
-                                                set: { store.setAlertEnabled($0, forPodId: entry.pod.id) }
-                                            ))
-                                            .toggleStyle(.switch)
-                                            .controlSize(.mini)
-                                            .labelsHidden()
-                                        }
-                                        .frame(height: 26)
-
-                                        if isExpanded {
-                                            VStack(spacing: 0) {
-                                                HStack(spacing: 12) {
-                                                    Text("interaction.alerts.pods.style".localized)
-                                                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                                                    PurahThemedMenuPicker(
-                                                        options: alertStyleChoices,
-                                                        selection: Binding(
-                                                            get: { AlertStyleChoice(style: store.podAlertStyles[entry.pod.id]) },
-                                                            set: { store.setAlertStyle($0.style, forPodId: entry.pod.id) }
-                                                        ),
-                                                        titleForOption: podAlertStyleTitle
-                                                    )
-                                                    .frame(width: 142)
-
-                                                    Spacer(minLength: 0)
-                                                }
-                                                .padding(.leading, 23)
-                                                .frame(height: 26)
-
-                                                let podSoundEnabled = store
-                                                    .allowedChannels(forPodId: entry.pod.id)
-                                                    .contains(.sound)
-                                                HStack(spacing: 12) {
-                                                    Text("interaction.alerts.sound.title".localized)
-                                                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                                                    PurahThemedMenuPicker(
-                                                        options: alertSoundChoices,
-                                                        selection: Binding(
-                                                            get: { store.podAlertSounds[entry.pod.id] },
-                                                            set: { sound in
-                                                                store.setAlertSound(sound, forPodId: entry.pod.id)
-                                                                if let sound {
-                                                                    _ = SensoryFeedbackService.shared.playToastSound(
-                                                                        sound,
-                                                                        enabled: true
-                                                                    )
-                                                                }
-                                                            }
-                                                        ),
-                                                        titleForOption: podAlertSoundTitle
-                                                    )
-                                                    .frame(width: 190)
-
-                                                    Spacer(minLength: 0)
-                                                }
-                                                .padding(.leading, 23)
-                                                .frame(height: 26)
-                                                .opacity(podSoundEnabled ? 1 : 0.45)
-                                                .disabled(!podSoundEnabled)
-
-                                                HStack(spacing: 12) {
-                                                    podChannelToggle(.railEffect, podId: entry.pod.id)
-                                                    podChannelToggle(.toast, podId: entry.pod.id)
-                                                    podChannelToggle(.sound, podId: entry.pod.id)
-                                                    Spacer(minLength: 0)
-                                                }
-                                                .padding(.leading, 23)
-                                                .frame(height: 26)
-                                            }
-                                        }
-                                    }
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                            .fill(
-                                                isFlashing
-                                                    ? palette.primaryAccent.opacity(0.14)
-                                                    : Color.clear
-                                            )
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                            .stroke(
-                                                isFlashing
-                                                    ? palette.primaryAccent.opacity(0.55)
-                                                    : Color.clear,
-                                                lineWidth: 1
-                                            )
-                                    )
-                                    .id(AlertFocus.rowID(for: entry.pod.id))
-                                }
-                            }
                         }
                         .opacity(store.isAlertMasterEnabled ? 1 : 0.5)
                         .disabled(!store.isAlertMasterEnabled)
+
+                        Divider()
+                            .opacity(0.45)
+
+                        VStack(spacing: 0) {
+                            ForEach(alertingPods) { entry in
+                                let isExpanded = expandedAlertPodId == entry.pod.id
+                                let isFlashing = flashingAlertPodId == entry.pod.id
+
+                                VStack(spacing: 0) {
+                                    HStack(spacing: 7) {
+                                        // The whole label side opens the row. A
+                                        // 14pt chevron is a target you have to
+                                        // hunt for; the row is the control.
+                                        HStack(spacing: 7) {
+                                            Image(systemName: entry.plugin.manifest.systemIcon)
+                                                .font(.system(size: 11, weight: .medium))
+                                                .foregroundColor(palette.podColor(for: entry.pod.id, store: store))
+                                                .frame(width: 16)
+
+                                            Text(entry.plugin.manifest.displayName)
+                                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                                .lineLimit(1)
+
+                                            Text(podAlertDetail(entry))
+                                                .font(.system(size: 9))
+                                                .foregroundColor(.secondary)
+                                                .lineLimit(1)
+                                                .truncationMode(.tail)
+
+                                            Spacer(minLength: 4)
+
+                                            Image(systemName: "chevron.right")
+                                                .font(.system(size: 8, weight: .bold))
+                                                .foregroundColor(.secondary)
+                                                .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                                                .frame(width: 14, height: 18)
+                                        }
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            withAnimation(PurahMotionPolicy.surface) {
+                                                expandedAlertPodId = isExpanded ? nil : entry.pod.id
+                                            }
+                                        }
+                                        .accessibilityElement(children: .combine)
+                                        .accessibilityAddTraits(.isButton)
+
+                                        Toggle(entry.plugin.manifest.displayName, isOn: Binding(
+                                            get: { !store.disabledAlertPodIds.contains(entry.pod.id) },
+                                            set: { store.setAlertEnabled($0, forPodId: entry.pod.id) }
+                                        ))
+                                        .toggleStyle(.switch)
+                                        .controlSize(.mini)
+                                        .labelsHidden()
+                                    }
+                                    .frame(height: 26)
+
+                                    if isExpanded {
+                                        VStack(spacing: 8) {
+                                            alertFormRow("interaction.alerts.pods.style".localized) {
+                                                PurahThemedMenuPicker(
+                                                    options: alertStyleChoices,
+                                                    selection: Binding(
+                                                        get: { AlertStyleChoice(style: store.podAlertStyles[entry.pod.id]) },
+                                                        set: { store.setAlertStyle($0.style, forPodId: entry.pod.id) }
+                                                    ),
+                                                    titleForOption: podAlertStyleTitle,
+                                                    fillsAvailableWidth: true
+                                                )
+                                                .frame(width: 190)
+                                            }
+
+                                            let podSoundEnabled = store
+                                                .allowedChannels(forPodId: entry.pod.id)
+                                                .contains(.sound)
+                                            alertFormRow("interaction.alerts.sound.title".localized) {
+                                                PurahThemedMenuPicker(
+                                                    options: alertSoundChoices,
+                                                    selection: Binding(
+                                                        get: { store.podAlertSounds[entry.pod.id] },
+                                                        set: { sound in
+                                                            store.setAlertSound(sound, forPodId: entry.pod.id)
+                                                            if let sound {
+                                                                _ = SensoryFeedbackService.shared.playToastSound(
+                                                                    sound,
+                                                                    enabled: true
+                                                                )
+                                                            }
+                                                        }
+                                                    ),
+                                                    titleForOption: podAlertSoundTitle,
+                                                    fillsAvailableWidth: true
+                                                )
+                                                .frame(width: 190)
+                                            }
+                                            .opacity(podSoundEnabled ? 1 : 0.45)
+                                            .disabled(!podSoundEnabled)
+
+                                            alertFormRow("interaction.alerts.ways.title".localized) {
+                                                HStack(spacing: 18) {
+                                                    podChannelToggle(.railEffect, podId: entry.pod.id)
+                                                    podChannelToggle(.toast, podId: entry.pod.id)
+                                                    podChannelToggle(.sound, podId: entry.pod.id)
+                                                }
+                                            }
+                                        }
+                                        .padding(.top, 2)
+                                        .padding(.bottom, 6)
+                                    }
+                                }
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(
+                                            isFlashing
+                                                ? palette.primaryAccent.opacity(0.14)
+                                                : Color.clear
+                                        )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .stroke(
+                                            isFlashing
+                                                ? palette.primaryAccent.opacity(0.55)
+                                                : Color.clear,
+                                            lineWidth: 1
+                                        )
+                                )
+                                .id(AlertFocus.rowID(for: entry.pod.id))
+                            }
+                        }
                     }
                 }
 
@@ -657,7 +656,7 @@ public struct InteractionSettingsView: View {
                 }
                 }
                 .padding(24)
-                .frame(maxWidth: 680, alignment: .topLeading)
+                .frame(maxWidth: 900, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .frame(minHeight: 560)

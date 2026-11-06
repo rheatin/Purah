@@ -123,6 +123,7 @@ public struct PurahThemedMenuPicker<T: Hashable>: View {
     public let options: [T]
     public let titleForOption: (T) -> String
     @Binding public var selection: T
+    public let fillsAvailableWidth: Bool
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -131,11 +132,13 @@ public struct PurahThemedMenuPicker<T: Hashable>: View {
     public init(
         options: [T],
         selection: Binding<T>,
-        titleForOption: @escaping (T) -> String
+        titleForOption: @escaping (T) -> String,
+        fillsAvailableWidth: Bool = false
     ) {
         self.options = options
         self._selection = selection
         self.titleForOption = titleForOption
+        self.fillsAvailableWidth = fillsAvailableWidth
     }
 
     public var body: some View {
@@ -171,6 +174,7 @@ public struct PurahThemedMenuPicker<T: Hashable>: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .frame(maxWidth: fillsAvailableWidth ? .infinity : nil, alignment: .leading)
             .background(Color.primary.opacity(0.05))
             .cornerRadius(7)
             .overlay(
