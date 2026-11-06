@@ -25,7 +25,9 @@ public struct AIAssistantPlugin: PurahPodPlugin {
             defaultDrawerWidth: 420.0,
             category: .systemService,
             permissions: [.pasteboard, .fileSystem],
-            tags: ["ai", "assistant", "chat", "translate", "rewrite"]
+            tags: ["ai", "assistant", "chat", "translate", "rewrite"],
+            supportsAlerts: true,
+            alertStyle: .subtleGlow
         )
     }
 

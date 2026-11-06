@@ -9,6 +9,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     public let store = PurahWorkspaceStore()
     var coordinator: ScreenEdgeCoordinator?
     var mouseMonitor: EdgeMouseMonitor?
+    var alertDeliveryMonitor: AlertDeliveryMonitor?
     var statusItem: NSStatusItem?
     var statusMenu: NSMenu?
     private var preferencesWindow: NSWindow?
@@ -60,6 +61,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         store.onCapacityWarningToast = { message in
             TransientHUDController.shared.showWarning(message: message)
         }
+        store.onAlertToast = { message, icon in
+            TransientHUDController.shared.showWarning(message: message, icon: icon, playsSound: false)
+        }
+        store.onAlertSound = { [weak store] in
+            _ = store?.triggerToastSound()
+        }
+        let alertDeliveryMonitor = AlertDeliveryMonitor(store: store)
+        alertDeliveryMonitor.start()
+        self.alertDeliveryMonitor = alertDeliveryMonitor
 
         // Register direct plugin settings callback
         store.onRequestOpenPluginSettings = { [weak self] pluginId in
@@ -385,6 +395,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
+        alertDeliveryMonitor?.stop()
         SystemAudioLiveMonitor.shared.stop()
         HardwareVitalsService.shared.saveHistoryToDisk()
         store.savePersistentState()

@@ -25,8 +25,6 @@ public final class CalendarPluginState: Sendable {
     }
     public var alertStyle: PluginAlertStyle
     public var alertLeadTime: CalendarAlertLeadTime
-    public var isEventGlowAlertEnabled: Bool
-    public var isEventToastAlertEnabled: Bool
     /// Unified mode authority (Base semantics): decomposed rail chips vs the
     /// single composite drawer. `overflowStrategy` stays pinned to .smartFold.
     public var isDecomposed: Bool {
@@ -50,7 +48,6 @@ public final class CalendarPluginState: Sendable {
     public var isUsingRealCalendar: Bool
     public var isSyncing: Bool
     public var acknowledgedAlertIds: Set<String>
-    public var notifiedToastEventIds: Set<String>
     public var lastAlertTick: Date
     public let storage: any PurahPluginStorage
 
@@ -84,10 +81,9 @@ public final class CalendarPluginState: Sendable {
             await CalendarPluginState.fetchEventKitEvents(in: interval)
         }
         self.scope = storage.codable(forKey: "scope", as: CalendarTimeScope.self) ?? .today
-        self.alertStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) ?? .subtleGlow
+        let savedStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self)
+        self.alertStyle = (savedStyle == .off ? nil : savedStyle) ?? .sonarWave
         self.alertLeadTime = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) ?? .fifteenMinutes
-        self.isEventGlowAlertEnabled = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) ?? true
-        self.isEventToastAlertEnabled = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) ?? true
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
         } else {
@@ -100,7 +96,6 @@ public final class CalendarPluginState: Sendable {
         self.isUsingRealCalendar = false
         self.isSyncing = false
         self.acknowledgedAlertIds = []
-        self.notifiedToastEventIds = []
         self.lastAlertTick = Date()
         self.events = storage.codable(forKey: "events", as: [CalendarEventItem].self) ?? Self.defaultEvents()
     }
@@ -110,16 +105,10 @@ public final class CalendarPluginState: Sendable {
             self.scope = savedScope
         }
         if let savedStyle = storage.codable(forKey: "alertStyle", as: PluginAlertStyle.self) {
-            self.alertStyle = savedStyle
+            self.alertStyle = savedStyle == .off ? .sonarWave : savedStyle
         }
         if let savedLead = storage.codable(forKey: "alertLeadTime", as: CalendarAlertLeadTime.self) {
             self.alertLeadTime = savedLead
-        }
-        if let glow = storage.codable(forKey: "isEventGlowAlertEnabled", as: Bool.self) {
-            self.isEventGlowAlertEnabled = glow
-        }
-        if let toast = storage.codable(forKey: "isEventToastAlertEnabled", as: Bool.self) {
-            self.isEventToastAlertEnabled = toast
         }
         if let savedStrategy = storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) {
             self.overflowStrategy = savedStrategy
@@ -137,8 +126,6 @@ public final class CalendarPluginState: Sendable {
         storage.setCodable(scope, forKey: "scope")
         storage.setCodable(alertStyle, forKey: "alertStyle")
         storage.setCodable(alertLeadTime, forKey: "alertLeadTime")
-        storage.setCodable(isEventGlowAlertEnabled, forKey: "isEventGlowAlertEnabled")
-        storage.setCodable(isEventToastAlertEnabled, forKey: "isEventToastAlertEnabled")
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(overflowStrategy, forKey: "overflowStrategy")
         storage.set(maxRailEvents, forKey: "maxRailEvents")
@@ -151,12 +138,10 @@ public final class CalendarPluginState: Sendable {
 
     public func acknowledgeAlert(id: String) {
         acknowledgedAlertIds.insert(id)
-        // Both sets are keyed by event id and unpersisted, so past events would
-        // otherwise accumulate acknowledgements for the whole session.
-        if acknowledgedAlertIds.count > 256 || notifiedToastEventIds.count > 256 {
+        // Unpersisted event ids would otherwise accumulate for the session.
+        if acknowledgedAlertIds.count > 256 {
             let liveIDs = Set(events.map(\.id))
             acknowledgedAlertIds = acknowledgedAlertIds.filter { liveIDs.contains($0) }
-            notifiedToastEventIds = notifiedToastEventIds.filter { liveIDs.contains($0) }
         }
     }
 
@@ -269,40 +254,11 @@ public final class CalendarPluginState: Sendable {
         return max(0, 1 - min(remaining / horizon, 1))
     }
 
-    /// Background inspection driving live in-rail attention beacon glow and HUD toast notifications.
-    /// Runs periodically without requiring UI interaction or app restarts.
+    /// Advances the calendar's display clock. Delivery belongs to the host's
+    /// single alert monitor, which enumerates the store's calendar mirror.
     public func checkUpcomingAlerts(store: PurahWorkspaceStore? = nil, now: Date = Date()) {
-        let targetStore = store ?? boundStore
+        _ = store ?? boundStore
         self.lastAlertTick = now
-
-        for event in events {
-            let isPast = event.endTime < now
-            let isOngoing = (now >= event.startTime && now <= event.endTime)
-            let isImminent = event.isImminent(leadTime: alertLeadTime, now: now)
-            let isAcknowledged = isAlertAcknowledged(id: event.id) || (targetStore?.isAlertAcknowledged(id: event.id) ?? false)
-            let isAlerting = (isOngoing || isImminent) && isEventGlowAlertEnabled && !isAcknowledged
-
-            if isAlerting {
-                if isEventToastAlertEnabled && !notifiedToastEventIds.contains(event.id) {
-                    notifiedToastEventIds.insert(event.id)
-                    let msg: String
-                    if isOngoing {
-                        msg = "\(event.title) is starting now"
-                    } else {
-                        let mins = max(Int(ceil(event.startTime.timeIntervalSince(now) / 60.0)), 1)
-                        if mins >= 60 {
-                            let hours = max(Int(ceil(Double(mins) / 60.0)), 1)
-                            msg = "\(event.title) starts in \(hours)h"
-                        } else {
-                            msg = "\(event.title) starts in \(mins)m"
-                        }
-                    }
-                    targetStore?.postToastNotification(id: event.id, message: msg)
-                }
-            } else if isPast {
-                notifiedToastEventIds.remove(event.id)
-            }
-        }
     }
 
     public func loadSampleEvents(into store: PurahWorkspaceStore? = nil) {

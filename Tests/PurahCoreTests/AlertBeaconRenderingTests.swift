@@ -58,7 +58,7 @@ struct AlertBeaconRenderingTests {
         #expect(PurahRailCanvas.haloLimit(baseWidth: 48) == 0)
     }
 
-    @Test("isAnyRailAlerting follows enabled pod alerts, acknowledgments, and style")
+    @Test("isAnyRailAlerting follows enabled pod alerts, acknowledgments, and the master switch")
     func testAnyRailAlertingState() throws {
         let suite = "alert_beacon_any_\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -72,10 +72,10 @@ struct AlertBeaconRenderingTests {
         store.setPluginAlert(id: podId, isAlerting: true)
         #expect(store.isAnyRailAlerting)
 
-        store.alertStyle = .off
+        store.isAlertMasterEnabled = false
         #expect(!store.isAnyRailAlerting)
 
-        store.alertStyle = .breathingBeacon
+        store.isAlertMasterEnabled = true
         #expect(store.isAnyRailAlerting)
         store.acknowledgeAlert(id: podId)
         #expect(!store.isAnyRailAlerting)

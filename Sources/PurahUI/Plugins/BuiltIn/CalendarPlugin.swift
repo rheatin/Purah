@@ -16,10 +16,16 @@ public struct CalendarPlugin: PurahPodPlugin {
         ergonomicWeight: 45.0,
         minLengthRatio: 0.16,
         defaultColorHex: "#FF9F0A",
-        permissions: [.calendar]
+        permissions: [.calendar],
+        supportsAlerts: true,
+        alertStyle: .sonarWave
     )
 
     public let state: CalendarPluginState
+
+    public func alertStyle(store: PurahWorkspaceStore) -> PluginAlertStyle? {
+        state.alertStyle
+    }
 
     public init(state: CalendarPluginState = CalendarPluginState()) {
         self.state = state
@@ -288,7 +294,7 @@ public struct CalendarPlugin: PurahPodPlugin {
             let isOngoing = event.isOngoing
             let isImminent = event.isImminent(leadTime: leadTime, now: now)
             let isAcknowledged = state.isAlertAcknowledged(id: event.id) || context.store.isAlertAcknowledged(id: event.id)
-            let isAlerting = (isOngoing || isImminent) && state.isEventGlowAlertEnabled && !isAcknowledged
+            let isAlerting = (isOngoing || isImminent) && !isAcknowledged
             let itemState: RailItemActivityState = isOngoing ? .ongoing : (isAlerting ? .alerting : (isPast ? .inactive : .normal))
             let eventColor = event.colorHex.flatMap { Color(hex: $0) } ?? context.accentColor
             let proximityColor = CalendarUpNextStyle.color(
@@ -678,25 +684,18 @@ public struct CalendarPluginSettingsView: View {
                     // Attention Alert Style Pills
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
-                            Text("interaction.alerts.dynamic.title".localized)
+                            Text(state.alertStyle.localizedDisplayName)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                             Spacer()
-                            Text(state.alertStyle.displayName)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(palette.primaryAccent)
                         }
 
                         HStack(spacing: 6) {
-                            ForEach(PluginAlertStyle.allCases) { style in
+                            ForEach(PluginAlertStyle.allCases.filter { $0 != .off }) { style in
                                 let isSelected = state.alertStyle == style
                                 Button {
                                     withAnimation(.easeInOut(duration: 0.15)) {
                                         state.alertStyle = style
-                                        state.isEventGlowAlertEnabled = (style != .off)
                                         state.save()
-                                        store.alertStyle = style
-                                        store.isEventGlowAlertEnabled = (style != .off)
-                                        store.savePersistentState()
                                     }
                                 } label: {
                                     Text(style.displayName)
@@ -730,13 +729,8 @@ public struct CalendarPluginSettingsView: View {
                         }
                         Spacer()
                         Toggle("", isOn: Binding(
-                            get: { state.isEventToastAlertEnabled },
-                            set: {
-                                state.isEventToastAlertEnabled = $0
-                                state.save()
-                                store.isEventToastAlertEnabled = $0
-                                store.savePersistentState()
-                            }
+                            get: { store.allowedChannels(forPodId: "calendar").contains(.toast) },
+                            set: { store.setAlertChannel(.toast, isEnabled: $0, forPodId: "calendar") }
                         ))
                         .toggleStyle(.switch)
                         .controlSize(.small)

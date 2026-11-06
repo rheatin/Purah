@@ -118,12 +118,14 @@ struct LocalizationTests {
             // +1: the vitals sparkline names its click-to-cycle hint.
             // +8: Traditional Chinese now covers the alert style titles and subtitles.
             // +8: the calendar's Up-Next countdown and Open in Calendar strings.
-            .traditionalChinese: 597,
-            .japanese: 71,
-            .korean: 71,
-            .french: 71,
-            .german: 71,
-            .spanish: 89
+            // +11: the compact alert card, its channel names, captions and pod suffixes.
+            // The four partial tables below gain those 11 keys plus the three alert style titles.
+            .traditionalChinese: 608,
+            .japanese: 85,
+            .korean: 85,
+            .french: 85,
+            .german: 85,
+            .spanish: 103
         ]
 
         for (language, expected) in pinnedCoverage {
@@ -162,6 +164,40 @@ struct LocalizationTests {
         }
         loc.currentLanguage = .chinese
         #expect(loc.localized("ai.settings.mcpServers") == "MCP 服务器")
+    }
+
+    @Test("Every alert-card string is translated in every supported language")
+    func testAlertCardLocalization() {
+        let keys = [
+            "interaction.alerts.card",
+            "interaction.alerts.master.title",
+            "interaction.alerts.ways.title",
+            "interaction.alerts.followEachPod",
+            "interaction.alerts.channel.railEffect",
+            "interaction.alerts.channel.toast",
+            "interaction.alerts.channel.sound",
+            "interaction.alerts.channels.none.caption",
+            "interaction.alerts.pods.caption",
+            "interaction.alerts.pods.detail.edgeOnly",
+            "interaction.alerts.pods.detail.silent",
+            "alert.style.breathingBeacon",
+            "alert.style.sonarWave",
+            "alert.style.subtleGlow",
+        ]
+
+        for language in AppLanguage.allCases where language != .system {
+            let table = Set(LocalizationManager.keys(for: language))
+            let missing = Set(keys).subtracting(table)
+            #expect(missing.isEmpty, "\(language.rawValue) is missing alert strings: \(missing.sorted())")
+        }
+
+        let loc = LocalizationManager()
+        for language in AppLanguage.allCases where language != .system {
+            loc.currentLanguage = language
+            for key in keys {
+                #expect(!loc.localized(key).contains("!"), "\(key) uses an exclamation mark in \(language.rawValue)")
+            }
+        }
     }
 
     @Test("The Freeze Rails menu item and HUD read Chinese in Chinese")

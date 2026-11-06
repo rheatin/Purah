@@ -39,8 +39,17 @@ public struct AmbientRailStripView: View {
                     let alertingPages = store.alertingPageIndices(for: edge, totalHeight: Double(totalHeight))
                     let offPageAlert = store.firstOffPageAlertingPod(for: edge, totalHeight: Double(totalHeight))
                     let offPageAlertColor = offPageAlert.map { palette.podColor(for: $0.pod.id, store: store) }
-                    let isTopPortalAlerting = (store.alertStyle != .off) && (offPageAlert.map { $0.pageIndex < currentPage } ?? false)
-                    let isBottomPortalAlerting = (store.alertStyle != .off) && (offPageAlert.map { $0.pageIndex > currentPage } ?? false)
+                    let offPageAlertStyle: PluginAlertStyle = {
+                        guard let offPageAlert,
+                              let plugin = PluginRegistry.shared.plugin(for: offPageAlert.pod.id) else {
+                            return .subtleGlow
+                        }
+                        return store.resolvedAlertStyle(declared: plugin.alertStyle(store: store))
+                    }()
+                    let isTopPortalAlerting = offPageAlertStyle != .off
+                        && (offPageAlert.map { $0.pageIndex < currentPage } ?? false)
+                    let isBottomPortalAlerting = offPageAlertStyle != .off
+                        && (offPageAlert.map { $0.pageIndex > currentPage } ?? false)
 
                     RailPagePortalView(
                         edge: edge,
@@ -53,7 +62,7 @@ public struct AmbientRailStripView: View {
                         isAlerting: isTopPortalAlerting,
                         alertingPageIndices: alertingPages,
                         alertColor: offPageAlertColor,
-                        alertStyle: store.alertStyle
+                        alertStyle: offPageAlertStyle
                     ) {
                         store.dismissActiveDrawer()
                         withAnimation(PurahMotionPolicy.pageFlip) {
@@ -75,7 +84,7 @@ public struct AmbientRailStripView: View {
                         isAlerting: isBottomPortalAlerting,
                         alertingPageIndices: alertingPages,
                         alertColor: offPageAlertColor,
-                        alertStyle: store.alertStyle
+                        alertStyle: offPageAlertStyle
                     ) {
                         store.dismissActiveDrawer()
                         withAnimation(PurahMotionPolicy.pageFlip) {
@@ -187,6 +196,9 @@ public struct AmbientRailStripView: View {
     private func makeContext(for pod: SlotPod, totalHeight: CGFloat, isActive: Bool, isPinned: Bool, railWidth: CGFloat) -> PurahPluginContext {
         let color = palette.podColor(for: pod.id, store: store)
         let slotH = max(totalHeight, 36.0)
+        let alertStyle = PluginRegistry.shared.plugin(for: pod.id).map {
+            store.resolvedAlertStyle(declared: $0.alertStyle(store: store))
+        } ?? .subtleGlow
 
         return PurahPluginContext(
             pod: pod,
@@ -223,7 +235,8 @@ public struct AmbientRailStripView: View {
                 withAnimation(PurahMotionPolicy.buttonPop) {
                     store.togglePinItem(id: pod.id)
                 }
-            }
+            },
+            alertStyle: alertStyle
         )
     }
 
@@ -241,6 +254,7 @@ public struct AmbientRailStripView: View {
 
     // MARK: - Plugin Pod Alert Helpers
     private func isPluginPodAlerting(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext) -> Bool {
+        guard store.isAlertChannelEnabled(.railEffect, forPodId: pod.id) else { return false }
         // A working pod already shows the sweep; a second, unrelated pulse on
         // top of it says "look at me" while the plugin is mid-task, which is
         // exactly when the person is least able to look.
@@ -281,11 +295,15 @@ public struct AmbientRailStripView: View {
         let isActive = shouldShowDrawer
         let barSlotH = max(barHeight, 22.0)
         let drawerSlotH = max(drawerHeight, 36.0)
+        let resolvedAlertStyle = store.resolvedAlertStyle(
+            declared: plugin.alertStyle(store: store)
+        )
         let color = plugin.dynamicBarColor(context: PurahPluginContext(
             pod: pod, edge: edge, railWidth: railWidth, slotHeight: barSlotH,
             drawerWidth: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id), isExpanded: isActive,
             isPinned: isPinned, accentColor: palette.podColor(for: pod.id, store: store),
-            palette: palette, store: store, requestExpand: {}, requestDismiss: {}, togglePin: {}
+            palette: palette, store: store, requestExpand: {}, requestDismiss: {}, togglePin: {},
+            alertStyle: resolvedAlertStyle
         )) ?? palette.podColor(for: pod.id, store: store)
 
         let barContext = PurahPluginContext(
@@ -323,7 +341,8 @@ public struct AmbientRailStripView: View {
                 withAnimation(PurahMotionPolicy.buttonPop) {
                     store.togglePinItem(id: pod.id)
                 }
-            }
+            },
+            alertStyle: resolvedAlertStyle
         )
 
         let drawerContext = PurahPluginContext(
@@ -339,10 +358,11 @@ public struct AmbientRailStripView: View {
             store: store,
             requestExpand: barContext.requestExpand,
             requestDismiss: barContext.requestDismiss,
-            togglePin: barContext.togglePin
+            togglePin: barContext.togglePin,
+            alertStyle: resolvedAlertStyle
         )
 
-        let isPodAlerting = (store.alertStyle != .off) && isPluginPodAlerting(plugin: plugin, pod: pod, context: barContext)
+        let isPodAlerting = isPluginPodAlerting(plugin: plugin, pod: pod, context: barContext)
         let podActivity = plugin.activity(store: store)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
@@ -357,7 +377,7 @@ public struct AmbientRailStripView: View {
                     edge: edge,
                     baseWidth: railWidth,
                     color: color,
-                    alertStyle: store.alertStyle,
+                    alertStyle: resolvedAlertStyle,
                     haloLimit: PurahRailCanvas.haloLimit(baseWidth: railWidth)
                 )
                 .shadow(color: isThisPodActive ? color.opacity(0.6) : .clear, radius: isThisPodActive ? 6 : 0)

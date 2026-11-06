@@ -118,9 +118,10 @@ struct PurahConfigBackupTests {
         // wrote these straight back from the live store — a reset that undid
         // almost nothing.
         store.quietHours = QuietHours(isEnabled: true, startMinute: 22 * 60, endMinute: 7 * 60)
-        store.alertStyle = .sonarWave
+        store.alertStyleOverride = .sonarWave
         store.isAppProfileSwitchingEnabled = true
         store.isToastSoundEnabled = false
+        store.setAlertChannel(.toast, isEnabled: false, forPodId: "ai")
         store.customExitGraceMs = 500.0
         store.isTrackpadHapticsEnabled = false
         store.savePersistentState()
@@ -128,7 +129,8 @@ struct PurahConfigBackupTests {
         PurahConfigBackupManager.resetToFactoryDefaults(store: store, defaults: defaults)
 
         #expect(store.quietHours.isEnabled == false, "quiet hours survived the reset")
-        #expect(store.alertStyle == .breathingBeacon)
+        #expect(store.alertStyleOverride == nil)
+        #expect(store.podAlertChannels.isEmpty)
         #expect(store.isAppProfileSwitchingEnabled == false)
         #expect(store.isToastSoundEnabled == true)
         #expect(store.customExitGraceMs == 280.0)
@@ -138,7 +140,8 @@ struct PurahConfigBackupTests {
         // from the same defaults has to produce the same fresh install.
         let reloaded = PurahWorkspaceStore(userDefaults: defaults)
         #expect(reloaded.quietHours.isEnabled == false)
-        #expect(reloaded.alertStyle == .breathingBeacon)
+        #expect(reloaded.alertStyleOverride == nil)
+        #expect(reloaded.podAlertChannels.isEmpty)
         #expect(reloaded.customExitGraceMs == 280.0)
     }
 

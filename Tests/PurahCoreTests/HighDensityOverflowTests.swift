@@ -898,7 +898,6 @@ struct HighDensityOverflowTests {
         let suiteName = "test_pod_alert_portal_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
-        store.alertStyle = .breathingBeacon
         store._calendarEvents = []
 
         // Move "calendar" to Page 2 (pageIndex = 1) while keeping currentRailPage on Page 1 (0)

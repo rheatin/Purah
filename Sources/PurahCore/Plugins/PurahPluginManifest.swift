@@ -169,6 +169,15 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
     /// they configured.
     public var usesAI: Bool
 
+    /// Whether this pod can raise attention alerts on the rail.
+    ///
+    /// This declares that the pod has alerts to offer, and whether the per-pod
+    /// switch may appear in settings.
+    public var supportsAlerts: Bool
+
+    /// The pod's default edge voice. A global override wins when one is set.
+    public var alertStyle: PluginAlertStyle?
+
     public init(
         id: String,
         displayName: String,
@@ -193,7 +202,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         preferredDrawerHeight: Double? = nil,
         defaultDecomposed: Bool? = nil,
         pollingInterval: Double? = nil,
-        usesAI: Bool = false
+        usesAI: Bool = false,
+        supportsAlerts: Bool = false,
+        alertStyle: PluginAlertStyle? = nil
     ) {
         self.id = id
         self.displayName = displayName
@@ -219,6 +230,8 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         self.defaultDecomposed = defaultDecomposed
         self.pollingInterval = pollingInterval
         self.usesAI = usesAI
+        self.supportsAlerts = supportsAlerts
+        self.alertStyle = alertStyle
     }
 
     enum CodingKeys: String, CodingKey {
@@ -227,7 +240,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         case defaultDrawerWidth
         case category, permissions, website, tags, isCommunity, downloadUrl
         case minimumDrawerHeight, preferredDrawerHeight, defaultDecomposed, pollingInterval
-        case usesAI
+        case usesAI, supportsAlerts, alertStyle
     }
 
     public init(from decoder: Decoder) throws {
@@ -271,6 +284,11 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         defaultDecomposed = try container.decodeIfPresent(Bool.self, forKey: .defaultDecomposed)
         pollingInterval = try container.decodeIfPresent(Double.self, forKey: .pollingInterval)
         usesAI = try container.decodeIfPresent(Bool.self, forKey: .usesAI) ?? false
+        supportsAlerts = try container.decodeIfPresent(Bool.self, forKey: .supportsAlerts) ?? false
+        alertStyle = try? container.decodeIfPresent(PluginAlertStyle.self, forKey: .alertStyle)
+        if alertStyle == .off {
+            alertStyle = nil
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -298,6 +316,10 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
         try container.encodeIfPresent(defaultDecomposed, forKey: .defaultDecomposed)
         try container.encodeIfPresent(pollingInterval, forKey: .pollingInterval)
         try container.encode(usesAI, forKey: .usesAI)
+        try container.encode(supportsAlerts, forKey: .supportsAlerts)
+        if let alertStyle, alertStyle != .off {
+            try container.encode(alertStyle, forKey: .alertStyle)
+        }
     }
 
     public func makeDefaultSlotPod(range: NormalizedRange? = nil, isEnabled: Bool = true) -> SlotPod {
@@ -333,7 +355,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             defaultDrawerWidth: 260.0,
             category: .heavyGPU,
             permissions: [.machTelemetry],
-            tags: ["vitals", "cpu", "memory", "battery", "telemetry"]
+            tags: ["vitals", "cpu", "memory", "battery", "telemetry"],
+            supportsAlerts: true,
+            alertStyle: .breathingBeacon
         ),
         PurahPluginManifest(
             id: "scripts",
@@ -367,7 +391,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             defaultDrawerWidth: 520.0,
             category: .heavyGPU,
             permissions: [.shellExecution],
-            tags: ["terminal", "pty", "metal", "shell", "console"]
+            tags: ["terminal", "pty", "metal", "shell", "console"],
+            supportsAlerts: true,
+            alertStyle: .subtleGlow
         ),
         PurahPluginManifest(
             id: "notes",
@@ -435,7 +461,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             defaultDrawerWidth: 260.0,
             category: .systemService,
             permissions: [.calendar],
-            tags: ["calendar", "events", "agenda", "schedule"]
+            tags: ["calendar", "events", "agenda", "schedule"],
+            supportsAlerts: true,
+            alertStyle: .sonarWave
         ),
         PurahPluginManifest(
             id: "todo",
@@ -486,7 +514,9 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
             defaultDrawerWidth: 420.0,
             category: .systemService,
             permissions: [.pasteboard, .fileSystem],
-            tags: ["ai", "assistant", "chat", "translate", "rewrite"]
+            tags: ["ai", "assistant", "chat", "translate", "rewrite"],
+            supportsAlerts: true,
+            alertStyle: .subtleGlow
         )
     ]
 

@@ -65,6 +65,19 @@ public struct CalendarEventItem: Identifiable, Codable, Sendable, Equatable {
     public func isImminent(leadTime: CalendarAlertLeadTime, now: Date = Date()) -> Bool {
         leadTime.isAlertWindow(startTime: startTime, now: now)
     }
+
+    /// The sentence the drawer and the delivery monitor both use for an event.
+    public func alertMessage(now: Date = Date()) -> String {
+        if now >= startTime && now <= endTime {
+            return "\(title) is starting now"
+        }
+        let minutes = max(Int(ceil(startTime.timeIntervalSince(now) / 60.0)), 1)
+        if minutes >= 60 {
+            let hours = max(Int(ceil(Double(minutes) / 60.0)), 1)
+            return "\(title) starts in \(hours)h"
+        }
+        return "\(title) starts in \(minutes)m"
+    }
 }
 
 /// Shared "now as anchor" semantics for the rail chips, the agenda drawer, and

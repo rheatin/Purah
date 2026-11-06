@@ -212,7 +212,14 @@ public struct PurahPluginContext: Sendable {
         // Hover is the only alert-acknowledgment path; the flag stays for
         // plugin compatibility and is always true.
         self.isHoverDismissEnabled = isHoverDismissEnabled ?? true
-        self.alertStyle = alertStyle ?? (storeRef?.alertStyle ?? .breathingBeacon)
+        if let alertStyle {
+            self.alertStyle = alertStyle
+        } else if let storeRef {
+            let declared = PluginRegistry.shared.plugin(for: podIdRef)?.alertStyle(store: storeRef)
+            self.alertStyle = storeRef.resolvedAlertStyle(declared: declared)
+        } else {
+            self.alertStyle = .subtleGlow
+        }
 
         self.requestLayoutRecalculation = requestLayoutRecalculation ?? { [weak storeRef] in
             storeRef?.invalidateLayoutCache()

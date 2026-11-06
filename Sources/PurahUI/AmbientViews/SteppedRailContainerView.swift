@@ -193,6 +193,7 @@ public struct SteppedRailContainerView: View {
                     store.togglePinItem(id: subItem.id)
                 }
             },
+            alertStyle: context.alertStyle,
             showToast: context.showToast,
             showWarning: context.showWarning,
             performHaptic: context.performHaptic,
@@ -546,6 +547,9 @@ public struct SteppedRailContainerView: View {
     private func subItemIndicatorBar(subItem: PurahPluginSubItem, itemH: CGFloat, tintColor: Color) -> some View {
         let barW = CGFloat(store.railBarWidth)
         let fill = subItem.gaugeStyle == .solid ? subItem.gaugeRatio : nil
+        let alertGlowEnabled = subItem.state == .alerting
+            && store.isAlertChannelEnabled(.railEffect, forPodId: pod.id)
+            && store.resolvedAlertStyle(declared: plugin.alertStyle(store: store)) != .off
 
         ZStack(alignment: .bottom) {
             PurahSegmentGaugeBarView(
@@ -558,7 +562,10 @@ public struct SteppedRailContainerView: View {
             )
             // The chip's glow follows its activity state, not the metric level,
             // so it stays on the bar rather than on the filled channel.
-            .modifier(OptionalGlow(color: tintColor, enabled: subItem.state == .alerting || subItem.state == .ongoing))
+            .modifier(OptionalGlow(
+                color: tintColor,
+                enabled: alertGlowEnabled || subItem.state == .ongoing
+            ))
 
             if subItem.state == .running {
                 Circle()
