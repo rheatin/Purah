@@ -110,12 +110,12 @@ struct PerPodAlertToggleTests {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         store.alertStyleOverride = nil
-        #expect(store.resolvedAlertStyle(declared: .breathingBeacon) == .breathingBeacon)
-        #expect(store.resolvedAlertStyle(declared: nil) == .subtleGlow)
+        #expect(store.resolvedAlertStyle(declared: .breathingBeacon, podId: "vitals") == .breathingBeacon)
+        #expect(store.resolvedAlertStyle(declared: nil, podId: "vitals") == .subtleGlow)
 
         store.alertStyleOverride = .sonarWave
-        #expect(store.resolvedAlertStyle(declared: .breathingBeacon) == .sonarWave)
-        #expect(store.resolvedAlertStyle(declared: nil) == .sonarWave)
+        #expect(store.resolvedAlertStyle(declared: .breathingBeacon, podId: "vitals") == .sonarWave)
+        #expect(store.resolvedAlertStyle(declared: nil, podId: "vitals") == .sonarWave)
     }
 
     @Test("Built-in plugins declare their own edge voices")

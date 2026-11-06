@@ -673,80 +673,19 @@ public struct CalendarPluginSettingsView: View {
                 }
             }
 
-            // Card 2: Event Alerts & Advance Notice
+            // Card 2: Advance Notice
+            //
+            // Only calendar behaviour lives here. The edge style and the
+            // notification channels moved to the Alerts card, where every other
+            // pod's live — a plugin page carrying its own copy is how the two
+            // could disagree.
             PurahPluginSettingsCard(
-                title: "Event Alerts & Advance Notice",
-                subtitle: "Visual glow indicators, sound notifications, and lead time",
+                title: "calendar.advanceNotice.title".localized,
+                subtitle: "calendar.advanceNotice.subtitle".localized,
                 icon: "bell.badge.fill",
                 iconColor: Color(hex: "#FF9F0A")
             ) {
                 VStack(alignment: .leading, spacing: 10) {
-                    // Attention Alert Style Pills
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(state.alertStyle.localizedDisplayName)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            Spacer()
-                        }
-
-                        HStack(spacing: 6) {
-                            ForEach(PluginAlertStyle.allCases.filter { $0 != .off }) { style in
-                                let isSelected = state.alertStyle == style
-                                Button {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        state.alertStyle = style
-                                        state.save()
-                                    }
-                                } label: {
-                                    Text(style.displayName)
-                                        .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
-                                        .foregroundColor(isSelected ? palette.primaryAccent : .primary)
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 5)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                .fill(isSelected ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.04))
-                                        )
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.6)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-
-                    // Event toast switch row
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("calendar.toastOnStart".localized)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("calendar.hudOnStart".localized)
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { store.allowedChannels(forPodId: "calendar").contains(.toast) },
-                            set: { store.setAlertChannel(.toast, isEnabled: $0, forPodId: "calendar") }
-                        ))
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                        .purahRowAccessibility("calendar.toastOnStart".localized, detail: nil)
-                    }
-                    .padding(9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.03))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-                    )
-
                     // Advance Notice horizontal pill selector
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {

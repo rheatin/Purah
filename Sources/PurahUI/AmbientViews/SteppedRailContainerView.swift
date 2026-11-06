@@ -549,7 +549,7 @@ public struct SteppedRailContainerView: View {
         let fill = subItem.gaugeStyle == .solid ? subItem.gaugeRatio : nil
         let alertGlowEnabled = subItem.state == .alerting
             && store.isAlertChannelEnabled(.railEffect, forPodId: pod.id)
-            && store.resolvedAlertStyle(declared: plugin.alertStyle(store: store)) != .off
+            && store.resolvedAlertStyle(declared: plugin.alertStyle(store: store), podId: pod.id) != .off
 
         ZStack(alignment: .bottom) {
             PurahSegmentGaugeBarView(

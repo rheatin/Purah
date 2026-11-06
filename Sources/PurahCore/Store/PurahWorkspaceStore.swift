@@ -1065,6 +1065,10 @@ public final class PurahWorkspaceStore {
     /// Per-pod channel choices. A missing key means every channel is allowed.
     public var podAlertChannels: [String: Set<AlertChannel>] = [:]
 
+    /// Per-pod edge style. A missing key means "follow the default" — the
+    /// global override, or the style the plugin itself declares.
+    public var podAlertStyles: [String: PluginAlertStyle] = [:]
+
     /// Pods whose alerts the person silenced individually.
     ///
     /// The master switch still wins: this set only records per-pod
@@ -1656,8 +1660,25 @@ public final class PurahWorkspaceStore {
         }
     }
 
-    public func resolvedAlertStyle(declared: PluginAlertStyle?) -> PluginAlertStyle {
-        alertStyleOverride ?? declared ?? .subtleGlow
+    /// The style a pod actually speaks. The order is the whole point: the
+    /// person's pick for this pod, then the global default, then what the
+    /// plugin declares, then the quietest style.
+    ///
+    /// There is deliberately no `podId`-less overload: a call site that forgot
+    /// the pod would silently ignore the per-pod choice, which is the bug this
+    /// parameter exists to prevent.
+    public func resolvedAlertStyle(declared: PluginAlertStyle?, podId: String) -> PluginAlertStyle {
+        podAlertStyles[podId] ?? alertStyleOverride ?? declared ?? .subtleGlow
+    }
+
+    /// `nil` removes the pod's own choice, so it follows the default again.
+    public func setAlertStyle(_ style: PluginAlertStyle?, forPodId podId: String) {
+        if let style {
+            podAlertStyles[podId] = style
+        } else {
+            podAlertStyles.removeValue(forKey: podId)
+        }
+        scheduleSavePersistentState()
     }
 
     /// Delivers alerts that became active since the previous tick.

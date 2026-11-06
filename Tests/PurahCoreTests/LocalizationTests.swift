@@ -124,12 +124,15 @@ struct LocalizationTests {
             // +1: the shelf's refused-delete warning.
             // +3: the shelf's zone hints; the partial tables also gained the
             // AirDrop title they had been falling back to English for.
-            .traditionalChinese: 619,
-            .japanese: 96,
-            .korean: 96,
-            .french: 96,
-            .german: 96,
-            .spanish: 114
+            // +4: the Alerts card's per-pod edge style and the calendar's
+            // Advance Notice card; -2: the calendar's own toast style and HUD
+            // copy, which the Alerts card replaced.
+            .traditionalChinese: 621,
+            .japanese: 100,
+            .korean: 100,
+            .french: 100,
+            .german: 100,
+            .spanish: 118
         ]
 
         for (language, expected) in pinnedCoverage {
