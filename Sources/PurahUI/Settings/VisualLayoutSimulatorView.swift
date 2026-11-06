@@ -790,18 +790,12 @@ public struct VisualLayoutSimulatorView: View {
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "scissors")
-                        .font(.system(size: 8.5, weight: .bold))
-                    Text("overflow.majorPod.unstack".localized)
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Color.orange.opacity(0.18))
-                .foregroundColor(.orange)
-                .cornerRadius(5)
+                Image(systemName: "scissors")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .frame(width: 20, height: 20)
+                    .background(Color.orange.opacity(0.18))
+                    .foregroundColor(.orange)
+                    .cornerRadius(5)
             }
             .buttonStyle(.tactile)
             .fixedSize(horizontal: true, vertical: false)
@@ -893,18 +887,12 @@ public struct VisualLayoutSimulatorView: View {
                 store.movePod(id: pod.id, to: pod.edge == .left ? .right : .left)
             }
         } label: {
-            HStack(spacing: 3) {
-                Image(systemName: pod.edge == .left ? "arrow.right" : "arrow.left")
-                    .font(.system(size: 8, weight: .bold))
-                Text(pod.edge == .left ? "To Right" : "To Left")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 3)
-            .background(palette.primaryAccent.opacity(0.15))
-            .foregroundColor(palette.primaryAccent)
-            .cornerRadius(5)
+            Image(systemName: pod.edge == .left ? "arrow.right" : "arrow.left")
+                .font(.system(size: 8.5, weight: .bold))
+                .frame(width: 20, height: 20)
+                .background(palette.primaryAccent.opacity(0.15))
+                .foregroundColor(palette.primaryAccent)
+                .cornerRadius(4)
         }
         .buttonStyle(.tactile)
         .fixedSize(horizontal: true, vertical: false)
