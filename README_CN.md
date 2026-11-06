@@ -239,6 +239,17 @@ open build/Purah.app
 
 每次发布都会在 DMG 旁边附上 SHA-256，可用 `shasum -a 256` 自行核对。
 
+**国内下载（GitHub 慢或打不开）**
+
+GitHub 的 Release 下载会跳转到 `objects.githubusercontent.com`，国内经常被重置。在下载链接前面加一个加速前缀即可：
+
+```
+https://gh-proxy.com/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
+https://ghfast.top/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
+```
+
+把版本号换成你要的版本。Purah 自带的更新器也是同一套逻辑：直连失败后会自动按同样的加速源重试，不需要额外设置。加速源是第三方服务，下载后仍可对照 Release 页面公布的 SHA-256 核对文件。
+
 **模型服务跑在自己局域网里？** Purah 第一次访问 `192.168.x.x` 或 `*.local` 这类地址时，macOS 会询问「本地网络」权限，请允许。如果 AI 抽屉提示连不上，请到 **系统设置 → 隐私与安全性 → 本地网络** 里打开 Purah —— 重新编译会改变应用的签名，更新后这个开关可能又变回关闭。
 
 ---

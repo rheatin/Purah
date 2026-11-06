@@ -184,12 +184,42 @@ public struct ReleaseManifestProvider: UpdateManifestProviding {
     }
 
     public func fetchLatestRelease() async throws -> (data: Data, statusCode: Int) {
-        var request = URLRequest(url: Self.endpoint)
-        request.setValue("Purah-Updater/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 10.0
-        let (data, response) = try await session.data(for: request)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        return (data, status)
+        let candidates = ReleaseMirror.candidates(for: Self.endpoint)
+        var lastError: Error?
+
+        for (index, candidate) in candidates.enumerated() {
+            var request = URLRequest(url: candidate)
+            request.setValue("Purah-Updater/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+            // A fresh request per candidate: the timeout differs, and mutating a
+            // request's URL between attempts leaves the old one's state behind.
+            // A stalled direct route gets a short leash so a mirror still has
+            // time to answer inside the same wait.
+            request.timeoutInterval = index == 0 ? 6.0 : 15.0
+
+            do {
+                let (data, response) = try await session.data(for: request)
+                let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+                if status == 200 {
+                    DiagnosticLogger.shared.info(
+                        "Updater",
+                        "manifest fetched via \(candidate.host ?? "unknown")"
+                    )
+                    return (data, status)
+                }
+                // 404 is a real answer from GitHub — nothing has been published —
+                // and no mirror can invent a release, so it stays final.
+                if status == 404 {
+                    return (data, status)
+                }
+                lastError = URLError(.badServerResponse)
+            } catch {
+                lastError = error
+            }
+        }
+
+        // The UI already reads this as "could not reach GitHub"; the fallbacks
+        // are an optimisation, so exhausting them is still one failure.
+        throw lastError ?? URLError(.cannotFindHost)
     }
 }
 
@@ -612,13 +642,31 @@ public final class AppUpdaterManager {
         let targetArchiveURL = downloadDir.appendingPathComponent(archiveFilename)
         try? FileManager.default.removeItem(at: targetArchiveURL)
 
-        do {
-            var request = URLRequest(url: release.downloadURL)
+        // The release archive is fetched from GitHub first and, if that route
+        // is blocked, from one of the gh-proxy fallbacks. The mirror is a third
+        // party: the digest below still comes from the manifest and the install
+        // script still checks the bundle's signature, so a fallback cannot make
+        // an unsigned or tampered build installable.
+        let candidates = ReleaseMirror.candidates(for: release.downloadURL)
+        var attempted = 0
+
+        for (index, candidate) in candidates.enumerated() {
+            attempted += 1
+            // A new attempt starts from nothing: the previous one's file is its
+            // own responsibility, and a bar left at 90% would claim this
+            // transfer had already made progress.
+            state = .downloading(progress: 0)
+
+            var request = URLRequest(url: candidate)
             request.setValue("Purah-Updater/\(currentVersion)", forHTTPHeaderField: "User-Agent")
-            request.timeoutInterval = 60.0
+            // Idle timeout, not a total budget: a slow but moving transfer is
+            // untouched, while a blocked direct route costs 20s instead of 60
+            // before a Chinese user's first mirror is even tried.
+            request.timeoutInterval = index == 0 ? 20.0 : 60.0
 
             // Progress is reported by a per-download delegate; without it the
-            // transfer is a black box until the archive is complete.
+            // transfer is a black box until the archive is complete. Each
+            // attempt gets its own observer and its own continuation.
             let observer = DownloadProgressObserver { [weak self] fraction in
                 Task { @MainActor in
                     guard let self, case .downloading = self.state else { return }
@@ -628,19 +676,35 @@ public final class AppUpdaterManager {
             let session = URLSession(configuration: .default, delegate: observer, delegateQueue: nil)
             defer { session.finishTasksAndInvalidate() }
 
-            let (tempURL, statusCode) = try await withCheckedThrowingContinuation { (continuation: DownloadProgressObserver.Completion) in
-                observer.attach(continuation)
-                session.downloadTask(with: request).resume()
-            }
-            guard statusCode == 200 else {
-                try? FileManager.default.removeItem(at: tempURL)
-                state = .failed(error: "Download failed (invalid status code)")
-                return
+            let tempURL: URL
+            let statusCode: Int
+            do {
+                (tempURL, statusCode) = try await withCheckedThrowingContinuation { (continuation: DownloadProgressObserver.Completion) in
+                    observer.attach(continuation)
+                    session.downloadTask(with: request).resume()
+                }
+            } catch {
+                DiagnosticLogger.shared.warn(
+                    "Updater",
+                    "Download from \(candidate.host ?? "unknown") failed: \(error.localizedDescription)"
+                )
+                continue
             }
 
-            // Check the archive against the digest the release published for
-            // it, before it is handed to a script that will replace the app.
-            // Presence was already checked above; this is the value comparison.
+            guard statusCode == 200 else {
+                try? FileManager.default.removeItem(at: tempURL)
+                DiagnosticLogger.shared.warn(
+                    "Updater",
+                    "Download from \(candidate.host ?? "unknown") answered HTTP \(statusCode)"
+                )
+                continue
+            }
+
+            // Check the winning archive against the digest the release
+            // published, before it is handed to a script that will replace the
+            // app. Presence was already checked above; this is the comparison.
+            // A mismatch ends the attempt instead of shopping for a mirror that
+            // agrees with a value the release itself did not publish.
             guard let expected = release.normalizedSHA256 else {
                 try? FileManager.default.removeItem(at: tempURL)
                 openURL(release.downloadURL)
@@ -659,14 +723,26 @@ public final class AppUpdaterManager {
                 return
             }
 
-            try FileManager.default.moveItem(at: tempURL, to: targetArchiveURL)
+            do {
+                try FileManager.default.moveItem(at: tempURL, to: targetArchiveURL)
+            } catch {
+                try? FileManager.default.removeItem(at: tempURL)
+                state = .failed(error: "Download error: \(error.localizedDescription)")
+                return
+            }
             state = .installing
 
             // Perform in-place atomic replacement and seamless relaunch
             performInPlaceReplacementAndRelaunch(archiveURL: targetArchiveURL)
-        } catch {
-            state = .failed(error: "Download error: \(error.localizedDescription)")
+            return
         }
+
+        // Every source failed. Say how many were tried: one silent "download
+        // error" leaves the person unable to tell a dead network from a dead
+        // mirror list.
+        state = .failed(
+            error: "Download error: tried \(attempted) source\(attempted == 1 ? "" : "s")"
+        )
     }
 
     private func performInPlaceReplacementAndRelaunch(archiveURL: URL) {
