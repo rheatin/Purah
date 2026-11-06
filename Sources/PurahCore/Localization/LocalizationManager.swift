@@ -121,6 +121,9 @@ public final class LocalizationManager {
             "tab.plugins": "Plugins",
             "tab.permissions": "Permissions",
             "tab.diagnostics": "Diagnostics",
+            "tab.system": "System",
+            "settings.rail.pods": "Pods",
+            "settings.rail.purah": "Purah",
 
             // General Settings
             "general.title": "General Settings",
@@ -1097,6 +1100,9 @@ public final class LocalizationManager {
             "tab.plugins": "插件",
             "tab.permissions": "权限",
             "tab.diagnostics": "诊断",
+            "tab.system": "系统",
+            "settings.rail.pods": "Pod",
+            "settings.rail.purah": "Purah",
 
             // 通用设置
             "general.title": "通用设置",
@@ -2056,6 +2062,9 @@ public final class LocalizationManager {
         ],
         .traditionalChinese: [
             "tab.general": "通用",
+            "tab.system": "系統",
+            "settings.rail.pods": "Pod",
+            "settings.rail.purah": "Purah",
             "menu.freezeRails": "凍結邊緣軌",
             "menu.unfreezeRails": "解凍邊緣軌",
             "hud.railsFrozen": "邊緣軌已凍結（%@ 恢復）",
@@ -2701,6 +2710,9 @@ public final class LocalizationManager {
         ],
         .japanese: [
             "tab.general": "一般",
+            "tab.system": "システム",
+            "settings.rail.pods": "Pod",
+            "settings.rail.purah": "Purah",
             "tab.layout": "レイアウト",
             "tab.motion": "モーション",
             "tab.interaction": "モーションと一般",
@@ -2822,6 +2834,9 @@ public final class LocalizationManager {
         ],
         .korean: [
             "tab.general": "일반",
+            "tab.system": "시스템",
+            "settings.rail.pods": "Pod",
+            "settings.rail.purah": "Purah",
             "tab.layout": "레이아웃",
             "tab.motion": "모션",
             "tab.interaction": "모션 및 일반",
@@ -2943,6 +2958,9 @@ public final class LocalizationManager {
         ],
         .french: [
             "tab.general": "Général",
+            "tab.system": "Système",
+            "settings.rail.pods": "Pods",
+            "settings.rail.purah": "Purah",
             "tab.layout": "Disposition",
             "tab.motion": "Mouvement",
             "tab.interaction": "Mouvement et Général",
@@ -3064,6 +3082,9 @@ public final class LocalizationManager {
         ],
         .german: [
             "tab.general": "Allgemein",
+            "tab.system": "System",
+            "settings.rail.pods": "Pods",
+            "settings.rail.purah": "Purah",
             "tab.layout": "Layout",
             "tab.motion": "Bewegung",
             "tab.interaction": "Bewegung & Allgemein",
@@ -3185,6 +3206,9 @@ public final class LocalizationManager {
         ],
         .spanish: [
             "tab.general": "General",
+            "tab.system": "Sistema",
+            "settings.rail.pods": "Pods",
+            "settings.rail.purah": "Purah",
             "tab.layout": "Diseño",
             "tab.motion": "Movimiento",
             "tab.interaction": "Movimiento y General",

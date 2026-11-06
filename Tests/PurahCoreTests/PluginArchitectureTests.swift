@@ -1054,7 +1054,7 @@ struct PluginArchitectureTests {
         #expect(registry.plugin(for: mock.manifest.id) == nil)
     }
 
-    @Test("PluginMarketplaceView instantiates and PreferencesTab renders marketplace view")
+    @Test("PluginMarketplaceView instantiates and PreferencesView selects marketplace")
     @MainActor
     func testPluginMarketplaceViewInstantiation() {
         let store = PurahWorkspaceStore()
@@ -1062,7 +1062,7 @@ struct PluginArchitectureTests {
         #expect(marketView.marketManager.availableCatalog.count >= 8)
 
         let prefView = PreferencesView(store: store, initialTab: .plugins)
-        #expect(prefView.selectedTab == .plugins)
+        #expect(prefView.selection == .plugins)
     }
 
     @Test("Third-party plugin requires zero base code changes to integrate, layout, activate sub-items, and cleanly uninstall")

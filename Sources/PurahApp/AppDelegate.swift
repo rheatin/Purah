@@ -321,12 +321,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         if preferencesWindow == nil {
             let prefView = PreferencesView(store: store, initialTab: initialTab, initialPluginId: initialPluginId)
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 720, height: 680),
+                contentRect: NSRect(x: 0, y: 0, width: 940, height: 720),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
             )
-            window.minSize = NSSize(width: 700, height: 620)
+            window.minSize = NSSize(width: 880, height: 620)
             window.title = "Purah - " + "settings.title".localized
             window.center()
             window.hidesOnDeactivate = false

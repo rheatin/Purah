@@ -6,7 +6,6 @@ public struct PluginCenterSettingsView: View {
     public let store: PurahWorkspaceStore
     @State private var selectedPluginId: String = "calendar"
     @State private var searchFilter: String = ""
-    @State private var confirmingUninstall: Bool = false
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -35,9 +34,7 @@ public struct PluginCenterSettingsView: View {
 
     public var body: some View {
         HStack(spacing: 0) {
-            // Master: Left Sidebar Plugin List
             VStack(spacing: 8) {
-                // Search bar
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.caption)
@@ -58,7 +55,8 @@ public struct PluginCenterSettingsView: View {
                         ForEach(filteredPlugins, id: \.manifest.id) { plugin in
                             let podId = plugin.manifest.id
                             let isSelected = selectedPluginId == podId
-                            let isEnabled = store.pods.first(where: { $0.id == podId })?.isEnabled ?? true
+                            let isEnabled =
+                                store.pods.first(where: { $0.id == podId })?.isEnabled ?? true
                             let color = palette.podColor(for: podId, store: store)
 
                             Button {
@@ -75,8 +73,18 @@ public struct PluginCenterSettingsView: View {
                                         .frame(width: 16)
 
                                     Text(plugin.manifest.displayName)
-                                        .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
-                                        .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : .white) : .secondary)
+                                        .font(
+                                            .system(
+                                                size: 11,
+                                                weight: isSelected ? .bold : .medium,
+                                                design: .rounded
+                                            )
+                                        )
+                                        .foregroundColor(
+                                            isSelected
+                                                ? (palette.style == .native ? Color.primary : .white)
+                                                : .secondary
+                                        )
                                         .lineLimit(1)
 
                                     Spacer()
@@ -93,11 +101,20 @@ public struct PluginCenterSettingsView: View {
                                 .contentShape(Rectangle())
                                 .background(
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(isSelected ? palette.primaryAccent.opacity(0.15) : Color.clear)
+                                        .fill(
+                                            isSelected
+                                                ? palette.primaryAccent.opacity(0.15)
+                                                : Color.clear
+                                        )
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .stroke(isSelected ? palette.primaryAccent.opacity(0.35) : Color.clear, lineWidth: 1)
+                                        .stroke(
+                                            isSelected
+                                                ? palette.primaryAccent.opacity(0.35)
+                                                : Color.clear,
+                                            lineWidth: 1
+                                        )
                                 )
                             }
                             .buttonStyle(.plain)
@@ -108,11 +125,15 @@ public struct PluginCenterSettingsView: View {
 
                 Spacer()
 
-                // Bottom total plugin count
                 HStack {
-                    Text(String(format: "plugins.registeredCount".localized, PluginRegistry.shared.allPlugins.count))
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
+                    Text(
+                        String(
+                            format: "plugins.registeredCount".localized,
+                            PluginRegistry.shared.allPlugins.count
+                        )
+                    )
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
                     Spacer()
                 }
                 .padding(.horizontal, 12)
@@ -124,227 +145,16 @@ public struct PluginCenterSettingsView: View {
             Divider()
                 .background(palette.borderColor.opacity(0.4))
 
-            // Detail: Right Plugin Settings Area
-            if let activePlugin = PluginRegistry.shared.plugin(for: selectedPluginId) {
-                let podId = activePlugin.manifest.id
-                let podColor = palette.podColor(for: podId, store: store)
-                let isAdaptiveTelemetry = PluginRegistry.shared.plugin(for: podId)?.usesAdaptiveTelemetryColor == true || podId == "vitals"
-                let isEnabledBinding = Binding(
-                    get: { store.pods.first(where: { $0.id == podId })?.isEnabled ?? true },
-                    set: { _ in store.togglePodEnabled(id: podId) }
-                )
-
-                ScrollView(.vertical, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Plugin Header Card
-                        HStack(alignment: .top, spacing: 12) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(podColor.opacity(0.18))
-                                    .frame(width: 44, height: 44)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                            .stroke(podColor.opacity(0.7), lineWidth: 1.2)
-                                    )
-                                Image(systemName: activePlugin.manifest.systemIcon)
-                                    .font(.system(size: 20))
-                                    .foregroundColor(podColor)
-                            }
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack {
-                                    Text(activePlugin.manifest.displayName)
-                                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-
-                                    Text("v\(activePlugin.manifest.version)")
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(.secondary)
-                                        .padding(.horizontal, 4)
-                                        .padding(.vertical, 1)
-                                        .background(Color.primary.opacity(0.08))
-                                        .cornerRadius(3)
-
-                                    Spacer()
-
-                                    Toggle("", isOn: isEnabledBinding)
-                                        .toggleStyle(.switch)
-                                        .scaleEffect(0.75)
-                                        .accessibilityLabel(activePlugin.manifest.displayName)
-                                }
-
-                                Text(activePlugin.manifest.description)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .padding(12)
-                        .background(palette.surfaceBackground)
-                        .cornerRadius(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
-                        )
-
-                        // Appearance & Color Card
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Label("Theme Accent Color", systemImage: "paintpalette.fill")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                    .lineLimit(1)
-
-                                Spacer()
-
-                                if isAdaptiveTelemetry {
-                                    HStack(spacing: 6) {
-                                        HStack(spacing: 3) {
-                                            Circle().fill(Color(red: 0.0, green: 0.90, blue: 0.60)).frame(width: 5, height: 5)
-                                            Circle().fill(Color(red: 1.0, green: 0.72, blue: 0.15)).frame(width: 5, height: 5)
-                                            Circle().fill(Color(red: 1.0, green: 0.28, blue: 0.38)).frame(width: 5, height: 5)
-                                        }
-                                        Text("plugins.adaptiveTelemetry".localized)
-                                            .font(.system(size: 9, weight: .medium, design: .rounded))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Color.primary.opacity(0.04))
-                                    .cornerRadius(6)
-                                } else if store.customPodColors[podId] != nil {
-                                    Button("Reset") {
-                                        store.customPodColors.removeValue(forKey: podId)
-                                        store.savePersistentState()
-                                    }
-                                    .buttonStyle(.tactile)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(palette.primaryAccent)
-                                }
-                            }
-
-                            if !isAdaptiveTelemetry {
-                                PurahColorPickerField(
-                                    store: store,
-                                    podId: podId,
-                                    defaultHex: activePlugin.manifest.defaultColorHex,
-                                    isCustom: store.customPodColors[podId] != nil
-                                )
-                            }
-
-                            HStack(spacing: 8) {
-                                Label("Default Edge: \(activePlugin.manifest.defaultEdge.rawValue.capitalized)", systemImage: "sidebar.squares.left")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.secondary)
-
-                                Text("·")
-                                    .foregroundColor(.gray)
-
-                                Label("Preferred: \(activePlugin.manifest.preferredZone.defaultLocalizedKey.localized)", systemImage: "hand.tap.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(12)
-                        .background(palette.surfaceBackground)
-                        .cornerRadius(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
-                        )
-
-                        // Dedicated Isolated Plugin Settings View
-                        if let customSettings = activePlugin.makeSettingsView(store: store) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Label("settings.title".localized, systemImage: "gearshape.2.fill")
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                    .lineLimit(1)
-
-                                Divider()
-                                    .background(palette.borderColor.opacity(0.3))
-
-                                customSettings
-                            }
-                            .padding(12)
-                            .background(palette.surfaceBackground)
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
-                            )
-                        }
-
-                        // Management & Uninstall
-                        VStack(alignment: .leading, spacing: 8) {
-                            Label("Management", systemImage: "trash")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                .lineLimit(1)
-
-                            Divider()
-                                .background(palette.borderColor.opacity(0.3))
-
-                            HStack {
-                                Text("plugins.uninstall.desc".localized)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-
-                                Spacer()
-
-                                Button {
-                                    if confirmingUninstall {
-                                        store.marketManager.uninstall(id: podId)
-                                        confirmingUninstall = false
-                                        if let next = PluginRegistry.shared.allPlugins.first?.manifest.id {
-                                            selectedPluginId = next
-                                        }
-                                    } else {
-                                        withAnimation { confirmingUninstall = true }
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
-                                            withAnimation { confirmingUninstall = false }
-                                        }
-                                    }
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "trash.fill")
-                                        Text(confirmingUninstall ? "Confirm Uninstall" : "Uninstall")
-                                    }
-                                    .font(.system(size: 10.5, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4.5)
-                                    .background(Color.red)
-                                    .cornerRadius(6)
-                                }
-                                .buttonStyle(.tactile)
-                            }
-                        }
-                        .padding(12)
-                        .background(palette.surfaceBackground)
-                        .cornerRadius(10)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
-                        )
-
-                        Spacer()
+            PodSettingsPage(
+                store: store,
+                pluginId: selectedPluginId,
+                onUninstalled: {
+                    if let next = PluginRegistry.shared.allPlugins.first?.manifest.id {
+                        selectedPluginId = next
                     }
-                    .padding(16)
                 }
-            } else {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "puzzlepiece.extension")
-                        .font(.system(size: 32))
-                        .foregroundColor(.secondary)
-                    Text("plugins.selectToConfigure".localized)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            )
+            .id(selectedPluginId)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

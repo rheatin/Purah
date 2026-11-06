@@ -130,12 +130,14 @@ struct LocalizationTests {
             // +19: the storage inspector now names its three buckets, the
             // clipboard and vitals stores, leftover folders, every destructive
             // consequence, the assets caption, and their actions.
-            .traditionalChinese: 640,
-            .japanese: 119,
-            .korean: 119,
-            .french: 119,
-            .german: 119,
-            .spanish: 137
+            // +3: the settings rail labels its pod and Purah groups and names
+            // the System page.
+            .traditionalChinese: 643,
+            .japanese: 122,
+            .korean: 122,
+            .french: 122,
+            .german: 122,
+            .spanish: 140
         ]
 
         for (language, expected) in pinnedCoverage {
