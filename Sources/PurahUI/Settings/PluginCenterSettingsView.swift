@@ -128,6 +128,7 @@ public struct PluginCenterSettingsView: View {
             if let activePlugin = PluginRegistry.shared.plugin(for: selectedPluginId) {
                 let podId = activePlugin.manifest.id
                 let podColor = palette.podColor(for: podId, store: store)
+                let isAdaptiveTelemetry = PluginRegistry.shared.plugin(for: podId)?.usesAdaptiveTelemetryColor == true || podId == "vitals"
                 let isEnabledBinding = Binding(
                     get: { store.pods.first(where: { $0.id == podId })?.isEnabled ?? true },
                     set: { _ in store.togglePodEnabled(id: podId) }
@@ -196,7 +197,7 @@ public struct PluginCenterSettingsView: View {
 
                                 Spacer()
 
-                                if PluginRegistry.shared.plugin(for: podId)?.usesAdaptiveTelemetryColor == true || podId == "vitals" {
+                                if isAdaptiveTelemetry {
                                     HStack(spacing: 6) {
                                         HStack(spacing: 3) {
                                             Circle().fill(Color(red: 0.0, green: 0.90, blue: 0.60)).frame(width: 5, height: 5)
@@ -211,28 +212,24 @@ public struct PluginCenterSettingsView: View {
                                     .padding(.vertical, 3)
                                     .background(Color.primary.opacity(0.04))
                                     .cornerRadius(6)
-                                } else {
-                                    ColorPicker("", selection: Binding(
-                                        get: { podColor },
-                                        set: { newColor in
-                                            if let hex = newColor.toHex() {
-                                                store.setPodColorHex(podId: podId, hex: hex)
-                                            }
-                                        }
-                                    ))
-                                    .labelsHidden()
-                                    .scaleEffect(0.85)
-
-                                    if store.customPodColors[podId] != nil {
-                                        Button("Reset") {
-                                            store.customPodColors.removeValue(forKey: podId)
-                                            store.savePersistentState()
-                                        }
-                                        .buttonStyle(.tactile)
-                                        .font(.system(size: 10, weight: .medium))
-                                        .foregroundColor(palette.primaryAccent)
+                                } else if store.customPodColors[podId] != nil {
+                                    Button("Reset") {
+                                        store.customPodColors.removeValue(forKey: podId)
+                                        store.savePersistentState()
                                     }
+                                    .buttonStyle(.tactile)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundColor(palette.primaryAccent)
                                 }
+                            }
+
+                            if !isAdaptiveTelemetry {
+                                PurahColorPickerField(
+                                    store: store,
+                                    podId: podId,
+                                    defaultHex: activePlugin.manifest.defaultColorHex,
+                                    isCustom: store.customPodColors[podId] != nil
+                                )
                             }
 
                             HStack(spacing: 8) {
