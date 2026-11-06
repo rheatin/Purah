@@ -21,148 +21,152 @@ public struct SystemAccessSettingsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header
-            HStack(spacing: 12) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(palette.primaryAccent)
-                    .modifier(OptionalGlow(color: palette.primaryAccent, enabled: palette.useGlow))
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 20) {
+                header
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("permissions.matrix.title".localized)
-                        .font(palette.fontTitle)
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    Text("permissions.matrix.subtitle".localized)
-                        .font(.caption)
-                        .foregroundColor(.gray)
+                let privacyPermissions = groupedPermissions.filter { $0.permission.isTCCRestricted }
+                let standardCapabilities = groupedPermissions.filter { !$0.permission.isTCCRestricted }
+
+                if !privacyPermissions.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionLabel("permissions.tcc.title".localized, color: .secondary)
+
+                        ForEach(privacyPermissions, id: \.permission.rawValue) { item in
+                            dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
+                        }
+                    }
                 }
-                Spacer()
 
-                Button {
-                    permissions.refreshStatuses()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.caption)
-                        .foregroundColor(palette.primaryAccent)
+                if !standardCapabilities.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionLabel("permissions.ambient.title".localized, color: .secondary)
+
+                        ForEach(standardCapabilities, id: \.permission.rawValue) { item in
+                            dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
-                .help("help.refreshPermissions".localized)
-                .accessibilityLabel("help.refreshPermissions".localized)
-            }
 
-            Divider()
-                .background(palette.borderColor)
+                let unsupported = unsupportedDeclarations
+                if !unsupported.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        sectionLabel("permissions.unsupported.title".localized, color: .orange)
 
-            // Dynamic Permission Cards List
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 14) {
-                    let privacyPermissions = groupedPermissions.filter { $0.permission.isTCCRestricted }
-                    let standardCapabilities = groupedPermissions.filter { !$0.permission.isTCCRestricted }
-
-                    if !privacyPermissions.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("permissions.tcc.title".localized)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(palette.primaryAccent)
-                                .textCase(.uppercase)
-
-                            ForEach(privacyPermissions, id: \.permission.rawValue) { item in
-                                dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
+                        ForEach(unsupported, id: \.self) { line in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 9.5))
+                                    .foregroundColor(.orange)
+                                Text(line)
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.orange)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
                             }
-                        }
-                    }
-
-                    if !standardCapabilities.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("permissions.ambient.title".localized)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .textCase(.uppercase)
-
-                            ForEach(standardCapabilities, id: \.permission.rawValue) { item in
-                                dynamicPermissionCard(permission: item.permission, manifests: item.manifests)
-                            }
-                        }
-                    }
-
-                    let unsupported = unsupportedDeclarations
-                    if !unsupported.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("permissions.unsupported.title".localized)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                .foregroundColor(.orange)
-                                .textCase(.uppercase)
-
-                            ForEach(unsupported, id: \.self) { line in
-                                HStack(alignment: .top, spacing: 6) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .font(.system(size: 9.5))
-                                        .foregroundColor(.orange)
-                                    Text(line)
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.orange)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.orange.opacity(0.10))
-                                .cornerRadius(6)
-                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.10))
+                            .cornerRadius(6)
                         }
                     }
                 }
-                .padding(.trailing, 4)
+
+                statusCard
+                Spacer(minLength: 0)
             }
-
-            Divider()
-                .background(palette.borderColor)
-
-            // Bottom action: Guarantee Access to All
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("permissions.status.title".localized)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
-                    Text(summaryText)
-                        .font(.caption2)
-                        .foregroundColor(.gray)
-                }
-
-                Spacer()
-
-                Button {
-                    Task { @MainActor in
-                        _ = await permissions.guaranteeAllAccess()
-                        SystemCalendarSyncService.shared.syncEvents(into: store, scope: store.calendarScope)
-                        await SystemRemindersSyncService.shared.syncReminders(into: store, scope: store.remindersScope)
-                        NSApp.activate(ignoringOtherApps: true)
-                        for win in NSApp.windows where win.title.contains("Purah") {
-                            win.makeKeyAndOrderFront(nil)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.seal.fill")
-                        Text("permissions.grantAll".localized)
-                            .fontWeight(.semibold)
-                    }
-                    .foregroundColor(palette.style == .native ? Color.white : Color.black)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(palette.primaryAccent)
-                    .cornerRadius(8)
-                    .modifier(OptionalGlow(color: palette.primaryAccent, enabled: palette.useGlow))
-                }
-                .buttonStyle(.plain)
-            }
+            .padding(24)
+            .frame(maxWidth: 680, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(24)
-        .frame(maxWidth: 680, alignment: .topLeading)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(minHeight: 560)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .foregroundColor(.secondary)
+                        .font(.title2)
+                    Text("permissions.matrix.title".localized)
+                        .font(.title3.weight(.bold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
+                }
+                Text("permissions.matrix.subtitle".localized)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button {
+                permissions.refreshStatuses()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("help.refreshPermissions".localized)
+            .accessibilityLabel("help.refreshPermissions".localized)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var statusCard: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("permissions.status.title".localized)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                Text(summaryText)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                Task { @MainActor in
+                    _ = await permissions.guaranteeAllAccess()
+                    SystemCalendarSyncService.shared.syncEvents(into: store, scope: store.calendarScope)
+                    await SystemRemindersSyncService.shared.syncReminders(into: store, scope: store.remindersScope)
+                    NSApp.activate(ignoringOtherApps: true)
+                    for win in NSApp.windows where win.title.contains("Purah") {
+                        win.makeKeyAndOrderFront(nil)
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                    Text("permissions.grantAll".localized)
+                        .fontWeight(.semibold)
+                }
+                .foregroundColor(palette.style == .native ? Color.white : Color.black)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(palette.primaryAccent)
+                .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(palette.surfaceBackground)
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    private func sectionLabel(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+            .foregroundColor(color)
+            .textCase(.uppercase)
     }
 
     private var summaryText: String {
@@ -210,7 +214,7 @@ public struct SystemAccessSettingsView: View {
 
                     Text(permission.securityDescription)
                         .font(.caption2)
-                        .foregroundColor(.gray)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
@@ -302,9 +306,9 @@ public struct SystemAccessSettingsView: View {
         }
         .padding(12)
         .background(palette.surfaceBackground)
-        .cornerRadius(8)
+        .cornerRadius(10)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
         )
     }
