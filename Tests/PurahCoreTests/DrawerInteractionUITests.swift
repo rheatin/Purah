@@ -319,7 +319,7 @@ struct DrawerInteractionUITests {
     @Test("PreferencesTab cases order, valid icons, and localized titles")
     @MainActor
     func testPreferencesTabCasesAndLocalization() {
-        #expect(PreferencesTab.allCases == [.general, .layout, .motion, .plugins, .permissions, .diagnostics])
+        #expect(PreferencesTab.allCases == [.general, .layout, .motion, .market, .permissions, .diagnostics])
 
         #expect(PreferencesTab.general.id == "general")
         #expect(PreferencesTab.general.title == "General")
@@ -733,12 +733,12 @@ struct DrawerInteractionUITests {
         #expect(isMusicActiveAfterSwitch == false, "Music must immediately collapse when moving to Todo")
     }
 
-    @Test("PreferencesTab includes dedicated Plugins tab")
+    @Test("PreferencesTab includes the Market tab")
     @MainActor
-    func testPreferencesPluginsTab() {
-        #expect(PreferencesTab.allCases.contains(.plugins))
-        #expect(PreferencesTab.plugins.title == "Plugins")
-        #expect(PreferencesTab.plugins.icon == "puzzlepiece.extension.fill")
+    func testPreferencesMarketTab() {
+        #expect(PreferencesTab.allCases.contains(.market))
+        #expect(PreferencesTab.market.title == "Market")
+        #expect(PreferencesTab.market.icon == "bag.fill")
     }
 
     @Test("Hardware vitals minimum height covers full process list for scrolling")

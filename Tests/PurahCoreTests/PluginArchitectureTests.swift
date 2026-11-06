@@ -1061,8 +1061,8 @@ struct PluginArchitectureTests {
         let marketView = PluginMarketplaceView(store: store)
         #expect(marketView.marketManager.availableCatalog.count >= 8)
 
-        let prefView = PreferencesView(store: store, initialTab: .plugins)
-        #expect(prefView.selection == .plugins)
+        let prefView = PreferencesView(store: store, initialTab: .market)
+        #expect(prefView.selection == .market)
     }
 
     @Test("Third-party plugin requires zero base code changes to integrate, layout, activate sub-items, and cleanly uninstall")

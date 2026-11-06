@@ -4,28 +4,6 @@ import AppKit
 import UniformTypeIdentifiers
 import PurahCore
 
-public enum PluginCenterTab: String, CaseIterable, Identifiable, Sendable {
-    case installed = "installed"
-    case marketplace = "market"
-
-    nonisolated public var id: String { rawValue }
-
-    nonisolated public var icon: String {
-        switch self {
-        case .installed: return "checkmark.circle.fill"
-        case .marketplace: return "sparkles"
-        }
-    }
-
-    @MainActor
-    public var localizedTitle: String {
-        switch self {
-        case .installed: return "marketplace.tab.installed".localized
-        case .marketplace: return "marketplace.tab.market".localized
-        }
-    }
-}
-
 public struct IdentifiablePluginId: Identifiable {
     public let id: String
     public init(id: String) { self.id = id }
@@ -36,7 +14,6 @@ public struct PluginMarketplaceView: View {
     public let store: PurahWorkspaceStore
     public let marketManager: PluginMarketManager
 
-    @State private var selectedTab: PluginCenterTab = .installed
     @State private var searchFilter: String = ""
     @State private var securityReviewManifest: PurahPluginManifest? = nil
     @State private var configuringPluginId: IdentifiablePluginId? = nil
@@ -51,8 +28,6 @@ public struct PluginMarketplaceView: View {
     /// provider (or none) without touching the network.
     private let catalogService: PluginCatalogService
 
-    public let initialPluginId: String?
-
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
@@ -60,14 +35,11 @@ public struct PluginMarketplaceView: View {
     public init(
         store: PurahWorkspaceStore,
         marketManager: PluginMarketManager? = nil,
-        initialPluginId: String? = nil,
         catalogService: PluginCatalogService = .shared
     ) {
         self.store = store
         self.marketManager = marketManager ?? store.marketManager
-        self.initialPluginId = initialPluginId
         self.catalogService = catalogService
-        self._selectedTab = State(initialValue: .installed)
     }
 
     private var allCatalog: [PurahPluginManifest] {
@@ -91,174 +63,12 @@ public struct PluginMarketplaceView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Top Mode Switcher Bar - Just Two Tabs: Marketplace & Installed
-            HStack(spacing: 12) {
-                HStack(spacing: 4) {
-                    ForEach(PluginCenterTab.allCases) { tab in
-                        let isSelected = selectedTab == tab
-                        Button {
-                            withAnimation(PurahMotionPolicy.micro) {
-                                selectedTab = tab
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: tab.icon)
-                                    .font(.system(size: 11, weight: .semibold))
-                                Text(tab.localizedTitle)
-                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium, design: .rounded))
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                            }
-                            .foregroundColor(isSelected ? (palette.style == .native ? Color.primary : .white) : .secondary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(isSelected ? palette.surfaceBackground : Color.clear)
-                            .cornerRadius(6)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(isSelected ? palette.borderColor.opacity(0.8) : Color.clear, lineWidth: 1)
-                            )
-                        }
-                        .buttonStyle(.tactile)
-                    }
-                }
-                .padding(2)
-                .background(Color.primary.opacity(0.04))
-                .cornerRadius(8)
-
-                Spacer()
-
-                if selectedTab == .marketplace {
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        TextField("Search plugins, tags...", text: $searchFilter)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 11))
-                        if !searchFilter.isEmpty {
-                            Button {
-                                searchFilter = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                            .help("help.clearSearch".localized)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
-                    .cornerRadius(6)
-                    .frame(width: 170)
-                }
-
-                // Active dev package quick rebuild & hot-reload button
-                if let devPkg = activeDevPackageURL {
-                    Button {
-                        handleSelectedPluginURL(devPkg)
-                    } label: {
-                        HStack(spacing: 4) {
-                            if isCompiling {
-                                ProgressView().controlSize(.mini)
-                            } else {
-                                Image(systemName: "arrow.triangle.2.circlepath")
-                            }
-                            Text("marketplace.rebuild".localized)
-                                .lineLimit(1)
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.accentColor)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(palette.surfaceBackground)
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.accentColor.opacity(0.6), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-                    .disabled(isCompiling)
-                    .help("help.recompilePackage".localized)
-                    .accessibilityLabel("help.recompilePackage".localized)
-                }
-
-                // Refresh the remote catalog index
-                if selectedTab == .marketplace {
-                    Button {
-                        Task {
-                            await catalogService.refresh(force: true)
-                            marketManager.applyRemoteCatalog(catalogService.remoteEntries)
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            if case .loading = catalogService.state {
-                                ProgressView().controlSize(.mini)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                            Text("vitals.refresh".localized)
-                                .lineLimit(1)
-                        }
-                        .font(.system(size: 11, weight: .medium))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(palette.surfaceBackground)
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.tactile)
-                    .disabled(!catalogService.hasRemoteSource || catalogService.state == .loading)
-                    .help(catalogService.hasRemoteSource
-                          ? "help.fetchCatalog".localized
-                          : "help.noCatalogSource".localized)
-                    .accessibilityLabel(catalogService.hasRemoteSource
-                          ? "help.fetchCatalog".localized
-                          : "help.noCatalogSource".localized)
-                }
-
-                // "Dev: Load..." button always accessible across tabs
-                Button {
-                    loadLocalPlugin()
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "hammer.fill")
-                        Text("marketplace.devLoad".localized)
-                            .lineLimit(1)
-                    }
-                    .font(.system(size: 11, weight: .medium))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(palette.surfaceBackground)
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.tactile)
-                .disabled(isCompiling)
-                .help("help.selectPackage".localized)
-                .accessibilityLabel("help.selectPackage".localized)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 12)
-            .padding(.bottom, 10)
+            marketHeader
 
             Divider()
                 .background(palette.borderColor.opacity(0.4))
 
-            if selectedTab == .installed {
-                PluginCenterSettingsView(store: store, initialPluginId: initialPluginId)
-            } else {
-                catalogView
-            }
+            catalogView
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(palette.background)
@@ -297,6 +107,148 @@ public struct PluginMarketplaceView: View {
                 dismissButton: .default(Text("OK"))
             )
         }
+    }
+
+    private var marketHeader: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "bag.fill")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("tab.market".localized)
+                        .font(.title3.weight(.bold))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .lineLimit(1)
+                    Text("market.subtitle".localized)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 12)
+            }
+
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    TextField("Search plugins, tags...", text: $searchFilter)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11))
+                    if !searchFilter.isEmpty {
+                        Button {
+                            searchFilter = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("help.clearSearch".localized)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+                .cornerRadius(6)
+                .frame(maxWidth: 280)
+
+                Spacer(minLength: 8)
+
+                if let devPkg = activeDevPackageURL {
+                    Button {
+                        handleSelectedPluginURL(devPkg)
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isCompiling {
+                                ProgressView().controlSize(.mini)
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                            Text("marketplace.rebuild".localized)
+                                .lineLimit(1)
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(palette.surfaceBackground)
+                        .cornerRadius(6)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.accentColor.opacity(0.6), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.tactile)
+                    .disabled(isCompiling)
+                    .help("help.recompilePackage".localized)
+                    .accessibilityLabel("help.recompilePackage".localized)
+                }
+
+                Button {
+                    Task {
+                        await catalogService.refresh(force: true)
+                        marketManager.applyRemoteCatalog(catalogService.remoteEntries)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        if case .loading = catalogService.state {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        Text("vitals.refresh".localized)
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(palette.surfaceBackground)
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.tactile)
+                .disabled(!catalogService.hasRemoteSource || catalogService.state == .loading)
+                .help(catalogService.hasRemoteSource
+                      ? "help.fetchCatalog".localized
+                      : "help.noCatalogSource".localized)
+                .accessibilityLabel(catalogService.hasRemoteSource
+                      ? "help.fetchCatalog".localized
+                      : "help.noCatalogSource".localized)
+
+                Button {
+                    loadLocalPlugin()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "hammer.fill")
+                        Text("marketplace.devLoad".localized)
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(palette.surfaceBackground)
+                    .cornerRadius(6)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(palette.borderColor.opacity(0.6), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.tactile)
+                .disabled(isCompiling)
+                .help("help.selectPackage".localized)
+                .accessibilityLabel("help.selectPackage".localized)
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
     }
 
     // MARK: - Catalog View
@@ -892,8 +844,8 @@ public struct PluginConfigureModalView: View {
             Divider()
                 .background(palette.borderColor.opacity(0.4))
 
-            // Detail Settings
-            PluginCenterSettingsView(store: store, initialPluginId: pluginId)
+            // The rail is the index; this sheet is only the pod's detail page.
+            PodSettingsPage(store: store, pluginId: pluginId)
         }
         .frame(width: 580, height: 500)
         .background(palette.background)

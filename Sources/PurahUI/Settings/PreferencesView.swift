@@ -7,7 +7,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
     case general
     case layout
     case motion
-    case plugins
+    case market
     case permissions
     case diagnostics
 
@@ -18,7 +18,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
         case .general: return "General"
         case .layout: return "Layout"
         case .motion: return "Motion"
-        case .plugins: return "Plugins"
+        case .market: return "Market"
         case .permissions: return "Permissions"
         case .diagnostics: return "Diagnostics"
         }
@@ -30,7 +30,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
         case .general: return "tab.general".localized
         case .layout: return "tab.layout".localized
         case .motion: return "tab.motion".localized
-        case .plugins: return "tab.plugins".localized
+        case .market: return "tab.market".localized
         case .permissions: return "tab.permissions".localized
         case .diagnostics: return "tab.diagnostics".localized
         }
@@ -41,7 +41,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
         case .general: return "gearshape.fill"
         case .layout: return "slider.horizontal.2.square"
         case .motion: return "wand.and.stars"
-        case .plugins: return "puzzlepiece.extension.fill"
+        case .market: return "bag.fill"
         case .permissions: return "lock.shield"
         case .diagnostics: return "stethoscope"
         }
@@ -55,7 +55,7 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
         case .general: return .general
         case .layout: return .layout
         case .motion: return .motion
-        case .plugins: return .plugins
+        case .market: return .market
         case .permissions: return .permissions
         case .diagnostics: return .system
         }
@@ -64,10 +64,10 @@ public enum PreferencesTab: String, CaseIterable, Identifiable {
 
 public enum PreferencesSelection: Hashable, Identifiable, Sendable {
     case pod(String)
-    case layout, general, motion, plugins, permissions, system
+    case layout, general, motion, market, permissions, system
 
     public static let globalCases: [PreferencesSelection] = [
-        .layout, .general, .motion, .plugins, .permissions, .system,
+        .layout, .general, .motion, .market, .permissions, .system,
     ]
 
     public var id: String {
@@ -76,7 +76,7 @@ public enum PreferencesSelection: Hashable, Identifiable, Sendable {
         case .layout: return "layout"
         case .general: return "general"
         case .motion: return "motion"
-        case .plugins: return "plugins"
+        case .market: return "market"
         case .permissions: return "permissions"
         case .system: return "system"
         }
@@ -93,7 +93,7 @@ public enum PreferencesSelection: Hashable, Identifiable, Sendable {
         case .layout: return "slider.horizontal.2.square"
         case .general: return "gearshape.fill"
         case .motion: return "wand.and.stars"
-        case .plugins: return "puzzlepiece.extension.fill"
+        case .market: return "bag.fill"
         case .permissions: return "lock.shield"
         case .system: return "stethoscope"
         }
@@ -106,7 +106,7 @@ public enum PreferencesSelection: Hashable, Identifiable, Sendable {
         case .layout: return "tab.layout".localized
         case .general: return "tab.general".localized
         case .motion: return "tab.motion".localized
-        case .plugins: return "tab.plugins".localized
+        case .market: return "tab.market".localized
         case .permissions: return "tab.permissions".localized
         case .system: return "tab.system".localized
         }
@@ -443,8 +443,8 @@ public struct PreferencesView: View {
                 focusedPodId: focus.podId,
                 focusNonce: focus.nonce
             )
-        case .plugins:
-            PluginMarketplaceView(store: store, initialPluginId: initialPluginId)
+        case .market:
+            PluginMarketplaceView(store: store)
         case .permissions:
             SystemAccessSettingsView(store: store)
         case .system:

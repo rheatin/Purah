@@ -15,7 +15,7 @@ struct SettingsRailTests {
 
         #expect(
             PreferencesSelection.globalCases.map(\.id)
-                == ["layout", "general", "motion", "plugins", "permissions", "system"]
+                == ["layout", "general", "motion", "market", "permissions", "system"]
         )
         for item in PreferencesSelection.globalCases {
             #expect(item.icon?.isEmpty == false, "\(item.id) has no icon")

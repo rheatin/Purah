@@ -73,7 +73,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
         // Register direct plugin settings callback
         store.onRequestOpenPluginSettings = { [weak self] pluginId in
-            self?.showPreferences(initialTab: .plugins, initialPluginId: pluginId)
+            self?.showPreferences(initialTab: .market, initialPluginId: pluginId)
         }
 
         // Connect pod enable/disable changes to plugin lifecycle and single-rail sleep

@@ -118,7 +118,8 @@ public final class LocalizationManager {
             "tab.layout": "Layout",
             "tab.motion": "Motion",
             "tab.interaction": "Motion & General",
-            "tab.plugins": "Plugins",
+            "tab.market": "Market",
+            "market.subtitle": "Install plugins, or load a local package while developing.",
             "tab.permissions": "Permissions",
             "tab.diagnostics": "Diagnostics",
             "tab.system": "System",
@@ -503,7 +504,6 @@ public final class LocalizationManager {
             "calendar.countdown.days": "in %dd",
 
             // Marketplace Tabs
-            "marketplace.tab.market": "Market",
             "marketplace.tab.installed": "Installed",
 
             // Zones
@@ -971,7 +971,6 @@ public final class LocalizationManager {
             "sculptor.dragToRail": "Drag %@ to Left/Right Rail or onto any Pod to Stack",
             "sculptor.dragTip": "Tip: Drag any pill onto a Rail or Stack, or click +L / +R",
             "onboarding.stepCounter": "STEP %d / 6",
-            "plugins.registeredCount": "%d plugins registered",
             "plugins.adaptiveTelemetry": "Adaptive Telemetry Mode (Auto color based on load thresholds)",
             "plugins.uninstall.desc": "Uninstall plugin and completely release its memory and background processes.",
             "plugins.selectToConfigure": "Select a plugin on the left to configure",
@@ -1118,7 +1117,8 @@ public final class LocalizationManager {
             "tab.layout": "布局",
             "tab.motion": "动效",
             "tab.interaction": "动效与通用",
-            "tab.plugins": "插件",
+            "tab.market": "市场",
+            "market.subtitle": "安装插件，或在开发时加载本地包。",
             "tab.permissions": "权限",
             "tab.diagnostics": "诊断",
             "tab.system": "系统",
@@ -1503,7 +1503,6 @@ public final class LocalizationManager {
             "calendar.countdown.days": "%d 天后",
 
             // Marketplace Tabs
-            "marketplace.tab.market": "市场",
             "marketplace.tab.installed": "已安装",
 
             // Zones
@@ -1971,7 +1970,6 @@ public final class LocalizationManager {
             "sculptor.dragToRail": "将 %@ 拖到左/右轨道，或拖到任意 Pod 上堆叠",
             "sculptor.dragTip": "提示：将任意胶囊拖到轨道或堆叠上，或点击 +L / +R",
             "onboarding.stepCounter": "第 %d / 6 步",
-            "plugins.registeredCount": "已注册 %d 个插件",
             "plugins.adaptiveTelemetry": "自适应遥测模式（根据负载阈值自动配色）",
             "plugins.uninstall.desc": "卸载插件并完全释放其内存与后台进程。",
             "plugins.selectToConfigure": "在左侧选择一个插件进行配置",
@@ -2105,6 +2103,8 @@ public final class LocalizationManager {
         .traditionalChinese: [
             "tab.general": "通用",
             "tab.system": "系統",
+            "tab.market": "市場",
+            "market.subtitle": "安裝外掛，或在開發時載入本機套件。",
             "system.subtitle": "執行狀態與磁碟用量",
             "system.runtime": "執行",
             "system.disk": "磁碟",
@@ -2621,7 +2621,6 @@ public final class LocalizationManager {
             "sculptor.dragToRail": "將 %@ 拖到左/右軌條，或拖到任意 Pod 上堆疊",
             "sculptor.dragTip": "提示：將任意膠囊拖到軌條或堆疊上，或點擊 +L / +R",
             "onboarding.stepCounter": "第 %d / 6 步",
-            "plugins.registeredCount": "已註冊 %d 個外掛",
             "plugins.adaptiveTelemetry": "自適應遙測模式（依負載閾值自動配色）",
             "plugins.uninstall.desc": "解除安裝外掛並完全釋放其記憶體與背景程序。",
             "plugins.selectToConfigure": "在左側選擇一個外掛進行設定",
@@ -2774,6 +2773,8 @@ public final class LocalizationManager {
         .japanese: [
             "tab.general": "一般",
             "tab.system": "システム",
+            "tab.market": "マーケット",
+            "market.subtitle": "プラグインをインストールするか、開発中にローカルパッケージを読み込みます。",
             "system.subtitle": "実行状態とディスク使用量",
             "system.runtime": "実行",
             "system.disk": "ディスク",
@@ -2919,6 +2920,8 @@ public final class LocalizationManager {
         .korean: [
             "tab.general": "일반",
             "tab.system": "시스템",
+            "tab.market": "마켓",
+            "market.subtitle": "플러그인을 설치하거나 개발 중에 로컬 패키지를 불러옵니다.",
             "system.subtitle": "실행 상태 및 디스크 사용량",
             "system.runtime": "실행",
             "system.disk": "디스크",
@@ -3064,6 +3067,8 @@ public final class LocalizationManager {
         .french: [
             "tab.general": "Général",
             "tab.system": "Système",
+            "tab.market": "Marché",
+            "market.subtitle": "Installez des plugins ou chargez un paquet local pendant le développement.",
             "system.subtitle": "État d’exécution et données stockées sur le disque",
             "system.runtime": "Exécution",
             "system.disk": "Disque",
@@ -3209,6 +3214,8 @@ public final class LocalizationManager {
         .german: [
             "tab.general": "Allgemein",
             "tab.system": "System",
+            "tab.market": "Marktplatz",
+            "market.subtitle": "Installiere Plugins oder lade während der Entwicklung ein lokales Paket.",
             "system.subtitle": "Laufzeitstatus und auf dem Datenträger gespeicherte Daten",
             "system.runtime": "Laufzeit",
             "system.disk": "Datenträger",
@@ -3354,6 +3361,8 @@ public final class LocalizationManager {
         .spanish: [
             "tab.general": "General",
             "tab.system": "Sistema",
+            "tab.market": "Mercado",
+            "market.subtitle": "Instala plugins o carga un paquete local durante el desarrollo.",
             "system.subtitle": "Estado de ejecución y datos guardados en el disco",
             "system.runtime": "Ejecución",
             "system.disk": "Disco",

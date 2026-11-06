@@ -140,12 +140,14 @@ struct LocalizationTests {
             // +9: Notifications gain their default and per-pod sound controls,
             // and the sound menu now covers all 14 system sounds.
             // +6: the System page gains its subtitle, runtime, disk and store-count copy.
-            .traditionalChinese: 664,
-            .japanese: 143,
-            .korean: 143,
-            .french: 143,
-            .german: 143,
-            .spanish: 161
+            // +2: the settings rail renames Plugins to Market and adds its subtitle;
+            // -1: the deleted plugin sidebar's registered-count line.
+            .traditionalChinese: 665,
+            .japanese: 145,
+            .korean: 145,
+            .french: 145,
+            .german: 145,
+            .spanish: 163
         ]
 
         for (language, expected) in pinnedCoverage {
