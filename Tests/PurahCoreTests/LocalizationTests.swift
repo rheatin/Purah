@@ -118,12 +118,14 @@ struct LocalizationTests {
             // +1: the vitals sparkline names its click-to-cycle hint.
             // +8: Traditional Chinese now covers the alert style titles and subtitles.
             // +8: the calendar's Up-Next countdown and Open in Calendar strings.
-            .traditionalChinese: 597,
-            .japanese: 71,
-            .korean: 71,
-            .french: 71,
-            .german: 71,
-            .spanish: 89
+            // +6: Drop Shelf's Link, Move, undo banner, and failure copy.
+            // +1: the shelf's refused-delete warning.
+            .traditionalChinese: 604,
+            .japanese: 78,
+            .korean: 78,
+            .french: 78,
+            .german: 78,
+            .spanish: 96
         ]
 
         for (language, expected) in pinnedCoverage {

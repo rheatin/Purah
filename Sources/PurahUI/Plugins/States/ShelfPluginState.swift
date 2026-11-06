@@ -5,6 +5,37 @@ import Foundation
 import Observation
 import PurahCore
 
+public struct ShelfIngestOutcome: Sendable, Equatable {
+    public var itemIDs: [String] = []
+    public var movedIDs: [String] = []
+    public var fallbackURLs: [URL] = []
+    public var failedURLs: [URL] = []
+
+    public var didIngest: Bool { !itemIDs.isEmpty }
+
+    public init(
+        itemIDs: [String] = [],
+        movedIDs: [String] = [],
+        fallbackURLs: [URL] = [],
+        failedURLs: [URL] = []
+    ) {
+        self.itemIDs = itemIDs
+        self.movedIDs = movedIDs
+        self.fallbackURLs = fallbackURLs
+        self.failedURLs = failedURLs
+    }
+}
+
+public struct ShelfUndoOutcome: Sendable, Equatable {
+    public var restoredIDs: [String]
+    public var failedIDs: [String]
+
+    public init(restoredIDs: [String] = [], failedIDs: [String] = []) {
+        self.restoredIDs = restoredIDs
+        self.failedIDs = failedIDs
+    }
+}
+
 @Observable
 @MainActor
 public final class ShelfPluginState: Sendable {
@@ -17,6 +48,10 @@ public final class ShelfPluginState: Sendable {
     public var diskQuota: PurahDiskQuota
     public var autoPrune: Bool
     public var autoRemoveOnDrag: Bool
+    /// Injection seams keep file movement and Trash removal testable without
+    /// touching the person's real files or Trash.
+    @ObservationIgnored public var moveHandler: (URL, URL) throws -> Void
+    @ObservationIgnored public var recycleHandler: (URL) throws -> Void
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var selectedFiles: [ShelfFileItem] {
@@ -104,6 +139,13 @@ public final class ShelfPluginState: Sendable {
         self.diskQuota = storage.codable(forKey: "diskQuota", as: PurahDiskQuota.self) ?? .mb250
         self.autoPrune = storage.string(forKey: "autoPrune") != nil ? storage.bool(forKey: "autoPrune") : true
         self.autoRemoveOnDrag = storage.string(forKey: "autoRemoveOnDrag") != nil ? storage.bool(forKey: "autoRemoveOnDrag") : true
+        self.moveHandler = { source, destination in
+            try FileManager.default.moveItem(at: source, to: destination)
+        }
+        self.recycleHandler = { url in
+            var resultingURL: NSURL?
+            try FileManager.default.trashItem(at: url, resultingItemURL: &resultingURL)
+        }
 
         let hasAuthoritativeIndex: Bool
         if let decoded = fileStorage.loadIndex([ShelfFileItem].self) {
@@ -180,13 +222,16 @@ public final class ShelfPluginState: Sendable {
     /// walking the same directory on every deleted item.
     @discardableResult
     public func enforceStoragePolicies(now: Date = Date()) -> Bool {
+        // A moved file is the person's only copy, unlike the cache-like files
+        // Purah creates. Exclude it from both retention and quota accounting.
+        let policyCandidates = files.filter { $0.ingestMode != .moved }
         var sizes: [String: Int64] = [:]
-        for item in files {
+        for item in policyCandidates {
             sizes[item.id] = ownedBytes(of: item)
         }
         var totalBytes = sizes.values.reduce(Int64(0), +)
         var idsToRemove = Set(
-            files
+            policyCandidates
                 .filter { !$0.isFavorite && retentionPeriod.isExpired(timestamp: $0.timestamp, now: now) }
                 .map(\.id)
         )
@@ -195,7 +240,7 @@ public final class ShelfPluginState: Sendable {
         }
 
         if autoPrune, let maxBytes = diskQuota.maxBytes, totalBytes > maxBytes {
-            let oldestFirst = files
+            let oldestFirst = policyCandidates
                 .filter {
                     !$0.isFavorite
                         && !idsToRemove.contains($0.id)
@@ -247,57 +292,154 @@ public final class ShelfPluginState: Sendable {
         return max(size.int64Value, 0)
     }
 
-    public func addFile(url: URL) {
-        let standardized = url.standardizedFileURL
-        let targetPath = standardized.path
+    @discardableResult
+    public func addFile(url: URL) -> ShelfFileItem? {
+        addFile(url: url, mode: .link)
+    }
 
-        if let existingIndex = files.firstIndex(where: {
-            $0.filePath == targetPath || $0.resolvedURL?.standardizedFileURL.path == targetPath
-        }) {
-            var existingItem = files.remove(at: existingIndex)
-            existingItem.timestamp = Date()
-            files.insert(existingItem, at: 0)
-            save()
-            if let boundStore {
-                if let boundIndex = boundStore._shelfFiles.firstIndex(where: {
-                    $0.filePath == targetPath || $0.resolvedURL?.standardizedFileURL.path == targetPath
-                }) {
-                    var boundItem = boundStore._shelfFiles.remove(at: boundIndex)
-                    boundItem.timestamp = Date()
-                    boundStore._shelfFiles.insert(boundItem, at: 0)
-                } else {
-                    boundStore._shelfFiles.insert(existingItem, at: 0)
-                }
+    @discardableResult
+    public func addFile(url: URL, mode: ShelfIngestMode) -> ShelfFileItem? {
+        let result = ingestFile(url: url, mode: mode)
+        if let item = result.item {
+            persistFiles()
+            boundStore?._shelfFiles = files
+            return item
+        }
+        return nil
+    }
+
+    /// Ingests a drop as one transaction: one persistence pass and one store
+    /// mirror update, regardless of how many URLs arrived together.
+    public func ingest(urls: [URL], mode: ShelfIngestMode) -> ShelfIngestOutcome {
+        var outcome = ShelfIngestOutcome()
+        for url in urls {
+            let standardized = url.standardizedFileURL
+            let result = ingestFile(url: standardized, mode: mode)
+            guard let item = result.item else {
+                outcome.failedURLs.append(standardized)
+                continue
             }
-            return
+            outcome.itemIDs.append(item.id)
+            if item.ingestMode == .moved {
+                outcome.movedIDs.append(item.id)
+            }
+            if result.fellBackToLink {
+                outcome.fallbackURLs.append(standardized)
+            }
         }
 
-        let itemId = UUID().uuidString
-        let name = standardized.lastPathComponent
-        let ext = standardized.pathExtension
-        let attr = try? FileManager.default.attributesOfItem(atPath: targetPath)
-        let size = (attr?[.size] as? Int64) ?? 0
-        let sizeDesc = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        if !outcome.itemIDs.isEmpty {
+            persistFiles()
+            boundStore?._shelfFiles = files
+        }
+        return outcome
+    }
 
+    private struct FileIngestResult {
+        let item: ShelfFileItem?
+        let fellBackToLink: Bool
+    }
+
+    private func ingestFile(url: URL, mode: ShelfIngestMode) -> FileIngestResult {
+        let source = url.standardizedFileURL
+        let sourcePath = source.path
+        let existingIndex = files.firstIndex(where: {
+            $0.filePath == sourcePath || $0.resolvedURL?.standardizedFileURL.path == sourcePath
+        })
+
+        if mode == .link || mode == .owned {
+            if let existingIndex {
+                files[existingIndex].timestamp = Date()
+                let item = files.remove(at: existingIndex)
+                files.insert(item, at: 0)
+                return FileIngestResult(item: item, fellBackToLink: false)
+            }
+            let item = makeFileItem(url: source, mode: mode, originPath: nil)
+            files.insert(item, at: 0)
+            return FileIngestResult(item: item, fellBackToLink: false)
+        }
+
+        // A shelf item dropped back onto its own shelf is already where it
+        // belongs. Preserve its existing mode, or treat a previously unknown
+        // sandbox file as shelf-owned rather than pretending it was moved.
+        if Self.isPath(sourcePath, inside: fileStorage.baseDirectory) {
+            if let existingIndex {
+                files[existingIndex].timestamp = Date()
+                let item = files.remove(at: existingIndex)
+                files.insert(item, at: 0)
+                return FileIngestResult(item: item, fellBackToLink: false)
+            }
+            let item = makeFileItem(url: source, mode: .owned, originPath: nil)
+            files.insert(item, at: 0)
+            return FileIngestResult(item: item, fellBackToLink: false)
+        }
+
+        let destination = uniqueAssetURL(for: source.lastPathComponent)
+        do {
+            try moveHandler(source, destination)
+            let preserved = existingIndex.map { files[$0] }
+            let item = makeFileItem(
+                url: destination,
+                mode: .moved,
+                originPath: sourcePath,
+                id: preserved?.id ?? UUID().uuidString,
+                isFavorite: preserved?.isFavorite ?? false
+            )
+            replaceOrInsert(item, existingIndex: existingIndex)
+            return FileIngestResult(item: item, fellBackToLink: false)
+        } catch {
+            // The move failed, but the original is still the safest thing to
+            // keep. A link row is lossless; a missing file is not.
+            guard FileManager.default.fileExists(atPath: source.path) else {
+                return FileIngestResult(item: nil, fellBackToLink: false)
+            }
+            let preserved = existingIndex.map { files[$0] }
+            let item = makeFileItem(
+                url: source,
+                mode: .link,
+                originPath: nil,
+                id: preserved?.id ?? UUID().uuidString,
+                isFavorite: preserved?.isFavorite ?? false
+            )
+            replaceOrInsert(item, existingIndex: existingIndex)
+            return FileIngestResult(item: item, fellBackToLink: true)
+        }
+    }
+
+    private func makeFileItem(
+        url: URL,
+        mode: ShelfIngestMode,
+        originPath: String?,
+        id: String = UUID().uuidString,
+        isFavorite: Bool = false
+    ) -> ShelfFileItem {
+        let standardized = url.standardizedFileURL
+        let attr = try? FileManager.default.attributesOfItem(atPath: standardized.path)
+        let size = (attr?[.size] as? Int64) ?? 0
         let bookmark = try? standardized.bookmarkData(
             options: [.minimalBookmark],
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-
-        let item = ShelfFileItem(
-            id: itemId,
-            name: name,
-            sizeDescription: sizeDesc,
-            fileExtension: ext,
-            filePath: targetPath,
+        return ShelfFileItem(
+            id: id,
+            name: standardized.lastPathComponent,
+            sizeDescription: ByteCountFormatter.string(fromByteCount: size, countStyle: .file),
+            fileExtension: standardized.pathExtension,
+            filePath: standardized.path,
             bookmarkData: bookmark,
             timestamp: Date(),
-            isFavorite: false
+            isFavorite: isFavorite,
+            ingestMode: mode,
+            originPath: originPath
         )
+    }
+
+    private func replaceOrInsert(_ item: ShelfFileItem, existingIndex: Int?) {
+        if let existingIndex {
+            files.remove(at: existingIndex)
+        }
         files.insert(item, at: 0)
-        save()
-        boundStore?._shelfFiles.insert(item, at: 0)
     }
 
     public func addFileItem(_ item: ShelfFileItem) {
@@ -375,7 +517,7 @@ public final class ShelfPluginState: Sendable {
 
         guard FileManager.default.fileExists(atPath: destZipURL.path) else { return nil }
 
-        addFile(url: destZipURL)
+        addFile(url: destZipURL, mode: .owned)
         let standardizedZipPath = destZipURL.standardizedFileURL.path
         if let newZipItem = files.first(where: {
             $0.filePath == standardizedZipPath || $0.name == destZipURL.lastPathComponent
@@ -402,7 +544,7 @@ public final class ShelfPluginState: Sendable {
 
         let fileURL = uniqueAssetURL(for: baseName)
         guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
-        addFile(url: fileURL)
+        addFile(url: fileURL, mode: .owned)
         let standardizedPath = fileURL.standardizedFileURL.path
         return files.first(where: { $0.filePath == standardizedPath })
     }
@@ -417,7 +559,7 @@ public final class ShelfPluginState: Sendable {
         let baseName = "Snippet_\(Int(Date().timeIntervalSince1970)).txt"
         let fileURL = uniqueAssetURL(for: baseName)
         guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
-        addFile(url: fileURL)
+        addFile(url: fileURL, mode: .owned)
         let standardizedPath = fileURL.standardizedFileURL.path
         return files.first(where: { $0.filePath == standardizedPath })
     }
@@ -447,7 +589,7 @@ public final class ShelfPluginState: Sendable {
         """
         guard let data = weblocPlist.data(using: .utf8),
               (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
-        addFile(url: fileURL)
+        addFile(url: fileURL, mode: .owned)
         let standardizedPath = fileURL.standardizedFileURL.path
         return files.first(where: { $0.filePath == standardizedPath })
     }
@@ -463,6 +605,9 @@ public final class ShelfPluginState: Sendable {
     public func handleDragOutCompleted(id: String) -> Bool {
         guard autoRemoveOnDrag else { return false }
         guard let item = files.first(where: { $0.id == id }), !item.isFavorite else { return false }
+        // A moved file is the person's only copy: dropping the row would let the
+        // orphan sweep unlink it for good, so it is never auto-removed.
+        guard item.ingestMode != .moved else { return false }
         removeFile(id: id, deletingOwnedFile: false)
         return true
     }
@@ -473,7 +618,11 @@ public final class ShelfPluginState: Sendable {
         guard autoRemoveOnDrag else { return }
         for id in ids {
             if let item = files.first(where: { $0.id == id }), !item.isFavorite {
-                removeFile(id: id, deletingOwnedFile: false)
+                // Moved originals stay put for the same reason as above: the
+                // row is the only thing keeping their file from the orphan sweep.
+                if item.ingestMode != .moved {
+                    removeFile(id: id, deletingOwnedFile: false)
+                }
             }
             selectedFileIds.remove(id)
             if lastSelectedFileId == id {
@@ -485,6 +634,7 @@ public final class ShelfPluginState: Sendable {
     /// Removes any item from the shelf whose referenced file no longer exists on disk.
     public func cleanupInvalidItems() {
         let invalidIds = files.filter { item in
+            guard item.ingestMode != .moved else { return false }
             guard item.filePath != nil else { return false }
             let path = item.resolvedURL?.path ?? ""
             return !FileManager.default.fileExists(atPath: path)
@@ -517,11 +667,12 @@ public final class ShelfPluginState: Sendable {
     }
 
     private func removeFile(id: String, deletingOwnedFile: Bool) {
-        if deletingOwnedFile,
-           let item = files.first(where: { $0.id == id }),
-           let path = item.filePath,
-           Self.isPath(path, inside: fileStorage.baseDirectory) {
-            try? FileManager.default.removeItem(atPath: path)
+        if deletingOwnedFile, let item = files.first(where: { $0.id == id }) {
+            guard deleteStoredContent(for: item) else {
+                // The row stays visible, so silence would read as a dead button.
+                boundStore?.onCapacityWarningToast?("dropshelf.deleteFailed".localized)
+                return
+            }
         }
         files.removeAll { $0.id == id }
         selectedFileIds.remove(id)
@@ -536,32 +687,110 @@ public final class ShelfPluginState: Sendable {
     /// under the Star Protection Immunity Rule.
     public func clear() {
         let itemsToRemove = files.filter { !$0.isFavorite }
+        var removedIDs: Set<String> = []
         for item in itemsToRemove {
-            if let path = item.filePath, Self.isPath(path, inside: fileStorage.baseDirectory) {
-                try? FileManager.default.removeItem(atPath: path)
-            }
+            guard deleteStoredContent(for: item) else { continue }
+            removedIDs.insert(item.id)
             selectedFileIds.remove(item.id)
             if lastSelectedFileId == item.id {
                 lastSelectedFileId = nil
             }
         }
-        files.removeAll { !$0.isFavorite }
+        files.removeAll { removedIDs.contains($0.id) }
         save()
-        boundStore?._shelfFiles.removeAll { !$0.isFavorite }
+        boundStore?._shelfFiles = files
     }
 
     /// Hard reset clearing all stashed files including favorites.
     public func clearAllIncludingFavorites() {
+        var removedIDs: Set<String> = []
         for item in files {
-            if let path = item.filePath, Self.isPath(path, inside: fileStorage.baseDirectory) {
-                try? FileManager.default.removeItem(atPath: path)
+            guard deleteStoredContent(for: item) else { continue }
+            removedIDs.insert(item.id)
+        }
+        files.removeAll { removedIDs.contains($0.id) }
+        selectedFileIds.subtract(removedIDs)
+        if let lastSelectedFileId, removedIDs.contains(lastSelectedFileId) {
+            self.lastSelectedFileId = nil
+        }
+        save()
+        boundStore?._shelfFiles = files
+    }
+
+    /// Puts moved originals back where they came from. A missing destination
+    /// directory or an occupied original path refuses that item instead of
+    /// overwriting another file.
+    public func undoMove(itemIDs: [String]) -> ShelfUndoOutcome {
+        var outcome = ShelfUndoOutcome()
+        for id in itemIDs {
+            // An id that is no longer here was already restored (or is already
+            // gone), so a second tap on Undo is skipped, not reported as a failure.
+            guard let item = files.first(where: { $0.id == id }) else { continue }
+            guard item.ingestMode == .moved,
+                  let sandboxPath = ownedPath(of: item),
+                  let originPath = item.originPath else {
+                outcome.failedIDs.append(id)
+                continue
+            }
+
+            let source = URL(fileURLWithPath: sandboxPath).standardizedFileURL
+            let destination = URL(fileURLWithPath: originPath).standardizedFileURL
+            let originDirectory = destination.deletingLastPathComponent()
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: originDirectory.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue,
+                  !FileManager.default.fileExists(atPath: destination.path) else {
+                outcome.failedIDs.append(id)
+                continue
+            }
+
+            do {
+                try moveHandler(source, destination)
+                outcome.restoredIDs.append(id)
+            } catch {
+                outcome.failedIDs.append(id)
             }
         }
-        files.removeAll()
-        selectedFileIds.removeAll()
-        lastSelectedFileId = nil
-        save()
-        boundStore?._shelfFiles.removeAll()
+
+        let restored = Set(outcome.restoredIDs)
+        if !restored.isEmpty {
+            files.removeAll { restored.contains($0.id) }
+            selectedFileIds.subtract(restored)
+            if let lastSelectedFileId, restored.contains(lastSelectedFileId) {
+                self.lastSelectedFileId = nil
+            }
+            persistFiles()
+            boundStore?._shelfFiles = files
+        }
+        return outcome
+    }
+
+    /// Returns false when a moved original could not be recycled, so its row
+    /// stays visible rather than becoming an orphan the person cannot find.
+    private func deleteStoredContent(for item: ShelfFileItem) -> Bool {
+        switch item.ingestMode {
+        case .moved:
+            guard let path = ownedPath(of: item) else { return false }
+            guard FileManager.default.fileExists(atPath: path) else { return true }
+            do {
+                try recycleHandler(URL(fileURLWithPath: path))
+                return true
+            } catch {
+                return false
+            }
+        case .owned:
+            if let path = ownedPath(of: item) {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+            return true
+        case .link:
+            // Rows written before ingestMode existed used the same path-based
+            // ownership rule. A legacy link inside the sandbox is still ours.
+            if let path = ownedPath(of: item) {
+                try? FileManager.default.removeItem(atPath: path)
+            }
+            return true
+        }
     }
 
     public func mount(store: PurahWorkspaceStore) {
