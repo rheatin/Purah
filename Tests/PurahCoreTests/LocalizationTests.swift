@@ -120,12 +120,14 @@ struct LocalizationTests {
             // +8: the calendar's Up-Next countdown and Open in Calendar strings.
             // +6: Drop Shelf's Link, Move, undo banner, and failure copy.
             // +1: the shelf's refused-delete warning.
-            .traditionalChinese: 604,
-            .japanese: 78,
-            .korean: 78,
-            .french: 78,
-            .german: 78,
-            .spanish: 96
+            // +3: the shelf's zone hints; the partial tables also gained the
+            // AirDrop title they had been falling back to English for.
+            .traditionalChinese: 608,
+            .japanese: 82,
+            .korean: 82,
+            .french: 82,
+            .german: 82,
+            .spanish: 100
         ]
 
         for (language, expected) in pinnedCoverage {

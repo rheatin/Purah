@@ -167,27 +167,34 @@ public struct DropShelfDrawerView: View {
                 // labels make each drop's consequence explicit.
                 GeometryReader { proxy in
                     let isCompact = ShelfDropZoneGeometry.isCompact(forCardHeight: proxy.size.height)
+                    let showsHint = ShelfDropZoneGeometry.showsHint(forCardHeight: proxy.size.height)
                     VStack(spacing: ShelfDropZoneGeometry.spacing) {
                         emptyDropZone(
                             icon: "link",
                             titleKey: "dropshelf.dropToLink",
+                            hintKey: "dropshelf.dropToLinkHint",
                             tint: shelfColor,
                             isTargeted: isLinkTargeted,
-                            isCompact: isCompact
+                            isCompact: isCompact,
+                            showsHint: showsHint
                         )
                         emptyDropZone(
                             icon: "tray.and.arrow.down.fill",
                             titleKey: "dropshelf.dropToMove",
+                            hintKey: "dropshelf.dropToMoveHint",
                             tint: Color.orange,
                             isTargeted: isMoveTargeted,
-                            isCompact: isCompact
+                            isCompact: isCompact,
+                            showsHint: showsHint
                         )
                         emptyDropZone(
                             icon: "paperplane.fill",
                             titleKey: "dropshelf.dropToAirDrop",
+                            hintKey: "dropshelf.dropToAirDropHint",
                             tint: Color.blue,
                             isTargeted: isAirDropTargeted,
-                            isCompact: isCompact
+                            isCompact: isCompact,
+                            showsHint: showsHint
                         )
                     }
                     .padding(ShelfDropZoneGeometry.padding)
@@ -423,27 +430,34 @@ public struct DropShelfDrawerView: View {
     @ViewBuilder
     private func splitDropOverlay(activeZone: ShelfDropZone) -> some View {
         let isCompact = ShelfDropZoneGeometry.isCompact(forCardHeight: cardHeight)
+        let showsHint = ShelfDropZoneGeometry.showsHint(forCardHeight: cardHeight)
         VStack(spacing: ShelfDropZoneGeometry.spacing) {
             dropZoneBox(
                 isTargeted: activeZone == .link,
                 icon: "link",
                 titleKey: "dropshelf.dropToLink",
+                hintKey: "dropshelf.dropToLinkHint",
                 tint: shelfColor,
-                isCompact: isCompact
+                isCompact: isCompact,
+                showsHint: showsHint
             )
             dropZoneBox(
                 isTargeted: activeZone == .move,
                 icon: "tray.and.arrow.down.fill",
                 titleKey: "dropshelf.dropToMove",
+                hintKey: "dropshelf.dropToMoveHint",
                 tint: Color.orange,
-                isCompact: isCompact
+                isCompact: isCompact,
+                showsHint: showsHint
             )
             dropZoneBox(
                 isTargeted: activeZone == .airDrop,
                 icon: "paperplane.fill",
                 titleKey: "dropshelf.dropToAirDrop",
+                hintKey: "dropshelf.dropToAirDropHint",
                 tint: Color.blue,
-                isCompact: isCompact
+                isCompact: isCompact,
+                showsHint: showsHint
             )
         }
         .padding(ShelfDropZoneGeometry.padding)
@@ -456,9 +470,11 @@ public struct DropShelfDrawerView: View {
     private func emptyDropZone(
         icon: String,
         titleKey: String,
+        hintKey: String,
         tint: Color,
         isTargeted: Bool,
-        isCompact: Bool
+        isCompact: Bool,
+        showsHint: Bool
     ) -> some View {
         Group {
             if isCompact {
@@ -475,7 +491,7 @@ public struct DropShelfDrawerView: View {
                 }
                 .frame(minHeight: 20)
             } else {
-                VStack(spacing: 3) {
+                VStack(spacing: showsHint ? 2 : 3) {
                     Image(systemName: icon)
                         .font(.system(size: 20))
                         .foregroundColor(tint.opacity(0.9))
@@ -483,6 +499,16 @@ public struct DropShelfDrawerView: View {
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    if showsHint {
+                        // Says what the drop does to the file. The box keeps
+                        // `maxHeight: .infinity`, so this never decides its height.
+                        Text(hintKey.localized)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(palette.style == .native ? .secondary : Color.white.opacity(0.6))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
                 }
             }
         }
@@ -568,8 +594,10 @@ public struct DropShelfDrawerView: View {
         isTargeted: Bool,
         icon: String,
         titleKey: String,
+        hintKey: String,
         tint: Color,
-        isCompact: Bool
+        isCompact: Bool,
+        showsHint: Bool
     ) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -590,7 +618,7 @@ public struct DropShelfDrawerView: View {
                 .padding(.horizontal, 8)
                 .frame(minHeight: 20)
             } else {
-                VStack(spacing: 5) {
+                VStack(spacing: showsHint ? 2 : 5) {
                     Image(systemName: icon)
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
@@ -598,7 +626,17 @@ public struct DropShelfDrawerView: View {
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                         .padding(.horizontal, 12)
+                    if showsHint {
+                        Text(hintKey.localized)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(Color.white.opacity(0.6))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .padding(.horizontal, 8)
+                    }
                 }
             }
         }
@@ -970,6 +1008,9 @@ public enum ShelfDropZoneGeometry {
     public static let spacing: CGFloat = 8
     /// Below this height per zone an icon no longer fits above its label.
     public static let compactZoneHeight: CGFloat = 44
+    /// At or above this height per zone there is room for the line that says
+    /// what the drop actually does to the file.
+    public static let hintZoneHeight: CGFloat = 62
 
     /// Height of one drawn box. The `max(_: 1)` floor keeps an unmeasured card
     /// from dividing by zero.
@@ -979,6 +1020,11 @@ public enum ShelfDropZoneGeometry {
 
     public static func isCompact(forCardHeight height: CGFloat) -> Bool {
         zoneHeight(forCardHeight: height) < compactZoneHeight
+    }
+
+    /// Whether a zone is tall enough to carry the line explaining the drop.
+    public static func showsHint(forCardHeight height: CGFloat) -> Bool {
+        zoneHeight(forCardHeight: height) >= hintZoneHeight
     }
 
     /// Middle of the gap between the Link and Move boxes.
