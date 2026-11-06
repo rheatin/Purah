@@ -217,6 +217,39 @@ struct SettingsRailTests {
         #expect(within.text == "64 %")
         #expect(within.tone == .ok)
         #expect(!within.isOverCapacity)
+
+        #expect(SystemRailCapacityReadout(ratio: 1.0).tone == .warning)
+    }
+
+    @Test("Rail capacity tail explains what happens next")
+    @MainActor
+    func railCapacityTail() {
+        let localization = LocalizationManager.shared
+        let savedLanguage = localization.currentLanguage
+        defer { localization.currentLanguage = savedLanguage }
+        localization.currentLanguage = .english
+
+        #expect(
+            SystemRailCapacityTail.resolve(
+                ratio: 0.65,
+                breathingEnabled: false,
+                freePoints: 210
+            ).text == "210 pt free"
+        )
+        #expect(
+            SystemRailCapacityTail.resolve(
+                ratio: 1.09,
+                breathingEnabled: true,
+                freePoints: 0
+            ).text == "compressing"
+        )
+        #expect(
+            SystemRailCapacityTail.resolve(
+                ratio: 1.09,
+                breathingEnabled: false,
+                freePoints: 0
+            ).text == "spills to page 2"
+        )
     }
 
     @Test("Store count uses the singular sentence for one store")

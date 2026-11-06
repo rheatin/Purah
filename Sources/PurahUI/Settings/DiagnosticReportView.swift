@@ -171,6 +171,17 @@ public struct DiagnosticReportView: View {
     private var runtimeCard: some View {
         let left = SystemRailCapacityReadout(ratio: store.capacityRatio(for: .left))
         let right = SystemRailCapacityReadout(ratio: store.capacityRatio(for: .right))
+        let breathing = store.isDynamicBreathingEnabled
+        let leftTail = SystemRailCapacityTail.resolve(
+            ratio: left.ratio,
+            breathingEnabled: breathing,
+            freePoints: freeRailPoints(for: .left)
+        )
+        let rightTail = SystemRailCapacityTail.resolve(
+            ratio: right.ratio,
+            breathingEnabled: breathing,
+            freePoints: freeRailPoints(for: .right)
+        )
         let stalls = logger.mainThreadStallsCount
 
         return sectionCard(title: "system.runtime".localized) {
@@ -190,17 +201,22 @@ public struct DiagnosticReportView: View {
                 readoutRow(
                     key: "Left rail",
                     value: left.text,
-                    tail: "of height",
-                    tone: left.isOverCapacity ? .warning : .neutral
+                    tail: leftTail.text,
+                    tone: left.tone
                 )
                 readoutRow(
                     key: "Right rail",
                     value: right.text,
-                    tail: right.isOverCapacity ? "over capacity" : "of height",
-                    tone: right.isOverCapacity ? .warning : .neutral
+                    tail: rightTail.text,
+                    tone: right.tone
                 )
             }
         }
+    }
+
+    private func freeRailPoints(for edge: MountEdge) -> Int {
+        let free = store.availableScreenHeight(for: edge) - store.totalRequiredHeight(for: edge)
+        return Int(max(free, 0).rounded())
     }
 
     private var diskCard: some View {
@@ -336,7 +352,7 @@ public struct DiagnosticReportView: View {
             Text(value)
                 .font(.system(size: 11.5, design: .monospaced))
                 .monospacedDigit()
-                .foregroundColor(.primary)
+                .foregroundColor(tone == .warning ? tone.color : .primary)
 
             HStack(spacing: 5) {
                 if tail.isEmpty, tone != .neutral {
@@ -410,11 +426,40 @@ struct SystemRailCapacityReadout: Equatable, Sendable {
     }
 
     var isOverCapacity: Bool {
-        ratio > 1.0
+        ratio >= 1.0
     }
 
     var tone: SystemReadoutTone {
         isOverCapacity ? .warning : .ok
+    }
+}
+
+enum SystemRailCapacityTail: Equatable, Sendable {
+    case free(Int)
+    case compressing
+    case pageTwo
+
+    static func resolve(
+        ratio: Double,
+        breathingEnabled: Bool,
+        freePoints: Int
+    ) -> SystemRailCapacityTail {
+        guard ratio < 1.0 else {
+            return breathingEnabled ? .compressing : .pageTwo
+        }
+        return .free(max(freePoints, 0))
+    }
+
+    @MainActor
+    var text: String {
+        switch self {
+        case .free(let points):
+            return String(format: "system.rail.free".localized, String(points))
+        case .compressing:
+            return "system.rail.compressing".localized
+        case .pageTwo:
+            return "system.rail.pageTwo".localized
+        }
     }
 }
 
