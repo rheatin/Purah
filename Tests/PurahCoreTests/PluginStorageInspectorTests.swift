@@ -239,6 +239,15 @@ struct PluginStorageInspectorTests {
         )
     }
 
+    @Test("Only a matching plugin row flashes")
+    func storageRowFlashingPredicate() {
+        #expect(!PluginStorageFocus.isFlashing(focusedPluginId: nil, kind: .clipboard))
+        #expect(!PluginStorageFocus.isFlashing(focusedPluginId: nil, kind: .plugin("notes")))
+        #expect(PluginStorageFocus.isFlashing(focusedPluginId: "notes", kind: .plugin("notes")))
+        #expect(!PluginStorageFocus.isFlashing(focusedPluginId: "notes", kind: .plugin("calendar")))
+        #expect(!PluginStorageFocus.isFlashing(focusedPluginId: "notes", kind: .vitals))
+    }
+
     private func temporaryDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah-storage-inspector-\(UUID().uuidString)", isDirectory: true)

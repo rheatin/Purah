@@ -43,6 +43,12 @@ enum PluginStorageFocus {
             return "storage-row:\(kind.id)"
         }
     }
+
+    static func isFlashing(focusedPluginId: String?, kind: PluginStorageRowKind) -> Bool {
+        guard let focusedPluginId,
+              let pluginId = kind.pluginId else { return false }
+        return focusedPluginId == pluginId
+    }
 }
 
 /// The storage page joins plugin-owned sandboxes with the two app-level stores
@@ -222,7 +228,10 @@ public struct PluginStorageInspectorView: View {
     }
 
     private func rowView(_ row: PluginStorageRow) -> some View {
-        let isFlashing = flashingPluginId == row.kind.pluginId
+        let isFlashing = PluginStorageFocus.isFlashing(
+            focusedPluginId: flashingPluginId,
+            kind: row.kind
+        )
 
         return HStack(spacing: StorageInspectorLayout.spacing) {
             Image(systemName: row.icon)
