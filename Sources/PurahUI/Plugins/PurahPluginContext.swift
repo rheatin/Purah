@@ -269,14 +269,15 @@ public struct PurahPluginContext: Sendable {
         self.isHapticsEnabled = isHapticsEnabled ?? (masterHaptics && controlHaptics)
         self.isDrawerPopHapticEnabled = isDrawerPopHapticEnabled ?? (masterHaptics && popHaptics)
         self.isControlHapticEnabled = isControlHapticEnabled ?? (masterHaptics && controlHaptics)
-        self.notificationSound = notificationSound ?? (storeRef?.toastNotificationSound ?? .glass)
+        self.notificationSound = notificationSound
+            ?? (storeRef?.resolvedAlertSound(forPodId: podIdRef) ?? .glass)
 
         if let playSound {
             self.playSound = playSound
         } else {
             self.playSound = { [weak storeRef] customSound in
                 if let storeRef {
-                    let targetSound = customSound ?? storeRef.toastNotificationSound
+                    let targetSound = customSound ?? storeRef.resolvedAlertSound(forPodId: podIdRef)
                     _ = SensoryFeedbackService.shared.playToastSound(targetSound, enabled: storeRef.isToastSoundEnabled)
                 } else {
                     _ = SensoryFeedbackService.shared.playToastSound(customSound ?? .glass, enabled: true)

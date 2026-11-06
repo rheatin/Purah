@@ -3,35 +3,59 @@ import Foundation
 import AppKit
 
 public enum ToastNotificationSound: String, Codable, CaseIterable, Sendable, Identifiable {
-    case glass = "Glass"
     case tink = "Tink"
+    case morse = "Morse"
+    case pop = "Pop"
+    case ping = "Ping"
+    case purr = "Purr"
+    case frog = "Frog"
+    case bottle = "Bottle"
+    case blow = "Blow"
+    case basso = "Basso"
+    case glass = "Glass"
+    case funk = "Funk"
+    case sosumi = "Sosumi"
     case hero = "Hero"
     case submarine = "Submarine"
-    case purr = "Purr"
-    case funk = "Funk"
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
-        case .glass: return "Glass"
         case .tink: return "Tink"
+        case .morse: return "Morse"
+        case .pop: return "Pop"
+        case .ping: return "Ping"
+        case .purr: return "Purr"
+        case .frog: return "Frog"
+        case .bottle: return "Bottle"
+        case .blow: return "Blow"
+        case .basso: return "Basso"
+        case .glass: return "Glass"
+        case .funk: return "Funk"
+        case .sosumi: return "Sosumi"
         case .hero: return "Hero"
         case .submarine: return "Submarine"
-        case .purr: return "Purr"
-        case .funk: return "Funk"
         }
     }
 
     @MainActor
     public var localizedName: String {
         switch self {
-        case .glass: return "sound.glass".localized
         case .tink: return "sound.tink".localized
+        case .morse: return "sound.morse".localized
+        case .pop: return "sound.pop".localized
+        case .ping: return "sound.ping".localized
+        case .purr: return "sound.purr".localized
+        case .frog: return "sound.frog".localized
+        case .bottle: return "sound.bottle".localized
+        case .blow: return "sound.blow".localized
+        case .basso: return "sound.basso".localized
+        case .glass: return "sound.glass".localized
+        case .funk: return "sound.funk".localized
+        case .sosumi: return "sound.sosumi".localized
         case .hero: return "sound.hero".localized
         case .submarine: return "sound.submarine".localized
-        case .purr: return "sound.purr".localized
-        case .funk: return "sound.funk".localized
         }
     }
 }

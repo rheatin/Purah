@@ -66,6 +66,10 @@ public struct InteractionSettingsView: View {
                 .map { AlertStyleChoice(style: $0) }
     }
 
+    private var alertSoundChoices: [ToastNotificationSound?] {
+        [nil] + ToastNotificationSound.allCases.map { Optional($0) }
+    }
+
     private func setGlobalAlertChannel(_ channel: AlertChannel, enabled: Bool) {
         if enabled {
             store.alertChannels.insert(channel)
@@ -94,6 +98,63 @@ public struct InteractionSettingsView: View {
     /// each pod": a pod has exactly one default to follow.
     private func podAlertStyleTitle(_ choice: AlertStyleChoice) -> String {
         choice.style?.localizedDisplayName ?? "interaction.alerts.style.followDefault".localized
+    }
+
+    private func podAlertSoundTitle(_ sound: ToastNotificationSound?) -> String {
+        sound?.localizedName ?? "interaction.alerts.pods.sound.follow".localized
+    }
+
+    @ViewBuilder
+    private func soundSettingsRow(store: PurahWorkspaceStore) -> some View {
+        let isEnabled = store.isAlertMasterEnabled
+            && store.isAlertChannelEnabled(.sound)
+
+        HStack(spacing: 10) {
+            Text("interaction.alerts.sound.title".localized)
+                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+
+            PurahThemedMenuPicker(
+                options: ToastNotificationSound.allCases,
+                selection: Binding(
+                    get: { store.toastNotificationSound },
+                    set: {
+                        store.toastNotificationSound = $0
+                        store.savePersistentState()
+                        _ = store.previewToastSound()
+                    }
+                ),
+                titleForOption: { $0.localizedName }
+            )
+            .frame(width: 190)
+
+            Button {
+                _ = store.previewToastSound()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: 10.5))
+                    Text("sensory.soundPreview".localized)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(theme.palette.borderColor.opacity(0.25), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.tactile)
+            .help("help.previewSound".localized)
+            .accessibilityLabel("help.previewSound".localized)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 18)
+        .opacity(isEnabled ? 1 : 0.45)
+        .disabled(!isEnabled)
     }
 
     private func podAlertDetail(_ entry: AlertingPodEntry) -> String {
@@ -302,7 +363,7 @@ public struct InteractionSettingsView: View {
                     }
                 }
 
-                // 2. Dynamic Attention Alerts Card
+                // 2. Notifications Card
                 PurahSettingsCard(title: "interaction.alerts.card".localized, icon: "bell.badge.waveform.fill") {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 10) {
@@ -377,6 +438,8 @@ public struct InteractionSettingsView: View {
                             }
                             .font(.system(size: 10, weight: .regular, design: .rounded))
                             .frame(height: 26)
+
+                            soundSettingsRow(store: store)
 
                             if store.isAlertMasterEnabled && store.alertChannels.isEmpty {
                                 Text("interaction.alerts.channels.none.caption".localized)
@@ -464,6 +527,39 @@ public struct InteractionSettingsView: View {
                                                 .padding(.leading, 23)
                                                 .frame(height: 26)
 
+                                                let podSoundEnabled = store
+                                                    .allowedChannels(forPodId: entry.pod.id)
+                                                    .contains(.sound)
+                                                HStack(spacing: 12) {
+                                                    Text("interaction.alerts.sound.title".localized)
+                                                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                                                    PurahThemedMenuPicker(
+                                                        options: alertSoundChoices,
+                                                        selection: Binding(
+                                                            get: { store.podAlertSounds[entry.pod.id] },
+                                                            set: { sound in
+                                                                store.setAlertSound(sound, forPodId: entry.pod.id)
+                                                                if let sound {
+                                                                    _ = SensoryFeedbackService.shared.playToastSound(
+                                                                        sound,
+                                                                        enabled: true
+                                                                    )
+                                                                }
+                                                            }
+                                                        ),
+                                                        titleForOption: podAlertSoundTitle
+                                                    )
+                                                    .frame(width: 190)
+
+                                                    Spacer(minLength: 0)
+                                                }
+                                                .padding(.leading, 23)
+                                                .frame(height: 26)
+                                                .opacity(podSoundEnabled ? 1 : 0.45)
+                                                .disabled(!podSoundEnabled)
+
                                                 HStack(spacing: 12) {
                                                     podChannelToggle(.railEffect, podId: entry.pod.id)
                                                     podChannelToggle(.toast, podId: entry.pod.id)
@@ -507,53 +603,6 @@ public struct InteractionSettingsView: View {
                 // 4. Sensory Feedback Card
                 PurahSettingsCard(title: "interaction.sensory.card".localized, icon: "hand.tap.fill") {
                     VStack(alignment: .leading, spacing: 12) {
-                        if store.isToastSoundEnabled {
-                            HStack(spacing: 10) {
-                                Text("sensory.soundPicker.title".localized)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-
-                                PurahThemedMenuPicker(
-                                    options: ToastNotificationSound.allCases,
-                                    selection: Binding(
-                                        get: { store.toastNotificationSound },
-                                        set: {
-                                            store.toastNotificationSound = $0
-                                            store.savePersistentState()
-                                            _ = store.previewToastSound()
-                                        }
-                                    ),
-                                    titleForOption: { $0.localizedName }
-                                )
-
-                                Button {
-                                    _ = store.previewToastSound()
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "speaker.wave.2.fill")
-                                            .font(.system(size: 10.5))
-                                        Text("sensory.soundPreview".localized)
-                                            .font(.system(size: 11, weight: .medium))
-                                    }
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(Color(nsColor: .controlBackgroundColor))
-                                    .cornerRadius(6)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6)
-                                            .stroke(palette.borderColor.opacity(0.25), lineWidth: 1)
-                                    )
-                                }
-                                .buttonStyle(.tactile)
-                                .help("help.previewSound".localized)
-                                .accessibilityLabel("help.previewSound".localized)
-                            }
-                            .padding(.leading, 18)
-
-                            Divider()
-                                .background(palette.borderColor.opacity(0.2))
-                        }
-
                         VStack(alignment: .leading, spacing: 8) {
                             Toggle(isOn: Binding(
                                 get: { store.isTrackpadHapticsEnabled },

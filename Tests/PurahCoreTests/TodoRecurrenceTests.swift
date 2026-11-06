@@ -209,6 +209,11 @@ struct TodoRecurrenceTests {
     @Test("The badge says 'Daily' for a one-day interval and the count otherwise")
     @MainActor
     func testBadgeText() {
+        let loc = LocalizationManager.shared
+        let savedLanguage = loc.currentLanguage
+        defer { loc.currentLanguage = savedLanguage }
+        loc.currentLanguage = .english
+
         #expect(TodoRecurrence(frequency: .daily).badgeText == "Daily")
         #expect(TodoRecurrence(frequency: .daily, interval: 3).badgeText.contains("3"))
         #expect(TodoRecurrence(frequency: .weekly).badgeText == "Weekly")

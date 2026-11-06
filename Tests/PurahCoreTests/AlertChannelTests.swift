@@ -46,7 +46,7 @@ struct AlertChannelTests {
         var toastCount = 0
         var soundCount = 0
         store.onAlertToast = { _, _ in toastCount += 1 }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.isAlertMasterEnabled = false
         store.alertChannels = Set(AlertChannel.allCases)
@@ -74,7 +74,7 @@ struct AlertChannelTests {
         var soundCount = 0
         toastOnly.store.alertChannels = [.toast]
         toastOnly.store.onAlertToast = { _, _ in toastCount += 1 }
-        toastOnly.store.onAlertSound = { soundCount += 1 }
+        toastOnly.store.onAlertSound = { _ in soundCount += 1 }
         toastOnly.store.triggerAlert(id: "ai")
 
         #expect(!toastOnly.store.isPodAlerting(podId: "ai"))
@@ -88,7 +88,7 @@ struct AlertChannelTests {
         soundCount = 0
         soundOnly.store.alertChannels = [.sound]
         soundOnly.store.onAlertToast = { _, _ in toastCount += 1 }
-        soundOnly.store.onAlertSound = { soundCount += 1 }
+        soundOnly.store.onAlertSound = { _ in soundCount += 1 }
         soundOnly.store.triggerAlert(id: "ai")
 
         #expect(!soundOnly.store.isPodAlerting(podId: "ai"))
@@ -102,7 +102,7 @@ struct AlertChannelTests {
         soundCount = 0
         railOnly.store.alertChannels = [.railEffect]
         railOnly.store.onAlertToast = { _, _ in toastCount += 1 }
-        railOnly.store.onAlertSound = { soundCount += 1 }
+        railOnly.store.onAlertSound = { _ in soundCount += 1 }
         railOnly.store.triggerAlert(id: "ai")
 
         #expect(railOnly.store.isPodAlerting(podId: "ai"))
@@ -127,7 +127,7 @@ struct AlertChannelTests {
             var toastCount = 0
             var soundCount = 0
             store.onAlertToast = { _, _ in toastCount += 1 }
-            store.onAlertSound = { soundCount += 1 }
+            store.onAlertSound = { _ in soundCount += 1 }
             store.triggerAlert(id: "ai")
 
             #expect(store.isPodAlerting(podId: "ai") == channels.contains(.railEffect))
@@ -145,7 +145,7 @@ struct AlertChannelTests {
         var toastCount = 0
         var soundCount = 0
         store.onAlertToast = { _, _ in toastCount += 1 }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.alertChannels = [.toast]
         store.setAlertChannel(.sound, isEnabled: true, forPodId: "ai")
@@ -173,6 +173,28 @@ struct AlertChannelTests {
         #expect(messages == ["Terminal"])
     }
 
+    @Test("Sound delivery carries the pod id")
+    func testSoundDeliveryCarriesPodId() throws {
+        let (store, defaults, suite) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var soundPodIds: [String] = []
+        var deliveredSounds: [ToastNotificationSound] = []
+        store.onAlertSound = {
+            soundPodIds.append($0)
+            deliveredSounds.append(store.resolvedAlertSound(forPodId: $0))
+        }
+        store.alertChannels = [.sound]
+        store.setAlertSound(.hero, forPodId: "ai")
+        store.setAlertSound(.frog, forPodId: "terminal")
+
+        store.deliverAlert(forPodId: "ai", id: "ai-sound", message: "AI")
+        store.deliverAlert(forPodId: "terminal", id: "terminal-sound", message: "Terminal")
+
+        #expect(soundPodIds == ["ai", "terminal"])
+        #expect(deliveredSounds == [.hero, .frog])
+    }
+
     @Test("A silenced pod delivers nothing while another pod still does")
     func testPerPodSilence() throws {
         let (store, defaults, suite) = try makeStore()
@@ -181,7 +203,7 @@ struct AlertChannelTests {
         var toasts: [String] = []
         var soundCount = 0
         store.onAlertToast = { message, _ in toasts.append(message) }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.alertChannels = Set(AlertChannel.allCases)
         store.setAlertEnabled(false, forPodId: "ai")
@@ -204,7 +226,7 @@ struct AlertChannelTests {
         var toastCount = 0
         var soundCount = 0
         store.onAlertToast = { _, _ in toastCount += 1 }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
         store.alertChannels = Set(AlertChannel.allCases)
 
         store.setPluginAlert(id: "ai", isAlerting: true)
@@ -234,7 +256,7 @@ struct AlertChannelTests {
         var toastCount = 0
         var soundCount = 0
         store.onAlertToast = { _, _ in toastCount += 1 }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
         store.alertChannels = Set(AlertChannel.allCases)
 
         let now = Date()
@@ -278,7 +300,7 @@ struct AlertChannelTests {
         var toastCount = 0
         var soundCount = 0
         store.onAlertToast = { _, _ in toastCount += 1 }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.evaluateAlertDeliveries(now: now)
 
@@ -300,7 +322,7 @@ struct AlertChannelTests {
         var toastCount = 0
         var soundCount = 0
         store.onAlertToast = { _, _ in toastCount += 1 }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.evaluateAlertDeliveries()
 
@@ -331,7 +353,7 @@ struct AlertChannelTests {
         var messages: [String] = []
         var soundCount = 0
         store.onAlertToast = { message, _ in messages.append(message) }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.evaluateAlertDeliveries(now: now)
 
@@ -411,7 +433,7 @@ struct AlertChannelTests {
         var soundCount = 0
         store.alertChannels = [.toast, .sound]
         store.onAlertToast = { _, _ in toastCount += 1 }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.triggerAlert(id: "ai")
         store.acknowledgeAllAlerts(forPodId: "ai")
@@ -438,7 +460,7 @@ struct AlertChannelTests {
         var messages: [String] = []
         var soundCount = 0
         store.onAlertToast = { message, _ in messages.append(message) }
-        store.onAlertSound = { soundCount += 1 }
+        store.onAlertSound = { _ in soundCount += 1 }
 
         store.primeAlertDeliveries()
         store.evaluateAlertDeliveries()

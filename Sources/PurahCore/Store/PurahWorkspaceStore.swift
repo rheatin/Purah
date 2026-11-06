@@ -66,7 +66,7 @@ public final class PurahWorkspaceStore {
     @ObservationIgnored
     public var onAlertToast: ((String, String?) -> Void)? = nil
     @ObservationIgnored
-    public var onAlertSound: (() -> Void)? = nil
+    public var onAlertSound: ((String) -> Void)? = nil
 
     public var isOnboardingGuideActive: Bool = false
     public var onboardingStep: OnboardingGuideStep = .mountPods
@@ -1069,6 +1069,9 @@ public final class PurahWorkspaceStore {
     /// global override, or the style the plugin itself declares.
     public var podAlertStyles: [String: PluginAlertStyle] = [:]
 
+    /// Per-pod sound overrides. A missing key follows the default sound.
+    public var podAlertSounds: [String: ToastNotificationSound] = [:]
+
     /// Pods whose alerts the person silenced individually.
     ///
     /// The master switch still wins: this set only records per-pod
@@ -1431,6 +1434,14 @@ public final class PurahWorkspaceStore {
     }
 
     @discardableResult
+    public func triggerToastSound(forPodId podId: String) -> Bool {
+        SensoryFeedbackService.shared.playToastSound(
+            resolvedAlertSound(forPodId: podId),
+            enabled: isToastSoundEnabled
+        )
+    }
+
+    @discardableResult
     public func previewToastSound() -> Bool {
         _ = triggerControlHaptic(.alignment)
         return SensoryFeedbackService.shared.playToastSound(
@@ -1656,7 +1667,7 @@ public final class PurahWorkspaceStore {
             onAlertToast?(message, icon)
         }
         if isAlertChannelEnabled(.sound, forPodId: podId) {
-            onAlertSound?()
+            onAlertSound?(podId)
         }
     }
 
@@ -1677,6 +1688,20 @@ public final class PurahWorkspaceStore {
             podAlertStyles[podId] = style
         } else {
             podAlertStyles.removeValue(forKey: podId)
+        }
+        scheduleSavePersistentState()
+    }
+
+    public func resolvedAlertSound(forPodId podId: String) -> ToastNotificationSound {
+        podAlertSounds[podId] ?? toastNotificationSound
+    }
+
+    /// `nil` removes the pod's override, so it follows the default again.
+    public func setAlertSound(_ sound: ToastNotificationSound?, forPodId podId: String) {
+        if let sound {
+            podAlertSounds[podId] = sound
+        } else {
+            podAlertSounds.removeValue(forKey: podId)
         }
         scheduleSavePersistentState()
     }

@@ -247,6 +247,17 @@ extension PurahWorkspaceStore {
             }
             self.podAlertStyles = parsed
         }
+        if let storedPodSounds = defaults.dictionary(forKey: "purah.podAlertSounds") {
+            var parsed: [String: ToastNotificationSound] = [:]
+            for (podId, rawSound) in storedPodSounds {
+                // A sound removed from the system falls back to the default
+                // instead of leaving the pod with an unplayable override.
+                guard let rawSound = rawSound as? String,
+                      let sound = ToastNotificationSound(rawValue: rawSound) else { continue }
+                parsed[podId] = sound
+            }
+            self.podAlertSounds = parsed
+        }
         // The calendar's old per-plugin switches become its channel choices, once.
         if defaults.object(forKey: "purah.alertChannels") == nil {
             let calendarStorage = ScopedPluginStorage(pluginId: "calendar", defaults: defaults)
@@ -368,6 +379,10 @@ extension PurahWorkspaceStore {
             podAlertStyles.mapValues(\.rawValue),
             forKey: "purah.podAlertStyles"
         )
+        defaults.set(
+            podAlertSounds.mapValues(\.rawValue),
+            forKey: "purah.podAlertSounds"
+        )
         if let quietData = try? JSONEncoder().encode(quietHours) {
             defaults.set(quietData, forKey: "purah.quietHours")
         }
@@ -431,6 +446,7 @@ extension PurahWorkspaceStore {
         disabledAlertPodIds.removeAll()
         podAlertChannels.removeAll()
         podAlertStyles.removeAll()
+        podAlertSounds.removeAll()
         // Backing storage, so the setters do not save halfway through a reset.
         _quietHours = QuietHours()
         _contextProfiles = ContextProfileStore()

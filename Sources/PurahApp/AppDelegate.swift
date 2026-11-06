@@ -64,8 +64,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         store.onAlertToast = { message, icon in
             TransientHUDController.shared.showWarning(message: message, icon: icon, playsSound: false)
         }
-        store.onAlertSound = { [weak store] in
-            _ = store?.triggerToastSound()
+        store.onAlertSound = { [weak store] podId in
+            _ = store?.triggerToastSound(forPodId: podId)
         }
         let alertDeliveryMonitor = AlertDeliveryMonitor(store: store)
         alertDeliveryMonitor.start()

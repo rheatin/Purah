@@ -38,6 +38,8 @@ struct LocalizationTests {
     @MainActor
     func testTableTipsLocalization() {
         let loc = LocalizationManager()
+        let savedLanguage = LocalizationManager.shared.currentLanguage
+        defer { LocalizationManager.shared.currentLanguage = savedLanguage }
 
         loc.currentLanguage = .english
         #expect(loc.localized("notes.tips.table") == "Table")
@@ -67,6 +69,8 @@ struct LocalizationTests {
     @Test("Every language table is a subset of English, never a superset")
     func testNoOrphanTranslations() {
         let loc = LocalizationManager()
+        let savedLanguage = LocalizationManager.shared.currentLanguage
+        defer { LocalizationManager.shared.currentLanguage = savedLanguage }
         // The fallback chain is target language → English → the key itself, so
         // a key that exists only in a non-English table is unreachable dead
         // weight: nothing can ever ask for it in a language that lacks it.
@@ -133,12 +137,14 @@ struct LocalizationTests {
             // +3: the settings rail labels its pod and Purah groups and names
             // the System page.
             // +6: the pod settings page points to Alerts and Storage.
-            .traditionalChinese: 649,
-            .japanese: 128,
-            .korean: 128,
-            .french: 128,
-            .german: 128,
-            .spanish: 146
+            // +9: Notifications gain their default and per-pod sound controls,
+            // and the sound menu now covers all 14 system sounds.
+            .traditionalChinese: 658,
+            .japanese: 137,
+            .korean: 137,
+            .french: 137,
+            .german: 137,
+            .spanish: 155
         ]
 
         for (language, expected) in pinnedCoverage {
@@ -161,6 +167,8 @@ struct LocalizationTests {
     @Test("The AI settings strings resolve in every language, not as raw keys")
     func testAISettingsKeysResolve() {
         let loc = LocalizationManager()
+        let savedLanguage = LocalizationManager.shared.currentLanguage
+        defer { LocalizationManager.shared.currentLanguage = savedLanguage }
         // These were literal `Text("...")` calls with no table entry at all, so
         // they read as English in every language. A missing key returns the
         // key itself, which is the failure this catches.
@@ -189,6 +197,8 @@ struct LocalizationTests {
             "interaction.alerts.channel.railEffect",
             "interaction.alerts.channel.toast",
             "interaction.alerts.channel.sound",
+            "interaction.alerts.sound.title",
+            "interaction.alerts.pods.sound.follow",
             "interaction.alerts.channels.none.caption",
             "interaction.alerts.pods.caption",
             "interaction.alerts.pods.detail.edgeOnly",
@@ -205,6 +215,8 @@ struct LocalizationTests {
         }
 
         let loc = LocalizationManager()
+        let savedLanguage = LocalizationManager.shared.currentLanguage
+        defer { LocalizationManager.shared.currentLanguage = savedLanguage }
         for language in AppLanguage.allCases where language != .system {
             loc.currentLanguage = language
             for key in keys {

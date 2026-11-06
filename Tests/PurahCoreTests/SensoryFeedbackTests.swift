@@ -15,7 +15,10 @@ struct SensoryFeedbackTests {
     @MainActor
     func testToastNotificationSoundEnum() {
         let sounds = ToastNotificationSound.allCases
-        #expect(sounds.count == 6)
+        #expect(sounds == [
+            .tink, .morse, .pop, .ping, .purr, .frog, .bottle,
+            .blow, .basso, .glass, .funk, .sosumi, .hero, .submarine,
+        ])
         #expect(ToastNotificationSound.glass.rawValue == "Glass")
         #expect(ToastNotificationSound.tink.rawValue == "Tink")
         #expect(ToastNotificationSound.hero.rawValue == "Hero")
@@ -26,10 +29,30 @@ struct SensoryFeedbackTests {
         #expect(ToastNotificationSound.glass.displayName == "Glass")
         #expect(ToastNotificationSound.glass.id == "Glass")
 
-        // Test localized names resolve
-        LocalizationManager.shared.currentLanguage = .english
+        let loc = LocalizationManager.shared
+        let savedLanguage = loc.currentLanguage
+        defer { loc.currentLanguage = savedLanguage }
+        for language in AppLanguage.allCases where language != .system {
+            loc.currentLanguage = language
+            for sound in sounds {
+                #expect(
+                    !sound.localizedName.hasPrefix("sound."),
+                    "\(sound.rawValue) has no name in \(language.rawValue)"
+                )
+            }
+        }
+
+        loc.currentLanguage = .english
         #expect(ToastNotificationSound.glass.localizedName == "Glass (Crystal)")
         #expect(ToastNotificationSound.tink.localizedName == "Tink (Subtle)")
+        #expect(ToastNotificationSound.morse.localizedName == "Morse (Beep)")
+        #expect(ToastNotificationSound.pop.localizedName == "Pop (Pop)")
+        #expect(ToastNotificationSound.ping.localizedName == "Ping (Ping)")
+        #expect(ToastNotificationSound.frog.localizedName == "Frog (Croak)")
+        #expect(ToastNotificationSound.bottle.localizedName == "Bottle (Hollow)")
+        #expect(ToastNotificationSound.blow.localizedName == "Blow (Breeze)")
+        #expect(ToastNotificationSound.basso.localizedName == "Basso (Deep)")
+        #expect(ToastNotificationSound.sosumi.localizedName == "Sosumi (Classic)")
         #expect(ToastNotificationSound.hero.localizedName == "Hero (Prominent)")
         #expect(ToastNotificationSound.submarine.localizedName == "Submarine (Sonar)")
         #expect(ToastNotificationSound.purr.localizedName == "Purr (Soft)")
@@ -204,6 +227,45 @@ struct SensoryFeedbackTests {
         defaults.removeObject(forKey: "purah.isControlHapticEnabled")
     }
 
+    @Test("A pod's alert sound follows its override, then the default again")
+    @MainActor
+    func testPerPodAlertSoundResolution() throws {
+        let suite = "purah.pod-alert-sound.resolution.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        store.toastNotificationSound = .purr
+
+        #expect(store.resolvedAlertSound(forPodId: "ai") == .purr)
+
+        store.setAlertSound(.hero, forPodId: "ai")
+        #expect(store.resolvedAlertSound(forPodId: "ai") == .hero)
+        #expect(store.resolvedAlertSound(forPodId: "terminal") == .purr)
+
+        store.setAlertSound(nil, forPodId: "ai")
+        #expect(store.resolvedAlertSound(forPodId: "ai") == .purr)
+    }
+
+    @Test("Per-pod alert sounds round-trip through persistence")
+    @MainActor
+    func testPerPodAlertSoundPersistence() throws {
+        let suite = "purah.pod-alert-sound.persistence.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        store.toastNotificationSound = .glass
+        store.setAlertSound(.sosumi, forPodId: "ai")
+        store.setAlertSound(.frog, forPodId: "calendar")
+        store.savePersistentState()
+
+        let restored = PurahWorkspaceStore(userDefaults: defaults)
+        #expect(restored.resolvedAlertSound(forPodId: "ai") == .sosumi)
+        #expect(restored.resolvedAlertSound(forPodId: "calendar") == .frog)
+        #expect(restored.resolvedAlertSound(forPodId: "terminal") == .glass)
+    }
+
     @Test("EdgeMouseMonitor triggers edge pop haptics on drawer activation from docked state")
     @MainActor
     func testEdgeMouseMonitorPopHapticTrigger() {
@@ -287,6 +349,7 @@ struct SensoryFeedbackTests {
         }
 
         // 1. Initial defaults reflection
+        store.podAlertSounds.removeAll()
         store.isToastSoundEnabled = true
         store.isTrackpadHapticsEnabled = true
         store.isControlHapticEnabled = true
@@ -320,6 +383,7 @@ struct SensoryFeedbackTests {
         store.isTrackpadHapticsEnabled = true
         store.isControlHapticEnabled = false
         store.isDrawerPopHapticEnabled = false
+        store.podAlertSounds.removeAll()
         store.toastNotificationSound = .submarine
 
         let context2 = PurahPluginContext(
@@ -383,6 +447,7 @@ struct SensoryFeedbackTests {
         }
 
         store.isToastSoundEnabled = true
+        store.podAlertSounds.removeAll()
         store.toastNotificationSound = .hero
 
         let context = PurahPluginContext(
@@ -404,6 +469,10 @@ struct SensoryFeedbackTests {
         // Calling playSound() without arguments plays the store default sound (.hero)
         context.playSound()
         #expect(service.lastPlayedSoundName == "Hero")
+
+        store.setAlertSound(.frog, forPodId: pod.id)
+        context.playSound()
+        #expect(service.lastPlayedSoundName == "Frog")
 
         // Calling playSound(.submarine) overrides with the specified sound
         context.playSound(.submarine)

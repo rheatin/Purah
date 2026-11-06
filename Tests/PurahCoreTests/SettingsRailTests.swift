@@ -122,7 +122,7 @@ struct SettingsRailTests {
                 channels: allChannels,
                 podEnabled: true,
                 globalChannels: nil
-            ) == "Alerts are off"
+            ) == "Notifications are off"
         )
         #expect(
             PodAlertSummary.text(
