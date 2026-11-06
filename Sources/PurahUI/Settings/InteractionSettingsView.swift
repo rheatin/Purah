@@ -376,23 +376,42 @@ public struct InteractionSettingsView: View {
 
                                     VStack(spacing: 0) {
                                         HStack(spacing: 7) {
-                                            Image(systemName: entry.plugin.manifest.systemIcon)
-                                                .font(.system(size: 11, weight: .medium))
-                                                .foregroundColor(palette.podColor(for: entry.pod.id, store: store))
-                                                .frame(width: 16)
+                                            // The whole label side opens the row. A
+                                            // 14pt chevron is a target you have to
+                                            // hunt for; the row is the control.
+                                            HStack(spacing: 7) {
+                                                Image(systemName: entry.plugin.manifest.systemIcon)
+                                                    .font(.system(size: 11, weight: .medium))
+                                                    .foregroundColor(palette.podColor(for: entry.pod.id, store: store))
+                                                    .frame(width: 16)
 
-                                            Text(entry.plugin.manifest.displayName)
-                                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                                .lineLimit(1)
+                                                Text(entry.plugin.manifest.displayName)
+                                                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                                    .lineLimit(1)
 
-                                            Text(podAlertDetail(entry))
-                                                .font(.system(size: 9))
-                                                .foregroundColor(.secondary)
-                                                .lineLimit(1)
-                                                .truncationMode(.tail)
+                                                Text(podAlertDetail(entry))
+                                                    .font(.system(size: 9))
+                                                    .foregroundColor(.secondary)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.tail)
 
-                                            Spacer(minLength: 4)
+                                                Spacer(minLength: 4)
+
+                                                Image(systemName: "chevron.right")
+                                                    .font(.system(size: 8, weight: .bold))
+                                                    .foregroundColor(.secondary)
+                                                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                                                    .frame(width: 14, height: 18)
+                                            }
+                                            .contentShape(Rectangle())
+                                            .onTapGesture {
+                                                withAnimation(PurahMotionPolicy.surface) {
+                                                    expandedAlertPodId = isExpanded ? nil : entry.pod.id
+                                                }
+                                            }
+                                            .accessibilityElement(children: .combine)
+                                            .accessibilityAddTraits(.isButton)
 
                                             Toggle(entry.plugin.manifest.displayName, isOn: Binding(
                                                 get: { !store.disabledAlertPodIds.contains(entry.pod.id) },
@@ -401,20 +420,6 @@ public struct InteractionSettingsView: View {
                                             .toggleStyle(.switch)
                                             .controlSize(.mini)
                                             .labelsHidden()
-
-                                            Button {
-                                                withAnimation(PurahMotionPolicy.surface) {
-                                                    expandedAlertPodId = isExpanded ? nil : entry.pod.id
-                                                }
-                                            } label: {
-                                                Image(systemName: "chevron.right")
-                                                    .font(.system(size: 8, weight: .bold))
-                                                    .foregroundColor(.secondary)
-                                                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                                                    .frame(width: 14, height: 18)
-                                            }
-                                            .buttonStyle(.plain)
-                                            .accessibilityLabel(entry.plugin.manifest.displayName)
                                         }
                                         .frame(height: 26)
 
