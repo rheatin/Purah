@@ -90,6 +90,7 @@ public struct PluginStorageInspectorView: View {
                 }
                 .buttonStyle(.tactile)
                 .disabled((totalCache ?? 0) == 0)
+                .opacity((totalCache ?? 0) == 0 ? 0.4 : 1)
             }
 
             columnHeader
@@ -396,7 +397,7 @@ public struct PluginStorageInspectorView: View {
             )
         case .clipboard:
             presentation = (
-                "diagnostics.cache.clipboard".localized,
+                "diagnostics.cache.clipboardHistory".localized,
                 "doc.on.clipboard.fill",
                 "#64D2FF",
                 roots.clipboard
