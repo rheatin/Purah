@@ -105,6 +105,27 @@ public final class NotesPluginState: Sendable {
             )
         }
 
+        // A stale index or an older directory can carry a tag that is no
+        // longer in availableTags. Keep those notes reachable in the only
+        // switch-note menu, using the neutral fold colour for the ad-hoc tag.
+        let knownTagNames = Set(orderedTags.map(\.name))
+        var seenOrphanTags: Set<String> = []
+        for document in documents {
+            let name = document.tag
+            guard !name.isEmpty,
+                  !knownTagNames.contains(name),
+                  seenOrphanTags.insert(name).inserted else {
+                continue
+            }
+            groups.append(
+                NoteGroup(
+                    tag: NoteTag(name: name, colorHex: "#8E8E93"),
+                    documents: documents.filter { $0.tag == name },
+                    isCurrentTag: name == currentTag
+                )
+            )
+        }
+
         let untagged = documents.filter { $0.tag.isEmpty }
         if !untagged.isEmpty {
             groups.append(

@@ -48,6 +48,42 @@ struct NotesTagTreeTests {
         #expect(!state.noteGroups(currentTag: "Work").contains { $0.tag == nil })
     }
 
+    @Test("A tag missing from availableTags keeps its notes reachable")
+    @MainActor
+    func orphanTagRemainsReachable() {
+        let suite = "NotesOrphanTag-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("NotesOrphanTag-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let state = NotesPluginState(
+            storage: ScopedPluginStorage(pluginId: "notes-orphan-tag", defaults: defaults),
+            fileStorage: PurahPluginFileStorage(
+                pluginId: "notes-orphan-tag",
+                customBaseDirectory: root
+            )
+        )
+        state.availableTags = [NoteTag(name: "General", colorHex: "#8E8E93")]
+        state.documents = [
+            NoteDocument(id: "archive-1", title: "Filed away", tag: "Archive"),
+            NoteDocument(id: "loose-1", title: "Loose", tag: ""),
+        ]
+
+        let groups = state.noteGroups(currentTag: "General")
+        let archive = groups.first { $0.tag?.name == "Archive" }
+        #expect(archive?.documents.map(\.id) == ["archive-1"])
+        #expect(archive?.tag?.colorHex == "#8E8E93")
+        let archiveIndex = groups.firstIndex { $0.tag?.name == "Archive" }
+        let untaggedIndex = groups.firstIndex { $0.tag == nil }
+        #expect(archiveIndex != nil)
+        #expect(untaggedIndex != nil)
+        if let archiveIndex, let untaggedIndex {
+            #expect(archiveIndex < untaggedIndex)
+        }
+    }
+
     @Test("A bright tag darkens only against a light surface")
     func tagTintContrast() throws {
         let white = HexColor.Components(red: 1, green: 1, blue: 1, alpha: 1)
