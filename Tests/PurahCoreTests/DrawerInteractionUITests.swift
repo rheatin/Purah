@@ -1360,21 +1360,22 @@ struct DrawerInteractionUITests {
         #expect(fittingSize.width > 16.0, "Overview content is the full drawer; the 8pt docked bar is supplied by the stepped container")
     }
 
-    @Test("HardwareVitalsPlugin adaptiveDrawerWidth returns 360pt in both composite and stepped modes")
+    @Test("HardwareVitalsPlugin adaptiveDrawerWidth returns 400pt in both composite and stepped modes")
     @MainActor
     func testHardwareVitalsAdaptiveDrawerWidth() {
+        PluginRegistry.shared.registerBuiltInPlugins()
         let isolated = UserDefaults(suiteName: "test_vitals_width_\(UUID().uuidString)")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let plugin = HardwareVitalsPlugin()
 
         store._isVitalsDecomposed = true
         plugin.state.isDecomposed = true
-        #expect(plugin.adaptiveDrawerWidth(store: store) == 360.0)
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 400.0)
 
         store._isVitalsDecomposed = false
         plugin.state.isDecomposed = false
-        #expect(plugin.adaptiveDrawerWidth(store: store) == 360.0)
-        #expect(store.effectiveDrawerWidth(podId: "vitals") == 360.0)
+        #expect(plugin.adaptiveDrawerWidth(store: store) == 400.0)
+        #expect(store.effectiveDrawerWidth(podId: "vitals") == 400.0)
     }
 
     @Test("WaveMeterAmbientView barWidth and ScriptRunway/Calendar adaptiveDrawerWidth respect composite and Shared Major Pod modes")

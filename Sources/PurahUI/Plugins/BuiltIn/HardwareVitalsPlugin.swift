@@ -173,7 +173,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public var usesAdaptiveTelemetryColor: Bool { true }
 
     public func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
-        360.0
+        400.0
     }
 
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {

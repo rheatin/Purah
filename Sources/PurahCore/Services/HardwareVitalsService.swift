@@ -367,6 +367,7 @@ public struct HardwareVitalsInfo: Sendable {
     public var cpuUserUsage: Double
     public var cpuSystemUsage: Double
     public var cpuIdleUsage: Double
+    public var cpuCoreUsages: [Double]
     public var loadAverage1m: Double
     public var loadAverage5m: Double
     public var loadAverage15m: Double
@@ -380,6 +381,10 @@ public struct HardwareVitalsInfo: Sendable {
     public var memoryWiredGB: Double
     public var memoryCompressedGB: Double
     public var memorySwapUsedMB: Double
+    public var memorySwapTotalMB: Double
+    public var memoryActiveGB: Double
+    public var memoryCachedGB: Double
+    public var memoryFreeGB: Double
     public var memoryPressureLevel: String
 
     // Network
@@ -391,11 +396,26 @@ public struct HardwareVitalsInfo: Sendable {
     // Disk I/O
     public var diskReadBytesPerSec: Double
     public var diskWriteBytesPerSec: Double
+    public var gpuRendererUsage: Double
+    public var gpuTilerUsage: Double
+    public var gpuMemoryInUseMB: Double
+    public var gpuCoreCount: Int
 
     // Battery & Thermal
     public var batteryHealthPercent: Int
     public var batteryCycleCount: Int
     public var batteryTemperatureCelsius: Double
+    public var batteryIsPresent: Bool
+    public var batteryVoltageVolts: Double
+    public var batteryChargeWatts: Double
+    public var batteryTimeRemainingMinutes: Int?
+    public var batteryCondition: String
+    public var powerSystemWatts: Double
+    public var powerSystemVolts: Double
+    public var powerSystemAmps: Double
+    public var powerAdapterWatts: Double
+    public var batteryMaxCapacityMAh: Double
+    public var batteryDesignCapacityMAh: Double
 
     public init(
         cpuUsage: Double = 0.15,
@@ -414,6 +434,7 @@ public struct HardwareVitalsInfo: Sendable {
         cpuUserUsage: Double = 0.10,
         cpuSystemUsage: Double = 0.05,
         cpuIdleUsage: Double = 0.85,
+        cpuCoreUsages: [Double] = [],
         loadAverage1m: Double = 1.0,
         loadAverage5m: Double = 1.0,
         loadAverage15m: Double = 1.0,
@@ -425,6 +446,10 @@ public struct HardwareVitalsInfo: Sendable {
         memoryWiredGB: Double = 2.0,
         memoryCompressedGB: Double = 1.0,
         memorySwapUsedMB: Double = 0.0,
+        memorySwapTotalMB: Double = 0.0,
+        memoryActiveGB: Double = 0.0,
+        memoryCachedGB: Double = 0.0,
+        memoryFreeGB: Double = 0.0,
         memoryPressureLevel: String = "Normal",
         networkInterfaceName: String = "en0",
         localIPAddress: String = "—",
@@ -432,9 +457,24 @@ public struct HardwareVitalsInfo: Sendable {
         networkTotalSentGB: Double = 0.0,
         diskReadBytesPerSec: Double = 0.0,
         diskWriteBytesPerSec: Double = 0.0,
+        gpuRendererUsage: Double = 0.0,
+        gpuTilerUsage: Double = 0.0,
+        gpuMemoryInUseMB: Double = 0.0,
+        gpuCoreCount: Int = 0,
         batteryHealthPercent: Int = 100,
         batteryCycleCount: Int = 0,
-        batteryTemperatureCelsius: Double = 31.0
+        batteryTemperatureCelsius: Double = 31.0,
+        batteryIsPresent: Bool = false,
+        batteryVoltageVolts: Double = 0.0,
+        batteryChargeWatts: Double = 0.0,
+        batteryTimeRemainingMinutes: Int? = nil,
+        batteryCondition: String = "Normal",
+        powerSystemWatts: Double = 0.0,
+        powerSystemVolts: Double = 0.0,
+        powerSystemAmps: Double = 0.0,
+        powerAdapterWatts: Double = 0.0,
+        batteryMaxCapacityMAh: Double = 0.0,
+        batteryDesignCapacityMAh: Double = 0.0
     ) {
         self.cpuUsage = cpuUsage
         self.gpuUsage = gpuUsage
@@ -452,6 +492,7 @@ public struct HardwareVitalsInfo: Sendable {
         self.cpuUserUsage = cpuUserUsage
         self.cpuSystemUsage = cpuSystemUsage
         self.cpuIdleUsage = cpuIdleUsage
+        self.cpuCoreUsages = cpuCoreUsages
         self.loadAverage1m = loadAverage1m
         self.loadAverage5m = loadAverage5m
         self.loadAverage15m = loadAverage15m
@@ -463,6 +504,10 @@ public struct HardwareVitalsInfo: Sendable {
         self.memoryWiredGB = memoryWiredGB
         self.memoryCompressedGB = memoryCompressedGB
         self.memorySwapUsedMB = memorySwapUsedMB
+        self.memorySwapTotalMB = memorySwapTotalMB
+        self.memoryActiveGB = memoryActiveGB
+        self.memoryCachedGB = memoryCachedGB
+        self.memoryFreeGB = memoryFreeGB
         self.memoryPressureLevel = memoryPressureLevel
         self.networkInterfaceName = networkInterfaceName
         self.localIPAddress = localIPAddress
@@ -470,9 +515,24 @@ public struct HardwareVitalsInfo: Sendable {
         self.networkTotalSentGB = networkTotalSentGB
         self.diskReadBytesPerSec = diskReadBytesPerSec
         self.diskWriteBytesPerSec = diskWriteBytesPerSec
+        self.gpuRendererUsage = gpuRendererUsage
+        self.gpuTilerUsage = gpuTilerUsage
+        self.gpuMemoryInUseMB = gpuMemoryInUseMB
+        self.gpuCoreCount = gpuCoreCount
         self.batteryHealthPercent = batteryHealthPercent
         self.batteryCycleCount = batteryCycleCount
         self.batteryTemperatureCelsius = batteryTemperatureCelsius
+        self.batteryIsPresent = batteryIsPresent
+        self.batteryVoltageVolts = batteryVoltageVolts
+        self.batteryChargeWatts = batteryChargeWatts
+        self.batteryTimeRemainingMinutes = batteryTimeRemainingMinutes
+        self.batteryCondition = batteryCondition
+        self.powerSystemWatts = powerSystemWatts
+        self.powerSystemVolts = powerSystemVolts
+        self.powerSystemAmps = powerSystemAmps
+        self.powerAdapterWatts = powerAdapterWatts
+        self.batteryMaxCapacityMAh = batteryMaxCapacityMAh
+        self.batteryDesignCapacityMAh = batteryDesignCapacityMAh
     }
 }
 
@@ -535,6 +595,8 @@ public final class HardwareVitalsService {
     public private(set) var networkDownHistory: [VitalsHistoryPoint] = []
     public private(set) var networkUpHistory: [VitalsHistoryPoint] = []
     public private(set) var diskHistory: [VitalsHistoryPoint] = []
+    public private(set) var diskReadHistory: [VitalsHistoryPoint] = []
+    public private(set) var diskWriteHistory: [VitalsHistoryPoint] = []
 
     public var selectedTimeScope: VitalsTimeScope = .realTime30s
     public var isDrawerVisible: Bool = false {
@@ -575,7 +637,18 @@ public final class HardwareVitalsService {
         source: String,
         healthPercent: Int,
         cycleCount: Int,
-        temperatureCelsius: Double
+        temperatureCelsius: Double,
+        isPresent: Bool,
+        voltageVolts: Double,
+        chargeWatts: Double,
+        timeRemainingMinutes: Int?,
+        condition: String,
+        systemWatts: Double,
+        systemVolts: Double,
+        systemAmps: Double,
+        adapterWatts: Double,
+        maxCapacityMAh: Double,
+        designCapacityMAh: Double
     ))?
     @ObservationIgnored private var historyFileURL: URL {
         storageDirectory.appendingPathComponent("vitals_history.json")
@@ -655,7 +728,18 @@ public final class HardwareVitalsService {
             source: String,
             healthPercent: Int,
             cycleCount: Int,
-            temperatureCelsius: Double
+            temperatureCelsius: Double,
+            isPresent: Bool,
+            voltageVolts: Double,
+            chargeWatts: Double,
+            timeRemainingMinutes: Int?,
+            condition: String,
+            systemWatts: Double,
+            systemVolts: Double,
+            systemAmps: Double,
+            adapterWatts: Double,
+            maxCapacityMAh: Double,
+            designCapacityMAh: Double
         )
     ) {
         self.storageDirectory = storageDirectory
@@ -688,6 +772,20 @@ public final class HardwareVitalsService {
         let now = Date()
         let dur = activeScope.durationSeconds
         return networkUpHistory.filter { now.timeIntervalSince($0.timestamp) <= dur }
+    }
+
+    public func diskReadHistory(scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
+        let activeScope = scope ?? selectedTimeScope
+        let now = Date()
+        let dur = activeScope.durationSeconds
+        return diskReadHistory.filter { now.timeIntervalSince($0.timestamp) <= dur }
+    }
+
+    public func diskWriteHistory(scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
+        let activeScope = scope ?? selectedTimeScope
+        let now = Date()
+        let dur = activeScope.durationSeconds
+        return diskWriteHistory.filter { now.timeIntervalSince($0.timestamp) <= dur }
     }
 
     private func appendHistory(_ array: inout [VitalsHistoryPoint], point: VitalsHistoryPoint, maxSamples: Int = 2880) {
@@ -789,7 +887,8 @@ public final class HardwareVitalsService {
     public func refreshMetrics(includeProcesses: Bool = true, includeGPU: Bool = true) {
         let cpuBreakdown = readCPUBreakdown()
         let loads = readLoadAverages()
-        let gpu = includeGPU ? readGPUUsage() : metrics.gpuUsage
+        let gpuDetailed = includeGPU ? readGPUUsageDetailed() : nil
+        let gpu = gpuDetailed?.device ?? metrics.gpuUsage
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
         let diskIO: (readBytesPerSec: Double, writeBytesPerSec: Double) = isDrawerVisible
@@ -801,7 +900,18 @@ public final class HardwareVitalsService {
             source: String,
             healthPercent: Int,
             cycleCount: Int,
-            temperatureCelsius: Double
+            temperatureCelsius: Double,
+            isPresent: Bool,
+            voltageVolts: Double,
+            chargeWatts: Double,
+            timeRemainingMinutes: Int?,
+            condition: String,
+            systemWatts: Double,
+            systemVolts: Double,
+            systemAmps: Double,
+            adapterWatts: Double,
+            maxCapacityMAh: Double,
+            designCapacityMAh: Double
         ) = (isDrawerVisible || Self.isPowerMetricVisibleOnRail)
             ? (batteryProbe?() ?? readBatteryInfo())
             : (
@@ -810,7 +920,18 @@ public final class HardwareVitalsService {
                 metrics.powerSource,
                 metrics.batteryHealthPercent,
                 metrics.batteryCycleCount,
-                metrics.batteryTemperatureCelsius
+                metrics.batteryTemperatureCelsius,
+                metrics.batteryIsPresent,
+                metrics.batteryVoltageVolts,
+                metrics.batteryChargeWatts,
+                metrics.batteryTimeRemainingMinutes,
+                metrics.batteryCondition,
+                metrics.powerSystemWatts,
+                metrics.powerSystemVolts,
+                metrics.powerSystemAmps,
+                metrics.powerAdapterWatts,
+                metrics.batteryMaxCapacityMAh,
+                metrics.batteryDesignCapacityMAh
             )
         let net = readNetworkThroughputDetailed()
         let thermal = readThermalStateLabel()
@@ -832,6 +953,7 @@ public final class HardwareVitalsService {
             cpuUserUsage: cpuBreakdown.userUsage,
             cpuSystemUsage: cpuBreakdown.sysUsage,
             cpuIdleUsage: cpuBreakdown.idleUsage,
+            cpuCoreUsages: cpuBreakdown.coreUsages,
             loadAverage1m: loads.load1m,
             loadAverage5m: loads.load5m,
             loadAverage15m: loads.load15m,
@@ -843,6 +965,10 @@ public final class HardwareVitalsService {
             memoryWiredGB: mem.wiredGB,
             memoryCompressedGB: mem.compressedGB,
             memorySwapUsedMB: mem.swapUsedMB,
+            memorySwapTotalMB: mem.swapTotalMB,
+            memoryActiveGB: mem.activeGB,
+            memoryCachedGB: mem.cachedGB,
+            memoryFreeGB: mem.freeGB,
             memoryPressureLevel: mem.pressureLevel,
             networkInterfaceName: net.interfaceName,
             localIPAddress: net.localIP,
@@ -850,9 +976,24 @@ public final class HardwareVitalsService {
             networkTotalSentGB: net.totalSentGB,
             diskReadBytesPerSec: diskIO.readBytesPerSec,
             diskWriteBytesPerSec: diskIO.writeBytesPerSec,
+            gpuRendererUsage: gpuDetailed?.renderer ?? metrics.gpuRendererUsage,
+            gpuTilerUsage: gpuDetailed?.tiler ?? metrics.gpuTilerUsage,
+            gpuMemoryInUseMB: gpuDetailed?.memoryInUseMB ?? metrics.gpuMemoryInUseMB,
+            gpuCoreCount: gpuDetailed?.coreCount ?? metrics.gpuCoreCount,
             batteryHealthPercent: battery.healthPercent,
             batteryCycleCount: battery.cycleCount,
-            batteryTemperatureCelsius: battery.temperatureCelsius
+            batteryTemperatureCelsius: battery.temperatureCelsius,
+            batteryIsPresent: battery.isPresent,
+            batteryVoltageVolts: battery.voltageVolts,
+            batteryChargeWatts: battery.chargeWatts,
+            batteryTimeRemainingMinutes: battery.timeRemainingMinutes,
+            batteryCondition: battery.condition,
+            powerSystemWatts: battery.systemWatts,
+            powerSystemVolts: battery.systemVolts,
+            powerSystemAmps: battery.systemAmps,
+            powerAdapterWatts: battery.adapterWatts,
+            batteryMaxCapacityMAh: battery.maxCapacityMAh,
+            batteryDesignCapacityMAh: battery.designCapacityMAh
         )
 
         let now = Date()
@@ -868,6 +1009,14 @@ public final class HardwareVitalsService {
         appendHistory(&networkUpHistory, point: VitalsHistoryPoint(timestamp: now, value: upRatio))
         let diskRatio = disk.totalGB > 0 ? (disk.totalGB - disk.freeGB) / disk.totalGB : 0.5
         appendHistory(&diskHistory, point: VitalsHistoryPoint(timestamp: now, value: diskRatio))
+        appendHistory(&diskReadHistory, point: VitalsHistoryPoint(
+            timestamp: now,
+            value: min(diskIO.readBytesPerSec / 10_485_760.0, 1.0)
+        ))
+        appendHistory(&diskWriteHistory, point: VitalsHistoryPoint(
+            timestamp: now,
+            value: min(diskIO.writeBytesPerSec / 10_485_760.0, 1.0)
+        ))
 
         // The rail only needs the cheap metrics above. The 580-process walk
         // runs in the background and publishes on a later main-actor turn.
@@ -1064,19 +1213,49 @@ public final class HardwareVitalsService {
         return (max(readSpeed, 0.0), max(writeSpeed, 0.0))
     }
 
-    public func readBatteryInfo() -> (level: Int, isCharging: Bool, source: String, healthPercent: Int, cycleCount: Int, temperatureCelsius: Double) {
+    public func readBatteryInfo() -> (
+        level: Int,
+        isCharging: Bool,
+        source: String,
+        healthPercent: Int,
+        cycleCount: Int,
+        temperatureCelsius: Double,
+        isPresent: Bool,
+        voltageVolts: Double,
+        chargeWatts: Double,
+        timeRemainingMinutes: Int?,
+        condition: String,
+        systemWatts: Double,
+        systemVolts: Double,
+        systemAmps: Double,
+        adapterWatts: Double,
+        maxCapacityMAh: Double,
+        designCapacityMAh: Double
+    ) {
         var level = 100
         var isCharging = false
         var sourceName = "AC Power"
+        var isPresent = false
+        var timeRemainingMinutes: Int?
 
         if let snapshot = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
            let sources = IOPSCopyPowerSourcesList(snapshot)?.takeRetainedValue() as? [CFTypeRef] {
             for source in sources {
                 if let desc = IOPSGetPowerSourceDescription(snapshot, source)?.takeUnretainedValue() as? [String: Any] {
+                    isPresent = desc[kIOPSCurrentCapacityKey as String] != nil
                     level = desc[kIOPSCurrentCapacityKey] as? Int ?? 100
                     isCharging = desc[kIOPSIsChargingKey] as? Bool ?? false
                     let source = desc[kIOPSPowerSourceStateKey] as? String ?? "AC Power"
                     sourceName = (source == kIOPSACPowerValue) ? "AC Power" : "Battery"
+
+                    let timeKey = isCharging
+                        ? kIOPSTimeToFullChargeKey
+                        : kIOPSTimeToEmptyKey
+                    let minutes = (desc[timeKey as String] as? NSNumber)?.intValue
+                        ?? (desc[timeKey as String] as? Int)
+                    if let minutes, minutes > 0, minutes != 65535 {
+                        timeRemainingMinutes = minutes
+                    }
                     break
                 }
             }
@@ -1085,6 +1264,15 @@ public final class HardwareVitalsService {
         var cycleCount = 0
         var temperatureCelsius = 31.0
         var healthPercent = 100
+        var voltageVolts = 0.0
+        var chargeWatts = 0.0
+        var maxCapacityMAh = 0.0
+        var designCapacityMAh = 0.0
+        var condition = "Normal"
+        var systemWatts = 0.0
+        var systemVolts = 0.0
+        var systemAmps = 0.0
+        var adapterWatts = 0.0
 
         var iterator: io_iterator_t = 0
         let matchDict = IOServiceMatching("AppleSmartBattery")
@@ -1117,11 +1305,72 @@ public final class HardwareVitalsService {
                         let calc = Int((capVal / designVal) * 100.0)
                         healthPercent = Swift.min(Swift.max(calc, 50), 100)
                     }
+
+                    if let rawVoltage = (dict["Voltage"] as? NSNumber)?.doubleValue {
+                        voltageVolts = rawVoltage / 1000.0
+                    }
+                    let amperage = (dict["Amperage"] as? NSNumber)?.doubleValue
+                        ?? (dict["InstantAmperage"] as? NSNumber)?.doubleValue
+                    if let amperage {
+                        // mA × V / 1000 = W; the raw sign is charging-positive.
+                        chargeWatts = amperage * voltageVolts / 1000.0
+                    }
+
+                    if let health = dict["BatteryHealth"] as? String, !health.isEmpty {
+                        condition = health
+                    }
+
+                    // Adapter → system → battery. `PowerTelemetryData` is
+                    // absent on desktops and older Intel Macs; every field
+                    // then stays 0 and the UI hides the flow band. The adapter
+                    // figure is the negotiated rating, never a live draw.
+                    let telemetry = dict["PowerTelemetryData"] as? [String: Any]
+                    systemWatts = ((telemetry?["SystemPowerIn"] as? NSNumber)?.doubleValue ?? 0) / 1000.0
+                    systemVolts = ((telemetry?["SystemVoltageIn"] as? NSNumber)?.doubleValue ?? 0) / 1000.0
+                    systemAmps = ((telemetry?["SystemCurrentIn"] as? NSNumber)?.doubleValue ?? 0) / 1000.0
+
+                    let adapter = dict["AdapterDetails"] as? [String: Any]
+                    let ratedWatts = (adapter?["Watts"] as? NSNumber)?.doubleValue ?? 0
+                    if ratedWatts > 0 {
+                        adapterWatts = ratedWatts
+                    } else {
+                        let port = dict["PortControllerInfo"] as? [String: Any]
+                        let maxMilliwatts = (port?["PortControllerMaxPower"] as? NSNumber)?.doubleValue ?? 0
+                        adapterWatts = maxMilliwatts / 1000.0
+                    }
+
+                    let batteryData = dict["BatteryData"] as? [String: Any]
+                    maxCapacityMAh = (batteryData?["AppleRawMaxCapacity"] as? NSNumber)?.doubleValue
+                        ?? (batteryData?["FullChargeCapacity"] as? NSNumber)?.doubleValue
+                        ?? (batteryData?["NominalChargeCapacity"] as? NSNumber)?.doubleValue
+                        ?? (dict["AppleRawMaxCapacity"] as? NSNumber)?.doubleValue
+                        ?? 0
+                    designCapacityMAh = (batteryData?["DesignCapacity"] as? NSNumber)?.doubleValue
+                        ?? (dict["DesignCapacity"] as? NSNumber)?.doubleValue
+                        ?? 0
                 }
             }
         }
 
-        return (level, isCharging, sourceName, healthPercent, cycleCount, temperatureCelsius)
+        return (
+            level,
+            isCharging,
+            sourceName,
+            healthPercent,
+            cycleCount,
+            temperatureCelsius,
+            isPresent,
+            voltageVolts,
+            chargeWatts,
+            timeRemainingMinutes,
+            condition,
+            systemWatts,
+            systemVolts,
+            systemAmps,
+            adapterWatts,
+            maxCapacityMAh,
+            designCapacityMAh
+        )
     }
 
     public func readMemoryBreakdown() -> (
@@ -1132,7 +1381,11 @@ public final class HardwareVitalsService {
         wiredGB: Double,
         compressedGB: Double,
         swapUsedMB: Double,
-        pressureLevel: String
+        pressureLevel: String,
+        activeGB: Double,
+        cachedGB: Double,
+        freeGB: Double,
+        swapTotalMB: Double
     ) {
         var vmStats = vm_statistics64()
         var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
@@ -1147,7 +1400,7 @@ public final class HardwareVitalsService {
         let totalGB = totalMem / 1_073_741_824.0
 
         guard result == KERN_SUCCESS else {
-            return (0.45, totalGB * 0.45, totalGB, 4.0, 2.0, 1.0, 0.0, "Normal")
+            return (0.45, totalGB * 0.45, totalGB, 4.0, 2.0, 1.0, 0.0, "Normal", 0, 0, 0, 0)
         }
 
         let pageSize = Double(getpagesize())
@@ -1162,13 +1415,19 @@ public final class HardwareVitalsService {
         let compressedGB = (Double(vmStats.compressor_page_count) * pageSize) / 1_073_741_824.0
         let internalMinusPurgeable = (Double(max(Int64(vmStats.internal_page_count) - Int64(vmStats.purgeable_count), 0)) * pageSize) / 1_073_741_824.0
         let activeGB = (Double(vmStats.active_count) * pageSize) / 1_073_741_824.0
+        let cachedGB = ((Double(vmStats.inactive_count) + Double(vmStats.speculative_count)) * pageSize) / 1_073_741_824.0
+        // Derived as the remainder so the five composition segments always add
+        // up to physical memory; `free_count` alone leaves pages unaccounted.
+        let freeGB = max(totalGB - (usedGB + cachedGB), 0)
         let appGB = max(internalMinusPurgeable, activeGB)
 
         var swapUsage = xsw_usage()
         var swapSize = MemoryLayout<xsw_usage>.size
         var swapUsedMB: Double = 0.0
+        var swapTotalMB: Double = 0.0
         if sysctlbyname("vm.swapusage", &swapUsage, &swapSize, nil, 0) == 0 {
             swapUsedMB = Double(swapUsage.xsu_used) / 1_048_576.0
+            swapTotalMB = Double(swapUsage.xsu_total) / 1_048_576.0
         }
 
         let pressureLevel: String = {
@@ -1177,10 +1436,29 @@ public final class HardwareVitalsService {
             return "Normal"
         }()
 
-        return (usage, usedGB, totalGB, appGB, wiredGB, compressedGB, swapUsedMB, pressureLevel)
+        return (
+            usage,
+            usedGB,
+            totalGB,
+            appGB,
+            wiredGB,
+            compressedGB,
+            swapUsedMB,
+            pressureLevel,
+            activeGB,
+            cachedGB,
+            freeGB,
+            swapTotalMB
+        )
     }
 
-    public func readCPUBreakdown() -> (totalUsage: Double, userUsage: Double, sysUsage: Double, idleUsage: Double) {
+    public func readCPUBreakdown() -> (
+        totalUsage: Double,
+        userUsage: Double,
+        sysUsage: Double,
+        idleUsage: Double,
+        coreUsages: [Double]
+    ) {
         var numProcessors: natural_t = 0
         var cpuInfo: processor_info_array_t?
         var numCpuInfo: mach_msg_type_number_t = 0
@@ -1194,19 +1472,21 @@ public final class HardwareVitalsService {
         )
 
         guard result == KERN_SUCCESS, let cpuInfo = cpuInfo else {
-            return (0.15, 0.10, 0.05, 0.85)
+            return (0.15, 0.10, 0.05, 0.85, [])
         }
 
         var totalUsage: Double = 0.15
         var userUsage: Double = 0.10
         var sysUsage: Double = 0.05
         var idleUsage: Double = 0.85
+        var coreUsages: [Double] = []
 
         if let prev = buffer.previousCpuInfo, buffer.previousCpuInfoCount == numCpuInfo {
             var userTicks: Int64 = 0
             var sysTicks: Int64 = 0
             var idleTicks: Int64 = 0
             var totalTicks: Int64 = 0
+            coreUsages.reserveCapacity(Int(numProcessors))
 
             for i in 0..<Int(numProcessors) {
                 let userIdx = Int(CPU_STATE_MAX) * i + Int(CPU_STATE_USER)
@@ -1222,7 +1502,15 @@ public final class HardwareVitalsService {
                 userTicks += (u + n)
                 sysTicks += s
                 idleTicks += id
-                totalTicks += (u + s + n + id)
+                let coreTicks = u + s + n + id
+                totalTicks += coreTicks
+                // Kernel logical CPU order: on Apple Silicon the performance
+                // cores occupy the first `performanceCoreCount` indices.
+                coreUsages.append(
+                    coreTicks > 0
+                        ? Double(u + s + n) / Double(coreTicks)
+                        : 0
+                )
             }
 
             if totalTicks > 0 {
@@ -1246,7 +1534,8 @@ public final class HardwareVitalsService {
             min(max(totalUsage, 0.0), 1.0),
             min(max(userUsage, 0.0), 1.0),
             min(max(sysUsage, 0.0), 1.0),
-            min(max(idleUsage, 0.0), 1.0)
+            min(max(idleUsage, 0.0), 1.0),
+            coreUsages.map { min(max($0, 0.0), 1.0) }
         )
     }
 
@@ -1337,13 +1626,27 @@ public final class HardwareVitalsService {
     // MARK: - Zero-Overhead GPU & Network Telemetry
 
     public func readGPUUsage() -> Double {
+        readGPUUsageDetailed().device
+    }
+
+    public func readGPUUsageDetailed() -> (
+        device: Double,
+        renderer: Double,
+        tiler: Double,
+        memoryInUseMB: Double,
+        coreCount: Int
+    ) {
         var iterator: io_iterator_t = 0
         let matchDict = IOServiceMatching("IOAccelerator")
         let result = IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator)
-        guard result == kIOReturnSuccess, iterator != 0 else { return 0.0 }
+        guard result == kIOReturnSuccess, iterator != 0 else { return (0, 0, 0, 0, 0) }
         defer { IOObjectRelease(iterator) }
 
-        var maxUsage: Double = 0.0
+        var device: Double = 0
+        var renderer: Double = 0
+        var tiler: Double = 0
+        var memoryInUseMB: Double = 0
+        var coreCount = 0
         var service = IOIteratorNext(iterator)
         while service != 0 {
             defer {
@@ -1355,19 +1658,37 @@ public final class HardwareVitalsService {
             if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == kIOReturnSuccess,
                let dict = props?.takeRetainedValue() as? [String: Any],
                let perfStats = dict["PerformanceStatistics"] as? [String: Any] {
-                if let devUtil = perfStats["Device Utilization %"] as? NSNumber {
-                    let util = devUtil.doubleValue / 100.0
-                    maxUsage = max(maxUsage, util)
-                } else if let devUtil = perfStats["Device Utilization %"] as? Int {
-                    let util = Double(devUtil) / 100.0
-                    maxUsage = max(maxUsage, util)
-                } else if let rendUtil = perfStats["Renderer Utilization %"] as? NSNumber {
-                    let util = rendUtil.doubleValue / 100.0
-                    maxUsage = max(maxUsage, util)
+                let devUtil = (perfStats["Device Utilization %"] as? NSNumber)?.doubleValue
+                    ?? (perfStats["Device Utilization %"] as? Int).map(Double.init)
+                let rendUtil = (perfStats["Renderer Utilization %"] as? NSNumber)?.doubleValue
+                    ?? (perfStats["Renderer Utilization %"] as? Int).map(Double.init)
+                let tilerUtil = (perfStats["Tiler Utilization %"] as? NSNumber)?.doubleValue
+                    ?? (perfStats["Tiler Utilization %"] as? Int).map(Double.init)
+                let memoryBytes = (perfStats["In use system memory"] as? NSNumber)?.doubleValue
+                    ?? (perfStats["In use system memory"] as? Int).map(Double.init)
+
+                // Today's headline chain: Device → Renderer.
+                if let devUtil {
+                    device = max(device, devUtil / 100.0)
+                } else if let rendUtil {
+                    device = max(device, rendUtil / 100.0)
                 }
+                if let rendUtil { renderer = max(renderer, rendUtil / 100.0) }
+                if let tilerUtil { tiler = max(tiler, tilerUtil / 100.0) }
+                if let memoryBytes { memoryInUseMB = max(memoryInUseMB, memoryBytes / 1_048_576.0) }
+
+                let cores = (dict["gpu-core-count"] as? NSNumber)?.intValue
+                    ?? (dict["gpu-core-count"] as? Int)
+                if let cores { coreCount = max(coreCount, cores) }
             }
         }
-        return min(max(maxUsage, 0.0), 1.0)
+        return (
+            min(max(device, 0.0), 1.0),
+            min(max(renderer, 0.0), 1.0),
+            min(max(tiler, 0.0), 1.0),
+            max(memoryInUseMB, 0),
+            max(coreCount, 0)
+        )
     }
 
     public func readNetworkThroughputDetailed() -> (

@@ -33,6 +33,130 @@ struct VitalsAndScriptTests {
         #expect(metrics.diskTotalGB > 0.0)
         #expect(metrics.batteryLevel >= 0 && metrics.batteryLevel <= 100)
         #expect(!metrics.powerSource.isEmpty)
+        #expect(metrics.powerSystemWatts >= 0)
+        #expect(metrics.powerSystemVolts >= 0)
+        #expect(metrics.powerSystemAmps >= 0)
+        #expect(metrics.powerAdapterWatts >= 0)
+    }
+
+    @Test("A machine without PowerTelemetryData reports zero power flow")
+    func missingPowerTelemetryStaysZero() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitals-desktop-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let service = HardwareVitalsService(
+            storageDirectory: tempDir,
+            diskIOProbe: { (readBytesPerSec: 0, writeBytesPerSec: 0) },
+            batteryProbe: {
+                (
+                    level: 100,
+                    isCharging: false,
+                    source: "AC Power",
+                    healthPercent: 100,
+                    cycleCount: 0,
+                    temperatureCelsius: 31,
+                    isPresent: false,
+                    voltageVolts: 0,
+                    chargeWatts: 0,
+                    timeRemainingMinutes: nil,
+                    condition: "Normal",
+                    systemWatts: 0,
+                    systemVolts: 0,
+                    systemAmps: 0,
+                    adapterWatts: 0,
+                    maxCapacityMAh: 0,
+                    designCapacityMAh: 0
+                )
+            }
+        )
+        service.isDrawerVisible = true
+        service.refreshMetrics(includeProcesses: false)
+
+        #expect(service.metrics.powerSystemWatts == 0)
+        #expect(service.metrics.powerSystemVolts == 0)
+        #expect(service.metrics.powerSystemAmps == 0)
+        #expect(service.metrics.powerAdapterWatts == 0)
+        #expect(!service.metrics.batteryIsPresent)
+    }
+
+    @Test("Per-core CPU samples stay in range and cover every logical core")
+    func coreUsagesAreWellFormed() {
+        let service = HardwareVitalsService.shared
+        // The first sample has no previous buffer to diff against; the second
+        // tick is the one that can produce per-core values.
+        service.refreshMetrics(includeProcesses: false)
+        service.refreshMetrics(includeProcesses: false)
+        let metrics = service.metrics
+
+        #expect(metrics.cpuCoreUsages.allSatisfy { $0 >= 0 && $0 <= 1 })
+        let coreCount = metrics.performanceCoreCount + metrics.efficiencyCoreCount
+        if coreCount > 0 {
+            #expect(metrics.cpuCoreUsages.count == coreCount)
+        } else {
+            #expect(metrics.cpuCoreUsages.isEmpty)
+        }
+    }
+
+    @Test("Memory composition sums to physical memory and swap total covers usage")
+    func memoryCompositionAddsUp() {
+        let service = HardwareVitalsService.shared
+        service.refreshMetrics(includeProcesses: false)
+        let metrics = service.metrics
+
+        let composition = metrics.memoryActiveGB
+            + metrics.memoryWiredGB
+            + metrics.memoryCompressedGB
+            + metrics.memoryCachedGB
+            + metrics.memoryFreeGB
+        #expect(abs(composition - metrics.memoryTotalGB) <= 0.05)
+        #expect(metrics.memorySwapTotalMB >= metrics.memorySwapUsedMB)
+    }
+
+    @Test("Core heat grid weights P cores 1.5x and stays inside its row")
+    func coreGridWidths() throws {
+        let macBook = try #require(VitalsCoreGridMetrics.resolve(
+            availableWidth: 320,
+            performanceCount: 4,
+            efficiencyCount: 4
+        ))
+        // (320 - 12 - 7*3) / (4*1.5 + 4) = 28.7; a P core is 1.5 units.
+        #expect(abs(macBook.performanceWidth - 43.05) <= 0.001)
+        #expect(abs(macBook.efficiencyWidth - 28.7) <= 0.001)
+
+        let wide = try #require(VitalsCoreGridMetrics.resolve(
+            availableWidth: 320,
+            performanceCount: 6,
+            efficiencyCount: 12
+        ))
+        // (320 - 12 - 17*3) / (6*1.5 + 12) = 12.238…
+        #expect(abs(wide.performanceWidth - 18.357) <= 0.01)
+        #expect(abs(wide.efficiencyWidth - 12.238) <= 0.01)
+
+        #expect(VitalsCoreGridMetrics.resolve(
+            availableWidth: 320,
+            performanceCount: 0,
+            efficiencyCount: 0
+        ) == nil)
+
+        for (performance, efficiency, width) in [
+            (4, 4, CGFloat(320)),
+            (6, 12, CGFloat(320)),
+            (8, 0, CGFloat(300)),
+            (0, 8, CGFloat(300))
+        ] {
+            let layout = try #require(VitalsCoreGridMetrics.resolve(
+                availableWidth: width,
+                performanceCount: performance,
+                efficiencyCount: efficiency
+            ))
+            let cores = performance + efficiency
+            let used = layout.performanceWidth * CGFloat(performance)
+                + layout.efficiencyWidth * CGFloat(efficiency)
+                + (performance > 0 && efficiency > 0 ? VitalsCoreGridMetrics.groupGap : 0)
+                + CGFloat(max(cores - 1, 0)) * VitalsCoreGridMetrics.intraGroupSpacing
+            #expect(used <= width + 0.001)
+        }
     }
 
     @Test("Vitals skips drawer-only disk and battery probes while docked")
@@ -57,7 +181,18 @@ struct VitalsAndScriptTests {
                     source: "Battery",
                     healthPercent: 90,
                     cycleCount: 123,
-                    temperatureCelsius: 32
+                    temperatureCelsius: 32,
+                    isPresent: true,
+                    voltageVolts: 12.4,
+                    chargeWatts: -6.2,
+                    timeRemainingMinutes: 134,
+                    condition: "Normal",
+                    systemWatts: 8.0,
+                    systemVolts: 19.96,
+                    systemAmps: 0.399,
+                    adapterWatts: 100,
+                    maxCapacityMAh: 4_409,
+                    designCapacityMAh: 4_563
                 )
             }
         )

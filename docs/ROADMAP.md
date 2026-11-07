@@ -4,7 +4,7 @@ The order below is not "what would be fun to build". It is the order in which
 things stop a stranger from using Purah, then stop them from trusting it, then
 stop them from keeping it.
 
-Last reviewed: 2026-11-04 (v0.7.15)
+Last reviewed: 2026-11-07 (v0.7.18)
 
 ---
 
@@ -13,12 +13,12 @@ Last reviewed: 2026-11-04 (v0.7.15)
 | Area | State |
 |---|---|
 | Features | 10 built-in plugins; the feature set is deeper than most tools in this space |
-| Quality | 1,074 tests, strict concurrency, source-level guards for tooltips and motion tokens |
+| Quality | 1,197 tests in 137 suites, strict concurrency, source-level guards for tooltips and motion tokens, and a pixel-level render test for the header tint |
 | Distribution | Self-signed, on a self-hosted Homebrew tap. Grants survive updates and `brew` installs cleanly; **a DMG download from the website still hits Gatekeeper** |
-| Ecosystem | Complete plugin ABI and a developer guide, but the marketplace ships only the built-ins and the only install path is Developer Mode |
-| Trust | Permission matrix, risk classification, checksums, signature verification — but **nothing is said at install time** |
+| Ecosystem | Complete plugin ABI and a developer guide, but the marketplace has no published catalog (`PluginCatalogService.catalogURL` is `nil`) and nothing downloads a plugin: the only install path is Developer Mode |
+| Trust | Permission matrix, risk classification, checksums, signature verification, and a per-permission review sheet before a catalog install. **A sideloaded package still mounts without one** — its manifest does not exist until it has been compiled |
 | Resources | ~33–46 MB physical footprint idle (Music.app running adds ~8–13 MB), ~53 MB worst case after touring every pod with the process tab open. The old "~156 MB" figure was `ps` RSS, which counts shared read-only framework pages — `__TEXT` alone is 564 MB resident inside the 2.9 GB dyld shared cache. ~1.1–1.2% idle CPU; the Vitals drawer used to add ~6.3% while it was open, it now adds ~1.7–1.9% (v0.7.15) |
-| Diagnostics | No crash reporter and no telemetry. When it breaks, the only report is the user's description |
+| Diagnostics | A local crash reporter (`crash-log.txt`, never uploaded), launch-health and update-install markers, and an exportable diagnostic log. No telemetry and no remote reporting |
 
 ---
 
@@ -56,14 +56,27 @@ Last reviewed: 2026-11-04 (v0.7.15)
 ## Phase 1 — Making it safe to install
 
 - [ ] **1.1 Install-time permission consent** — before `Dev: Load Package...`
-      dlopens a plugin, list what it declares and what denial costs. The
-      declaration and request paths exist; only the confirmation is missing.
+      dlopens a plugin, list what it declares and what denial costs. **Half
+      done (v0.7.18):** a catalog install now goes through
+      `SecurityConfirmationSheet`, which lists every declared capability and
+      its consequence. The sideload path still mounts silently, because the
+      manifest does not exist until the package has been compiled — the
+      confirmation has to sit between "compiled" and "registered".
 - [ ] **1.2 Third-party plugin lifecycle** — install, list, update, remove.
-      Today a third-party plugin is installable only in Developer Mode and has
-      no management surface afterwards. Start from the existing
-      `PluginStorageInspectorView`, which already knows every plugin on disk.
-- [ ] **1.3 Marketplace: fill it or hide it** — `fullCatalog` is
-      `builtInCatalog`. An empty shelf reads worse than no shelf.
+      **Half done (v0.7.18):** install, rebuild from the remembered package
+      folder, list (Marketplace + the System storage table), remove with
+      confirmation, and re-load on the next launch all exist. Missing: update
+      from a source, and a management surface that is not Developer Mode.
+      Start from the existing `PluginStorageInspectorView`, which already knows
+      every plugin on disk.
+- [ ] **1.3 Marketplace: fill it or hide it** — the invented catalog is gone
+      (it mounted pods that could only render their own description back).
+      `PluginCatalogService` was added to read a published index, but
+      `catalogURL` is `nil`, nothing downloads a plugin from `downloadUrl`, and
+      `PluginMarketManager.install(id:)` refuses any id without a registered
+      implementation — so the shelf lists the built-ins and nothing else.
+      Either publish a catalog *and* a downloader, or say on the page that
+      this Purah installs built-ins only.
 - [ ] **1.4 Plugin scaffold** — one command that produces a buildable, loadable
       empty plugin. `Examples/PurahExamplePlugin` is the reference; the
       scaffold removes the "read 300 lines of guide first" tax.
@@ -78,10 +91,10 @@ Last reviewed: 2026-11-04 (v0.7.15)
       (156 MB vs 46 MB for the same process). A drawer that adds 6% while it
       is open is the same problem in miniature — v0.7.15 fixed the one case
       that was measured, not the class.
-- [ ] **2.2 Localization** — zh-Hant is complete; ja/ko/fr/de/es carry 70–90
-      keys and fall back to English partway. Either finish them or drop them
-      from the language picker. Shipping a half-translated language is worse
-      than shipping two good ones.
+- [ ] **2.2 Localization** — zh-Hant is complete; es carries 169 keys and
+      ja/ko/fr/de 151 each, so they fall back to English for most of the app.
+      Either finish them or drop them from the language picker. Shipping a
+      half-translated language is worse than shipping two good ones.
 - [ ] **2.3 Defaults for strangers** — the shipped default layout is the
       author's taste. A first run should be legible before it is personal.
 

@@ -7,6 +7,7 @@ public enum VitalsDashboardTab: String, CaseIterable, Identifiable, Sendable {
     case overview
     case compute
     case io
+    case power
     case processes
 
     public var id: String { rawValue }
@@ -14,8 +15,9 @@ public enum VitalsDashboardTab: String, CaseIterable, Identifiable, Sendable {
     public var title: String {
         switch self {
         case .overview: return "Overview"
-        case .compute: return "CPU/RAM"
+        case .compute: return "Compute"
         case .io: return "Net/Disk"
+        case .power: return "Power"
         case .processes: return "Procs"
         }
     }
@@ -25,6 +27,7 @@ public enum VitalsDashboardTab: String, CaseIterable, Identifiable, Sendable {
         case .overview: return "square.grid.2x2"
         case .compute: return "cpu"
         case .io: return "network"
+        case .power: return "bolt.batteryblock.fill"
         case .processes: return "list.bullet.rectangle"
         }
     }
@@ -109,13 +112,58 @@ private enum ProcessMetricThresholds {
     static let powerDangerWatts = 5.0
 }
 
+/// Pure width maths for the per-core heat grid, so the P/E weighting is
+/// resolved once and can be tested without a window.
+struct VitalsCoreGridMetrics: Equatable, Sendable {
+    static let groupGap: CGFloat = 12
+    static let intraGroupSpacing: CGFloat = 3
+    static let performanceWeight: CGFloat = 1.5
+
+    let performanceWidth: CGFloat
+    let efficiencyWidth: CGFloat
+
+    static func resolve(
+        availableWidth: CGFloat,
+        performanceCount: Int,
+        efficiencyCount: Int
+    ) -> VitalsCoreGridMetrics? {
+        let performance = max(performanceCount, 0)
+        let efficiency = max(efficiencyCount, 0)
+        let cores = performance + efficiency
+        guard cores > 0 else { return nil }
+
+        let available = max(availableWidth, 0)
+        let isSplit = performance > 0 && efficiency > 0
+        let gap = isSplit ? groupGap : 0
+        // One gap between neighbours in the brief's single-row model; the
+        // rendered two-group HStack simply leaves a little extra slack.
+        let gaps = CGFloat(max(cores - 1, 0)) * intraGroupSpacing
+        let weights = CGFloat(performance) * performanceWeight + CGFloat(efficiency)
+        let unit = max((available - gap - gaps) / max(weights, 0.0001), 0)
+
+        if isSplit {
+            return VitalsCoreGridMetrics(
+                performanceWidth: unit * performanceWeight,
+                efficiencyWidth: unit
+            )
+        }
+
+        // No P/E claim: every core in the one group gets the same width.
+        return VitalsCoreGridMetrics(
+            performanceWidth: performance > 0 ? unit : 0,
+            efficiencyWidth: efficiency > 0 ? unit : 0
+        )
+    }
+}
+
 // MARK: - Composite Full Drawer View
 public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
+    private let service: HardwareVitalsService
 
     private var vitals: HardwareVitalsService {
-        HardwareVitalsService.shared
+        service
     }
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -127,6 +175,20 @@ public struct HardwareVitalsDrawerView: View {
     public init(state: VitalsPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
         self.state = state
         self.store = store
+        self.service = .shared
+    }
+
+    /// Test seam: a drawer reads one service instance, so a probe-injected
+    /// service (for example a desktop with no battery) can be rendered without
+    /// touching the app-wide singleton.
+    init(
+        state: VitalsPluginState,
+        store: PurahWorkspaceStore,
+        service: HardwareVitalsService
+    ) {
+        self.state = state
+        self.store = store
+        self.service = service
     }
 
     public init(store: PurahWorkspaceStore) {
@@ -281,6 +343,7 @@ public struct HardwareVitalsDrawerView: View {
                     case .overview:
                         overviewTabContent(
                             metrics: metrics,
+                            availableHeight: height,
                             showsDeepTelemetry: showsDeepTelemetry,
                             cpuColor: cpuColor,
                             gpuColor: gpuColor,
@@ -292,6 +355,7 @@ public struct HardwareVitalsDrawerView: View {
                     case .compute:
                         computeTabContent(
                             metrics: metrics,
+                            availableHeight: height,
                             cpuColor: cpuColor,
                             gpuColor: gpuColor,
                             ramColor: ramColor
@@ -299,8 +363,14 @@ public struct HardwareVitalsDrawerView: View {
                     case .io:
                         ioTabContent(
                             metrics: metrics,
+                            availableHeight: height,
                             diskColor: diskColor,
-                            netColor: netColor,
+                            netColor: netColor
+                        )
+                    case .power:
+                        powerTabContent(
+                            metrics: metrics,
+                            availableHeight: height,
                             powerColor: powerColor
                         )
                     case .processes:
@@ -419,6 +489,7 @@ public struct HardwareVitalsDrawerView: View {
     @ViewBuilder
     private func overviewTabContent(
         metrics: HardwareVitalsInfo,
+        availableHeight: CGFloat,
         showsDeepTelemetry: Bool,
         cpuColor: Color,
         gpuColor: Color,
@@ -427,452 +498,1286 @@ public struct HardwareVitalsDrawerView: View {
         powerColor: Color,
         netColor: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // 2x2 Grid of rich cards
-            HStack(spacing: 6) {
-                // 1. CPU Card
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        Text("CPU")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(Int(metrics.cpuUsage * 100))%")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(cpuColor)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.08))
-                            Capsule().fill(cpuColor).frame(width: max(geo.size.width * CGFloat(metrics.cpuUsage), 3))
-                        }
-                    }
-                    .frame(height: 4)
+        overviewSheet(
+            metrics: metrics,
+            availableHeight: availableHeight,
+            showsDeepTelemetry: showsDeepTelemetry,
+            cpuColor: cpuColor,
+            gpuColor: gpuColor,
+            ramColor: ramColor,
+            powerColor: powerColor,
+            netColor: netColor
+        )
+    }
 
-                    Text("Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Load \(String(format: "%.1f", metrics.loadAverage1m))")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(6)
-                .background(Color.primary.opacity(0.035))
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
+    // MARK: - Overview Sheet (variant E)
 
-                // 2. GPU Card
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        Text("GPU")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(Int(metrics.gpuUsage * 100))%")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(gpuColor)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.08))
-                            Capsule().fill(gpuColor).frame(width: max(geo.size.width * CGFloat(metrics.gpuUsage), 3))
-                        }
-                    }
-                    .frame(height: 4)
+    /// One surface divided by hairlines: the drawer card is already a card,
+    /// so the Overview draws no second card inside it.
+    private func overviewSheet(
+        metrics: HardwareVitalsInfo,
+        availableHeight: CGFloat,
+        showsDeepTelemetry: Bool,
+        cpuColor: Color,
+        gpuColor: Color,
+        ramColor: Color,
+        powerColor: Color,
+        netColor: Color
+    ) -> some View {
+        let sheetHeight = max(availableHeight - 4, 168)
+        // The fixed bands are the network band, the two immersive rows and the
+        // hairlines between them; the two cell rows share everything left, so
+        // the sheet ends exactly at the card's bottom edge at every height.
+        let fixedHeight: CGFloat = 54
+            + (showsDeepTelemetry ? 23 + 64 + 4 * 0.6 : 2 * 0.6)
+        let rowHeight = max((sheetHeight - fixedHeight) / 2, 44)
 
-                    Text("\(metrics.chipModelName) · \(metrics.thermalStateLabel)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(6)
-                .background(Color.primary.opacity(0.035))
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
+        return VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                overviewCell(
+                    title: "CPU",
+                    value: "\(Int(metrics.cpuUsage * 100))%",
+                    ratio: metrics.cpuUsage,
+                    tint: cpuColor,
+                    detail: "Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Load \(String(format: "%.1f", metrics.loadAverage1m))",
+                    history: vitals.history(for: .cpu, scope: .realTime30s),
+                    spokenLabel: String(
+                        format: "vitals.a11y.metric".localized,
+                        "CPU",
+                        Int(metrics.cpuUsage * 100)
+                    )
+                )
+                .overlay(alignment: .trailing) { overviewVerticalHairline }
+
+                overviewCell(
+                    title: "GPU",
+                    value: "\(Int(metrics.gpuUsage * 100))%",
+                    ratio: metrics.gpuUsage,
+                    tint: gpuColor,
+                    detail: "\(metrics.chipModelName) · \(metrics.thermalStateLabel)",
+                    history: vitals.history(for: .gpu, scope: .realTime30s),
+                    spokenLabel: String(
+                        format: "vitals.a11y.metric".localized,
+                        "GPU",
+                        Int(metrics.gpuUsage * 100)
+                    )
+                )
             }
+            .frame(height: rowHeight)
 
-            HStack(spacing: 6) {
-                // 3. RAM Card
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        Text("RAM")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(Int(metrics.memoryUsage * 100))%")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(ramColor)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.08))
-                            Capsule().fill(ramColor).frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 3))
-                        }
-                    }
-                    .frame(height: 4)
+            overviewHairline
 
-                    let swapStr = metrics.memorySwapUsedMB >= 1024 ? String(format: "%.1fG", metrics.memorySwapUsedMB / 1024.0) : "\(Int(metrics.memorySwapUsedMB))M"
-                    Text("Wired \(String(format: "%.1f", metrics.memoryWiredGB))G · Compr \(String(format: "%.1f", metrics.memoryCompressedGB))G · Swp \(swapStr)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(6)
-                .background(Color.primary.opacity(0.035))
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
+            HStack(spacing: 0) {
+                overviewCell(
+                    title: "RAM",
+                    value: "\(Int(metrics.memoryUsage * 100))%",
+                    ratio: metrics.memoryUsage,
+                    tint: ramColor,
+                    detail: ramDetail(metrics),
+                    history: vitals.history(for: .ram, scope: .realTime30s),
+                    spokenLabel: String(
+                        format: "vitals.a11y.metric".localized,
+                        "RAM",
+                        Int(metrics.memoryUsage * 100)
+                    )
+                )
+                .overlay(alignment: .trailing) { overviewVerticalHairline }
 
-                // 4. Battery Card
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        Text("Battery")
-                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text("\(metrics.batteryLevel)%")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(powerColor)
-                    }
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.08))
-                            Capsule().fill(powerColor).frame(width: max(geo.size.width * CGFloat(min(max(CGFloat(metrics.batteryLevel) / 100.0, 0.0), 1.0)), 3))
-                        }
-                    }
-                    .frame(height: 4)
-
-                    Text("Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(6)
-                .background(Color.primary.opacity(0.035))
-                .cornerRadius(8)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
+                overviewCell(
+                    title: "BATTERY",
+                    value: "\(metrics.batteryLevel)%",
+                    ratio: Double(metrics.batteryLevel) / 100.0,
+                    tint: powerColor,
+                    detail: "Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)",
+                    history: vitals.history(for: .power, scope: .realTime30s),
+                    spokenLabel: String(
+                        format: "vitals.a11y.metric".localized,
+                        "BATTERY",
+                        metrics.batteryLevel
+                    )
+                )
             }
+            .frame(height: rowHeight)
 
-            // Dedicated Full-Width Network Card
-            VStack(alignment: .leading, spacing: 4) {
-                // Top Row
-                HStack(spacing: 6) {
-                    Image(systemName: "network")
-                        .font(.system(size: 9.5, weight: .semibold))
-                        .foregroundColor(netColor)
-                    Text("Network")
-                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        .foregroundColor(.secondary)
+            overviewHairline
 
-                    Text("\(metrics.networkInterfaceName) · \(metrics.localIPAddress)")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1.5)
-                        .background(Color.primary.opacity(0.04))
-                        .cornerRadius(4)
+            overviewNetworkBand(metrics: metrics, netColor: netColor)
 
-                    Spacer()
-
-                    HStack(spacing: 4) {
-                        Text("↓ \(formatSpeed(metrics.networkDownSpeed))")
-                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                            .foregroundColor(netColor)
-                        Text("↑ \(formatSpeed(metrics.networkUpSpeed))")
-                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                            .foregroundColor(Color(hex: "#0A84FF"))
-                    }
-                }
-
-                // Bottom Row: Activity bar + session totals on the right
-                HStack(spacing: 6) {
-                    GeometryReader { geo in
-                        let netRatio = min((metrics.networkDownSpeed + metrics.networkUpSpeed) / 10_485_760.0, 1.0)
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.08))
-                            Capsule().fill(netColor).frame(width: max(geo.size.width * CGFloat(netRatio), 3))
-                        }
-                    }
-                    .frame(height: 4)
-
-                    Text("Total: ↓ \(String(format: "%.1f", metrics.networkTotalReceivedGB)) GB · ↑ \(String(format: "%.1f", metrics.networkTotalSentGB)) GB")
-                        .font(.system(size: 7.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .padding(6)
-            .background(Color.primary.opacity(0.035))
-            .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
-
-            // Deep telemetry strip + top processes belong to the immersive
-            // tier only; the standard tier keeps the 2x2 grid plus I/O.
             if showsDeepTelemetry {
-                // CPU/RAM Breakdown Strip
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("vitals.deepCompute".localized)
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                overviewHairline
+                overviewDeepTelemetryRow(metrics: metrics)
+                overviewHairline
+                overviewTopProcessesRow(metrics: metrics)
+            }
+        }
+        .padding(.horizontal, 2)
+        .frame(height: sheetHeight, alignment: .top)
+    }
+
+    private func overviewCell(
+        title: String,
+        value: String,
+        ratio: Double,
+        tint: Color,
+        detail: String,
+        history: [VitalsHistoryPoint],
+        spokenLabel: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(title)
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 2)
+                Text(value)
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundColor(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule()
+                        .fill(tint)
+                        .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0.0), 1.0)), 3))
+                }
+            }
+            .frame(height: 2.5)
+
+            GeometryReader { geo in
+                VitalsTimeSeriesGraphView(
+                    points: history,
+                    color: tint,
+                    palette: palette,
+                    height: max(geo.size.height, 1),
+                    scope: .realTime30s,
+                    showsGrid: false,
+                    showsMarkings: false
+                )
+            }
+            .frame(maxHeight: .infinity)
+            .frame(minHeight: 10)
+
+            Text(detail)
+                .font(.system(size: 7.5, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(spokenLabel)
+    }
+
+    private func ramDetail(_ metrics: HardwareVitalsInfo) -> String {
+        "\(compactGB(metrics.memoryUsedGB)) / \(compactGB(metrics.memoryTotalGB)) G · Wired \(compactGB(metrics.memoryWiredGB)) · Swp \(compactSwap(metrics.memorySwapUsedMB))"
+    }
+
+    /// Whole gigabytes lose their `.0`; the cell row has one line and the
+    /// total already carries the unit, so the fractions only earn their space
+    /// when they are real.
+    private func compactGB(_ value: Double) -> String {
+        let tenths = (value * 10).rounded() / 10
+        return tenths == tenths.rounded()
+            ? String(format: "%.0f", tenths)
+            : String(format: "%.1f", tenths)
+    }
+
+    private func compactSwap(_ megabytes: Double) -> String {
+        if megabytes >= 1024 {
+            return compactGB(megabytes / 1024) + "G"
+        }
+        if megabytes < 1 {
+            return "0"
+        }
+        return "\(Int(megabytes))M"
+    }
+
+    /// A machine without swap has no total worth showing, so the footer drops
+    /// the "/ total" half instead of claiming "0 / 0 GB".
+    private func ramFooter(
+        _ metrics: HardwareVitalsInfo,
+        usedGB: Double,
+        totalGB: Double
+    ) -> String {
+        if totalGB > 0 {
+            return String(
+                format: "vitals.compute.ramFooter".localized,
+                compactGB(usedGB),
+                compactGB(totalGB),
+                localizedMemoryPressure(metrics.memoryPressureLevel)
+            )
+        }
+        return String(
+            format: "vitals.compute.ramFooterNoSwap".localized,
+            compactGB(usedGB),
+            localizedMemoryPressure(metrics.memoryPressureLevel)
+        )
+    }
+
+    /// The storage pressure level is a stable English token; the footer shows
+    /// the same state in the reader's language.
+    private func localizedMemoryPressure(_ level: String) -> String {
+        switch level.lowercased() {
+        case "normal": return "vitals.pressureState.normal".localized
+        case "warning": return "vitals.pressureState.warning".localized
+        case "critical": return "vitals.pressureState.critical".localized
+        default: return level
+        }
+    }
+
+    /// `thermalStateLabel` is the service's stable English token; the legend
+    /// renders the same state in the reader's language.
+    private func localizedThermalState(_ label: String) -> String {
+        switch label.lowercased() {
+        case "nominal": return "vitals.thermal.nominal".localized
+        case "fair": return "vitals.thermal.fair".localized
+        case "serious": return "vitals.thermal.serious".localized
+        case "critical": return "vitals.thermal.critical".localized
+        default: return label
+        }
+    }
+
+    private func overviewNetworkBand(
+        metrics: HardwareVitalsInfo,
+        netColor: Color
+    ) -> some View {
+        VStack(spacing: 5) {
+            overviewNetworkRow(
+                label: "NET ↓",
+                speed: metrics.networkDownSpeed,
+                tint: netColor,
+                history: vitals.history(for: .network, scope: .realTime30s),
+                total: metrics.networkTotalReceivedGB,
+                spokenLabel: String(
+                    format: "vitals.a11y.networkDown".localized,
+                    spokenSpeed(metrics.networkDownSpeed)
+                )
+            )
+            overviewNetworkRow(
+                label: "NET ↑",
+                speed: metrics.networkUpSpeed,
+                tint: netColor.opacity(0.7),
+                history: vitals.networkUpHistory(scope: .realTime30s),
+                total: metrics.networkTotalSentGB,
+                spokenLabel: String(
+                    format: "vitals.a11y.networkUp".localized,
+                    spokenSpeed(metrics.networkUpSpeed)
+                )
+            )
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(height: 54)
+    }
+
+    private func overviewNetworkRow(
+        label: String,
+        speed: Double,
+        tint: Color,
+        history: [VitalsHistoryPoint],
+        total: Double,
+        spokenLabel: String
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Text(formatSpeed(speed))
+                .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                .foregroundColor(tint)
+                .lineLimit(1)
+                .fixedSize()
+            VitalsTimeSeriesGraphView(
+                points: history,
+                color: tint,
+                palette: palette,
+                height: 10,
+                scope: .realTime30s,
+                showsGrid: false,
+                showsMarkings: false
+            )
+            .frame(maxWidth: .infinity)
+            Text(String(format: "Σ %.1f G", total))
+                .font(.system(size: 7.5, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .frame(width: 62, alignment: .trailing)
+        }
+        .frame(maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenLabel)
+    }
+
+    private func spokenSpeed(_ bytesPerSec: Double) -> String {
+        if bytesPerSec >= 1_048_576.0 {
+            return String(
+                format: "vitals.a11y.megabytesPerSecond".localized,
+                String(format: "%.1f", bytesPerSec / 1_048_576.0)
+            )
+        }
+        if bytesPerSec >= 1024.0 {
+            return String(
+                format: "vitals.a11y.kilobytesPerSecond".localized,
+                String(format: "%.0f", bytesPerSec / 1024.0)
+            )
+        }
+        return String(
+            format: "vitals.a11y.bytesPerSecond".localized,
+            String(format: "%.0f", bytesPerSec)
+        )
+    }
+
+    private func overviewDeepTelemetryRow(metrics: HardwareVitalsInfo) -> some View {
+        return HStack(spacing: 8) {
+            overviewBreakdownPair(label: "USER", value: "\(Int(metrics.cpuUserUsage * 100))%")
+            Text("·").foregroundColor(.secondary)
+            overviewBreakdownPair(label: "SYS", value: "\(Int(metrics.cpuSystemUsage * 100))%")
+            Text("·").foregroundColor(.secondary)
+            overviewBreakdownPair(label: "APP", value: "\(String(format: "%.1f", metrics.memoryAppGB))G")
+            Text("·").foregroundColor(.secondary)
+            overviewBreakdownPair(label: "WIRED", value: "\(String(format: "%.1f", metrics.memoryWiredGB))G")
+            Text("·").foregroundColor(.secondary)
+            overviewBreakdownPair(label: "SWAP", value: compactSwap(metrics.memorySwapUsedMB))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func overviewBreakdownPair(label: String, value: String) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 7.5, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                .foregroundColor(.primary)
+        }
+        .lineLimit(1)
+        .fixedSize()
+    }
+
+    private func overviewTopProcessesRow(metrics: HardwareVitalsInfo) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text("TOP")
+                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button {
+                    withAnimation { state.dashboardTab = .processes }
+                } label: {
+                    Text("vitals.viewAll".localized)
+                        .font(.system(size: 8.5, weight: .medium))
+                        .foregroundColor(palette.primaryAccent)
+                }
+                .buttonStyle(.plain)
+            }
+
+            ForEach(metrics.topProcesses.prefix(3)) { proc in
+                HStack(spacing: 6) {
+                    Text(proc.name)
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .lineLimit(1)
+                    Spacer()
+                    Text("CPU \(String(format: "%.1f", proc.cpuPercent))% · \(String(format: "%.0f", proc.memoryMB))MB")
+                        .font(.system(size: 8.5, design: .monospaced))
                         .foregroundColor(.secondary)
-
-                    HStack(spacing: 4) {
-                        breakdownPill(label: "User", value: "\(Int(metrics.cpuUserUsage * 100))%", color: cpuColor)
-                        breakdownPill(label: "System", value: "\(Int(metrics.cpuSystemUsage * 100))%", color: VitalsColorResolver.warningYellow)
-                        breakdownPill(label: "App RAM", value: "\(String(format: "%.1f", metrics.memoryAppGB))G", color: ramColor)
-                        breakdownPill(label: "Wired", value: "\(String(format: "%.1f", metrics.memoryWiredGB))G", color: .secondary)
-                        breakdownPill(label: "Swap", value: "\(Int(metrics.memorySwapUsedMB))M", color: .secondary)
+                    if proc.id != 1 {
+                        Button("Kill") {
+                            vitals.killProcess(pid: proc.id)
+                        }
+                        .font(.system(size: 7.5, weight: .semibold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(palette.dangerAccent.opacity(0.12))
+                        .foregroundColor(palette.dangerAccent)
+                        .cornerRadius(4)
+                        .buttonStyle(.tactile)
                     }
                 }
-                .padding(6)
-                .background(Color.primary.opacity(0.025))
-                .cornerRadius(8)
-
-                // Top 3 Processes Strip
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("vitals.topProcesses".localized)
-                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Button {
-                            withAnimation { state.dashboardTab = .processes }
-                        } label: {
-                            Text("vitals.viewAll".localized)
-                                .font(.system(size: 8.5, weight: .medium))
-                                .foregroundColor(palette.primaryAccent)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    ForEach(metrics.topProcesses.prefix(3)) { proc in
-                        HStack(spacing: 6) {
-                            Text(proc.name)
-                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                                .lineLimit(1)
-                            Spacer()
-                            Text("CPU \(String(format: "%.1f", proc.cpuPercent))% · \(String(format: "%.0f", proc.memoryMB))MB")
-                                .font(.system(size: 8.5, design: .monospaced))
-                                .foregroundColor(.secondary)
-                            if proc.id != 1 {
-                                Button("Kill") {
-                                    vitals.killProcess(pid: proc.id)
-                                }
-                                .font(.system(size: 7.5, weight: .semibold))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(palette.dangerAccent.opacity(0.12))
-                                .foregroundColor(palette.dangerAccent)
-                                .cornerRadius(4)
-                                .buttonStyle(.tactile)
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.primary.opacity(0.025))
-                        .cornerRadius(6)
-                    }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation { state.dashboardTab = .processes }
                 }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private var overviewHairline: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.10))
+            .frame(height: 0.6)
+    }
+
+    private var overviewVerticalHairline: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.10))
+            .frame(width: 0.6)
+            .frame(maxHeight: .infinity)
+            .padding(.vertical, 2)
+    }
+
+    // MARK: - Shared Sheet Grammar
+
+    private func vitalsBandHeader(
+        title: String,
+        detail: String = "",
+        value: String = "",
+        tint: Color,
+        valueSize: CGFloat = 14
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .foregroundColor(Color.primary.opacity(0.85))
+                .lineLimit(1)
+            if !detail.isEmpty {
+                Text(detail)
+                    .font(.system(size: 7.5, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 2)
+            if !value.isEmpty {
+                Text(value)
+                    .font(.system(size: valueSize, weight: .bold, design: .monospaced))
+                    .foregroundColor(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
     }
 
-    // MARK: - Tab: Compute (CPU & RAM Deep Cards)
+    private func vitalsRail(ratio: Double, tint: Color) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.primary.opacity(0.08))
+                Capsule()
+                    .fill(tint)
+                    .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 3))
+            }
+        }
+        .frame(height: 2.5)
+    }
+
+    private func vitalsLegend(_ items: [(String, String, Color)]) -> some View {
+        HStack(spacing: 9) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(item.2)
+                        .frame(width: 4.5, height: 4.5)
+                    Text(item.0)
+                        .font(.system(size: 6.5, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    Text(item.1)
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color.primary.opacity(0.8))
+                        .lineLimit(1)
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func vitalsCompositionBar(segments: [(Double, Color)]) -> some View {
+        GeometryReader { geo in
+            let total = max(segments.reduce(0) { $0 + $1.0 }, 0.0001)
+            HStack(spacing: 1.5) {
+                ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                    Rectangle()
+                        .fill(segment.1)
+                        .frame(width: max(geo.size.width * CGFloat(segment.0 / total) - 1.5, 2))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 2))
+        }
+        .frame(height: 7)
+    }
+
+    private var vitalsHairline: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.10))
+            .frame(height: 0.6)
+    }
+
+    private func vitalsDetailCells(_ cells: [(String, String)]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(cells.enumerated()), id: \.offset) { _, cell in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(cell.0)
+                        .font(.system(size: 6.5, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                    Text(cell.1)
+                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color.primary.opacity(0.85))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private func vitalsThroughputRow(
+        glyph: String,
+        value: String,
+        tint: Color,
+        history: [VitalsHistoryPoint],
+        total: String?,
+        showsAreaFill: Bool
+    ) -> some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 3) {
+                Text(glyph)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(tint)
+                Text(value)
+                    .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color.primary.opacity(0.88))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(width: 66, alignment: .leading)
+
+            GeometryReader { geo in
+                VitalsTimeSeriesGraphView(
+                    points: history,
+                    color: tint,
+                    palette: palette,
+                    height: max(geo.size.height, 1),
+                    scope: .hour1,
+                    showsGrid: false,
+                    showsMarkings: false,
+                    showsAreaFill: showsAreaFill
+                )
+            }
+            .frame(minHeight: 20)
+
+            if let total {
+                Text(total)
+                    .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 62, alignment: .trailing)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    // MARK: - Tab: Compute (CPU, GPU & RAM)
     @ViewBuilder
     private func computeTabContent(
         metrics: HardwareVitalsInfo,
+        availableHeight: CGFloat,
         cpuColor: Color,
         gpuColor: Color,
         ramColor: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // CPU Deep Card
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Image(systemName: "cpu")
-                        .foregroundColor(cpuColor)
-                    Text(metrics.chipModelName)
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Spacer()
-                    Text(String(format: "vitals.cores".localized, metrics.performanceCoreCount, metrics.efficiencyCoreCount))
-                        .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1.5)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(4)
-                }
+        let cpuDetail: String = {
+            let cores = metrics.performanceCoreCount + metrics.efficiencyCoreCount
+            guard cores > 0 else { return metrics.chipModelName }
+            return String(
+                format: "vitals.compute.cpuDetail".localized,
+                metrics.chipModelName,
+                metrics.performanceCoreCount,
+                metrics.efficiencyCoreCount
+            )
+        }()
+        let gpuDetail = metrics.gpuCoreCount > 0
+            ? String(format: "vitals.compute.gpuDetail".localized, metrics.chipModelName, metrics.gpuCoreCount)
+            : metrics.chipModelName
+        let gpuMemory = metrics.gpuMemoryInUseMB >= 1024
+            ? String(format: "%.1f G", metrics.gpuMemoryInUseMB / 1024.0)
+            : String(format: "%.0f M", metrics.gpuMemoryInUseMB)
+        let swapUsedGB = metrics.memorySwapUsedMB / 1024.0
+        let swapTotalGB = metrics.memorySwapTotalMB / 1024.0
 
-                // 3-Segment Color Bar: User / System / Idle
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                vitalsBandHeader(
+                    title: "CPU",
+                    detail: cpuDetail,
+                    value: "\(Int(metrics.cpuUsage * 100))%",
+                    tint: cpuColor
+                )
+                vitalsRail(ratio: metrics.cpuUsage, tint: cpuColor)
+                vitalsCoreGrid(
+                    usages: metrics.cpuCoreUsages,
+                    performanceCount: metrics.performanceCoreCount,
+                    efficiencyCount: metrics.efficiencyCoreCount,
+                    tint: cpuColor
+                )
+                .padding(.top, 1)
+                vitalsLegend([
+                    ("USR", "\(Int(metrics.cpuUserUsage * 100))", cpuColor),
+                    ("SYS", "\(Int(metrics.cpuSystemUsage * 100))", VitalsColorResolver.warningYellow),
+                    ("IDLE", "\(Int(metrics.cpuIdleUsage * 100))", Color.primary.opacity(0.35)),
+                    ("LOAD", String(format: "%.2f", metrics.loadAverage1m), Color.primary.opacity(0.8)),
+                    (
+                        "vitals.compute.thermal".localized,
+                        localizedThermalState(metrics.thermalStateLabel),
+                        Color.primary.opacity(0.8)
+                    )
+                ])
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            vitalsHairline
+
+            VStack(alignment: .leading, spacing: 5) {
+                vitalsBandHeader(
+                    title: "GPU",
+                    detail: gpuDetail,
+                    value: "\(Int(metrics.gpuUsage * 100))%",
+                    tint: gpuColor
+                )
+                vitalsRail(ratio: metrics.gpuUsage, tint: gpuColor)
                 GeometryReader { geo in
-                    let w = geo.size.width
-                    let uW = w * CGFloat(min(max(metrics.cpuUserUsage, 0.0), 1.0))
-                    let sW = w * CGFloat(min(max(metrics.cpuSystemUsage, 0.0), 1.0))
-                    let iW = max(w - uW - sW, 0)
-                    HStack(spacing: 1.5) {
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(cpuColor)
-                            .frame(width: max(uW, 2))
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(VitalsColorResolver.warningYellow)
-                            .frame(width: max(sW, 2))
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.primary.opacity(0.08))
-                            .frame(width: max(iW, 2))
+                    VitalsTimeSeriesGraphView(
+                        points: vitals.history(for: .gpu, scope: .hour1),
+                        color: gpuColor,
+                        palette: palette,
+                        height: min(max(geo.size.height, 20), 44),
+                        scope: .hour1,
+                        showsGrid: false,
+                        showsMarkings: false
+                    )
+                }
+                .frame(minHeight: 20, maxHeight: 44)
+                vitalsLegend([
+                    ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
+                    ("TILER", "\(Int(metrics.gpuTilerUsage * 100))", Color.primary.opacity(0.45)),
+                    ("MEM", gpuMemory, Color.primary.opacity(0.8))
+                ])
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            vitalsHairline
+
+            VStack(alignment: .leading, spacing: 5) {
+                vitalsBandHeader(
+                    title: "RAM",
+                    detail: String(
+                        format: "vitals.compute.ramDetail".localized,
+                        compactGB(metrics.memoryTotalGB)
+                    ),
+                    value: "\(Int(metrics.memoryUsage * 100))%",
+                    tint: ramColor
+                )
+                vitalsRail(ratio: metrics.memoryUsage, tint: ramColor)
+                GeometryReader { geo in
+                    VitalsTimeSeriesGraphView(
+                        points: vitals.history(for: .ram, scope: .hour1),
+                        color: ramColor,
+                        palette: palette,
+                        height: max(geo.size.height, 1),
+                        scope: .hour1,
+                        showsGrid: false,
+                        showsMarkings: false
+                    )
+                }
+                .frame(maxHeight: .infinity)
+                .frame(minHeight: 22)
+                vitalsCompositionBar(segments: [
+                    (metrics.memoryActiveGB, ramColor.opacity(0.9)),
+                    (metrics.memoryWiredGB, Color.primary.opacity(0.42)),
+                    (metrics.memoryCompressedGB, VitalsColorResolver.warningYellow.opacity(0.85)),
+                    (metrics.memoryCachedGB, Color.primary.opacity(0.20)),
+                    (metrics.memoryFreeGB, Color.primary.opacity(0.08))
+                ])
+                vitalsLegend([
+                    ("ACTIVE", compactGB(metrics.memoryActiveGB), ramColor),
+                    ("WIRED", compactGB(metrics.memoryWiredGB), Color.primary.opacity(0.55)),
+                    ("COMPR", compactGB(metrics.memoryCompressedGB), VitalsColorResolver.warningYellow),
+                    ("CACHED", compactGB(metrics.memoryCachedGB), Color.primary.opacity(0.30)),
+                    ("FREE", compactGB(metrics.memoryFreeGB), Color.primary.opacity(0.16))
+                ])
+                Text(ramFooter(metrics, usedGB: swapUsedGB, totalGB: swapTotalGB))
+                .font(.system(size: 7.5, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(.horizontal, 2)
+        .frame(height: max(availableHeight - 4, 306), alignment: .top)
+    }
+
+    // MARK: - Per-Core Heat Grid
+
+    @ViewBuilder
+    private func vitalsCoreGrid(
+        usages: [Double],
+        performanceCount: Int,
+        efficiencyCount: Int,
+        tint: Color
+    ) -> some View {
+        let splitKnown = performanceCount > 0
+            && efficiencyCount > 0
+            && usages.count == performanceCount + efficiencyCount
+        let performanceUsages = splitKnown
+            ? Array(usages.prefix(performanceCount))
+            : usages
+        let efficiencyUsages = splitKnown
+            ? Array(usages.dropFirst(performanceCount))
+            : []
+
+        GeometryReader { geo in
+            if let layout = VitalsCoreGridMetrics.resolve(
+                availableWidth: geo.size.width,
+                performanceCount: performanceUsages.count,
+                efficiencyCount: efficiencyUsages.count
+            ) {
+                HStack(alignment: .top, spacing: VitalsCoreGridMetrics.groupGap) {
+                    vitalsCoreGroup(
+                        usages: performanceUsages,
+                        alpha: 0.95,
+                        blockWidth: layout.performanceWidth,
+                        startIndex: 1,
+                        kind: splitKnown ? .performance : nil,
+                        tint: tint
+                    )
+                    if !efficiencyUsages.isEmpty {
+                        vitalsCoreGroup(
+                            usages: efficiencyUsages,
+                            alpha: 0.55,
+                            blockWidth: layout.efficiencyWidth,
+                            startIndex: performanceUsages.count + 1,
+                            kind: .efficiency,
+                            tint: tint
+                        )
                     }
                 }
-                .frame(height: 5)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(height: 52)
+    }
 
-                HStack(spacing: 8) {
-                    legendItem(title: "User", value: "\(Int(metrics.cpuUserUsage * 100))%", color: cpuColor)
-                    legendItem(title: "System", value: "\(Int(metrics.cpuSystemUsage * 100))%", color: VitalsColorResolver.warningYellow)
-                    legendItem(title: "Idle", value: "\(Int(metrics.cpuIdleUsage * 100))%", color: .secondary)
-                }
+    private enum CoreKind {
+        case performance
+        case efficiency
+    }
 
-                // Load Average & Thermal Status
-                HStack(spacing: 4) {
-                    breakdownPill(label: "Load 1m", value: String(format: "%.2f", metrics.loadAverage1m), color: .secondary)
-                    breakdownPill(label: "5m", value: String(format: "%.2f", metrics.loadAverage5m), color: .secondary)
-                    breakdownPill(label: "15m", value: String(format: "%.2f", metrics.loadAverage15m), color: .secondary)
-                    breakdownPill(label: "Thermal", value: metrics.thermalStateLabel, color: thermalColor(for: metrics.thermalStateLabel))
+    @ViewBuilder
+    private func vitalsCoreGroup(
+        usages: [Double],
+        alpha: Double,
+        blockWidth: CGFloat,
+        startIndex: Int,
+        kind: CoreKind?,
+        tint: Color
+    ) -> some View {
+        VStack(spacing: 2.5) {
+            HStack(alignment: .bottom, spacing: VitalsCoreGridMetrics.intraGroupSpacing) {
+                ForEach(Array(usages.enumerated()), id: \.offset) { offset, usage in
+                    ZStack(alignment: .bottom) {
+                        RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                            .fill(Color.primary.opacity(0.055))
+                        RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                            .fill(tint.opacity(alpha))
+                            .frame(height: max(40 * CGFloat(min(max(usage, 0), 1)), 2))
+                    }
+                    .frame(width: blockWidth, height: 40)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(coreAccessibilityLabel(
+                        index: startIndex + offset,
+                        usage: usage,
+                        kind: kind
+                    ))
                 }
             }
-            .padding(7)
-            .background(Color.primary.opacity(0.035))
-            .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
+            .frame(height: 40)
 
-            // RAM Deep Card
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Image(systemName: "memorychip")
-                        .foregroundColor(ramColor)
-                    Text("vitals.memoryArchitecture".localized)
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Spacer()
-                    Text(String(format: "vitals.pressure".localized, metrics.memoryPressureLevel))
-                        .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                        .foregroundColor(metrics.memoryPressureLevel == "Normal" ? palette.primaryAccent : palette.dangerAccent)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1.5)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(4)
-                }
-
-                HStack {
-                    Text("\(String(format: "%.1f", metrics.memoryUsedGB)) GB Used / \(String(format: "%.1f", metrics.memoryTotalGB)) GB Physical")
-                        .font(.system(size: 8.5, design: .monospaced))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text("\(Int(metrics.memoryUsage * 100))%")
-                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                        .foregroundColor(ramColor)
-                }
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.08))
-                        Capsule().fill(ramColor).frame(width: max(geo.size.width * CGFloat(metrics.memoryUsage), 3))
+            HStack(spacing: VitalsCoreGridMetrics.intraGroupSpacing) {
+                ForEach(Array(usages.enumerated()), id: \.offset) { _, usage in
+                    if blockWidth >= 11 {
+                        Text("\(Int(usage * 100))")
+                            .font(.system(
+                                size: blockWidth >= 17 ? 6.5 : 6,
+                                weight: .semibold,
+                                design: .monospaced
+                            ))
+                            .foregroundColor(.secondary)
+                            .frame(width: blockWidth)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    } else {
+                        Color.clear.frame(width: blockWidth, height: 8)
                     }
                 }
-                .frame(height: 5)
-
-                // 4-Pill Breakdown
-                HStack(spacing: 4) {
-                    breakdownPill(label: "App Memory", value: "\(String(format: "%.1f", metrics.memoryAppGB)) GB", color: ramColor)
-                    breakdownPill(label: "Wired", value: "\(String(format: "%.1f", metrics.memoryWiredGB)) GB", color: .secondary)
-                    breakdownPill(label: "Compressed", value: "\(String(format: "%.1f", metrics.memoryCompressedGB)) GB", color: .secondary)
-                    breakdownPill(label: "Swap Used", value: "\(Int(metrics.memorySwapUsedMB)) MB", color: .secondary)
-                }
             }
-            .padding(7)
-            .background(Color.primary.opacity(0.035))
-            .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
         }
     }
 
-    // MARK: - Tab: Net/Disk Deep Cards
+    private func coreAccessibilityLabel(index: Int, usage: Double, kind: CoreKind?) -> String {
+        let percent = Int((min(max(usage, 0), 1) * 100).rounded())
+        let key: String = switch kind {
+        case .performance: "vitals.a11y.corePerformance"
+        case .efficiency: "vitals.a11y.coreEfficiency"
+        case nil: "vitals.a11y.core"
+        }
+        return String(format: key.localized, index, percent)
+    }
+
+    // MARK: - Tab: Net/Disk
     @ViewBuilder
     private func ioTabContent(
         metrics: HardwareVitalsInfo,
+        availableHeight: CGFloat,
         diskColor: Color,
-        netColor: Color,
+        netColor: Color
+    ) -> some View {
+        let upColor = Color(hex: "#0A84FF")
+        let usedGB = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
+        let usedRatio = metrics.diskTotalGB > 0 ? usedGB / metrics.diskTotalGB : 0
+
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 5) {
+                vitalsBandHeader(
+                    title: "NETWORK",
+                    detail: "\(metrics.networkInterfaceName) · \(metrics.localIPAddress)",
+                    tint: netColor
+                )
+                vitalsThroughputRow(
+                    glyph: "↓",
+                    value: formatSpeed(metrics.networkDownSpeed),
+                    tint: netColor,
+                    history: vitals.history(for: .network, scope: .hour1),
+                    total: "Σ \(compactGB(metrics.networkTotalReceivedGB)) G",
+                    showsAreaFill: true
+                )
+                .frame(maxHeight: .infinity)
+                vitalsThroughputRow(
+                    glyph: "↑",
+                    value: formatSpeed(metrics.networkUpSpeed),
+                    tint: upColor,
+                    history: vitals.networkUpHistory(scope: .hour1),
+                    total: "Σ \(compactGB(metrics.networkTotalSentGB)) G",
+                    showsAreaFill: false
+                )
+                .frame(maxHeight: .infinity)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            vitalsHairline
+
+            VStack(alignment: .leading, spacing: 5) {
+                vitalsBandHeader(
+                    title: "DISK",
+                    detail: String(
+                        format: "vitals.disk.bootDisk".localized,
+                        compactGB(metrics.diskTotalGB)
+                    ),
+                    value: "\(Int((usedRatio * 100).rounded()))%",
+                    tint: diskColor
+                )
+                vitalsThroughputRow(
+                    glyph: "R",
+                    value: formatSpeed(metrics.diskReadBytesPerSec),
+                    tint: diskColor,
+                    history: vitals.diskReadHistory(scope: .hour1),
+                    total: nil,
+                    showsAreaFill: true
+                )
+                .frame(maxHeight: .infinity)
+                vitalsThroughputRow(
+                    glyph: "W",
+                    value: formatSpeed(metrics.diskWriteBytesPerSec),
+                    tint: Color.primary.opacity(0.5),
+                    history: vitals.diskWriteHistory(scope: .hour1),
+                    total: nil,
+                    showsAreaFill: false
+                )
+                .frame(maxHeight: .infinity)
+                vitalsCompositionBar(segments: [
+                    (usedGB, diskColor.opacity(0.75)),
+                    (metrics.diskFreeGB, Color.primary.opacity(0.08))
+                ])
+                vitalsLegend([
+                    ("USED", "\(compactGB(usedGB)) G", diskColor),
+                    ("FREE", "\(compactGB(metrics.diskFreeGB)) G", Color.primary.opacity(0.8)),
+                    ("TOTAL", "\(compactGB(metrics.diskTotalGB)) G", Color.primary.opacity(0.3))
+                ])
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(.horizontal, 2)
+        .frame(height: max(availableHeight - 4, 240), alignment: .top)
+    }
+
+    // MARK: - Tab: Power
+
+    @ViewBuilder
+    private func powerTabContent(
+        metrics: HardwareVitalsInfo,
+        availableHeight: CGFloat,
+        powerColor: Color
+    ) -> some View {
+        Group {
+            if metrics.batteryIsPresent {
+                batterySheet(
+                    metrics: metrics,
+                    availableHeight: availableHeight,
+                    powerColor: powerColor
+                )
+            } else {
+                noBatterySheet(metrics: metrics, powerColor: powerColor)
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private func batterySheet(
+        metrics: HardwareVitalsInfo,
+        availableHeight: CGFloat,
+        powerColor: Color
+    ) -> some View {
+        let state = batteryState(metrics)
+        let capacity = capacityWh(metrics)
+
+        return VStack(spacing: 0) {
+            batteryBand(metrics: metrics, state: state, powerColor: powerColor)
+
+            if showsPowerFlow(metrics) {
+                vitalsHairline
+                powerFlowBand(metrics: metrics, powerColor: powerColor)
+            }
+
+            if let capacity {
+                vitalsHairline
+                capacityBand(
+                    metrics: metrics,
+                    maxWh: capacity.max,
+                    designWh: capacity.design,
+                    powerColor: powerColor
+                )
+            }
+
+            vitalsHairline
+
+            vitalsDetailCells(powerDetailCells(metrics))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .frame(height: max(availableHeight - 4, 306), alignment: .top)
+    }
+
+    private func batteryBand(
+        metrics: HardwareVitalsInfo,
+        state: BatteryState,
+        powerColor: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            vitalsBandHeader(
+                title: "BATTERY",
+                detail: state.label,
+                value: "\(metrics.batteryLevel)%",
+                tint: powerColor
+            )
+            vitalsRail(
+                ratio: Double(metrics.batteryLevel) / 100.0,
+                tint: powerColor
+            )
+            GeometryReader { geo in
+                VitalsTimeSeriesGraphView(
+                    points: vitals.history(for: .power, scope: .hour1),
+                    color: powerColor,
+                    palette: palette,
+                    height: max(geo.size.height, 1),
+                    scope: .hour1,
+                    showsGrid: false,
+                    showsMarkings: false
+                )
+            }
+            .frame(maxHeight: .infinity)
+            .frame(minHeight: 24)
+            Text(batteryFooter(metrics, state: state))
+                .font(.system(size: 7.5, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func showsPowerFlow(_ metrics: HardwareVitalsInfo) -> Bool {
+        metrics.powerSystemWatts > 0
+            || metrics.powerAdapterWatts > 0
+            || metrics.batteryChargeWatts != 0
+    }
+
+    private func powerFlowBand(
+        metrics: HardwareVitalsInfo,
+        powerColor: Color
+    ) -> some View {
+        let onAC = metrics.powerSource == "AC Power"
+        let systemWatts: Double = {
+            if metrics.powerSystemWatts > 0 { return metrics.powerSystemWatts }
+            return onAC ? 0 : max(-metrics.batteryChargeWatts, 0)
+        }()
+        let batteryWatts = metrics.batteryChargeWatts
+        let batteryBar = onAC ? max(batteryWatts, 0) : 0
+
+        var segments: [(Double, Color)] = []
+        if systemWatts > 0 {
+            segments.append((systemWatts, powerColor.opacity(0.85)))
+        }
+        if batteryBar > 0 {
+            segments.append((batteryBar, VitalsColorResolver.warningYellow.opacity(0.85)))
+        }
+
+        var legend: [(String, String, Color)] = []
+        if onAC {
+            if metrics.powerAdapterWatts > 0 {
+                legend.append((
+                    "vitals.power.adapter".localized,
+                    formatWatts(metrics.powerAdapterWatts),
+                    Color.primary.opacity(0.4)
+                ))
+            }
+            legend.append((
+                "vitals.power.system".localized,
+                formatWatts(systemWatts),
+                powerColor
+            ))
+            legend.append((
+                "vitals.power.batteryLoad".localized,
+                formatSignedWatts(batteryWatts),
+                VitalsColorResolver.warningYellow
+            ))
+        } else {
+            legend.append((
+                "vitals.power.batteryLoad".localized,
+                formatSignedWatts(batteryWatts),
+                VitalsColorResolver.warningYellow
+            ))
+            legend.append((
+                "vitals.power.system".localized,
+                formatWatts(systemWatts),
+                powerColor
+            ))
+        }
+
+        return VStack(alignment: .leading, spacing: 5) {
+            vitalsBandHeader(
+                title: "vitals.power.flowTitle".localized,
+                detail: metrics.powerSource.uppercased(),
+                value: systemWatts > 0 ? formatWatts(systemWatts) : "",
+                tint: powerColor
+            )
+            if !segments.isEmpty {
+                vitalsCompositionBar(segments: segments)
+            }
+            vitalsLegend(legend)
+            if onAC, systemWatts > 0 {
+                Text(String(
+                    format: "vitals.power.input".localized,
+                    String(format: "%.1f", systemWatts),
+                    String(format: "%.2f", metrics.powerSystemVolts),
+                    String(format: "%.3f", metrics.powerSystemAmps)
+                ))
+                .font(.system(size: 7.5, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            } else if !onAC {
+                Text(onBatteryFlowFooter(metrics))
+                    .font(.system(size: 7.5, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func onBatteryFlowFooter(_ metrics: HardwareVitalsInfo) -> String {
+        var pieces = ["vitals.power.onBattery".localized]
+        if metrics.batteryVoltageVolts > 0 {
+            pieces.append(String(
+                format: "vitals.power.volts".localized,
+                String(format: "%.1f", metrics.batteryVoltageVolts)
+            ))
+            pieces.append(String(
+                format: "%.2f A",
+                abs(metrics.batteryChargeWatts) / metrics.batteryVoltageVolts
+            ))
+        }
+        return pieces.joined(separator: " · ")
+    }
+
+    private func capacityWh(
+        _ metrics: HardwareVitalsInfo
+    ) -> (max: Double, design: Double)? {
+        guard metrics.batteryVoltageVolts > 0 else { return nil }
+        let maxWh = metrics.batteryMaxCapacityMAh / 1000.0 * metrics.batteryVoltageVolts
+        let designWh = metrics.batteryDesignCapacityMAh / 1000.0 * metrics.batteryVoltageVolts
+        guard maxWh > 0, designWh > 0 else { return nil }
+        return (maxWh, designWh)
+    }
+
+    private func capacityBand(
+        metrics: HardwareVitalsInfo,
+        maxWh: Double,
+        designWh: Double,
+        powerColor: Color
+    ) -> some View {
+        let lostWh = max(designWh - maxWh, 0)
+        var segments: [(Double, Color)] = [(maxWh, powerColor.opacity(0.85))]
+        if lostWh > 0 {
+            segments.append((lostWh, Color.primary.opacity(0.10)))
+        }
+
+        return VStack(alignment: .leading, spacing: 5) {
+            vitalsBandHeader(
+                title: "vitals.power.capacityTitle".localized,
+                detail: String(
+                    format: "vitals.power.design".localized,
+                    formatWh(designWh)
+                ),
+                value: "\(formatWh(maxWh)) Wh",
+                tint: powerColor
+            )
+            vitalsCompositionBar(segments: segments)
+            vitalsLegend([
+                ("vitals.power.maxLabel".localized, "\(formatWh(maxWh)) Wh", powerColor),
+                ("vitals.power.designLabel".localized, "\(formatWh(designWh)) Wh", Color.primary.opacity(0.35)),
+                ("vitals.power.lostLabel".localized, "\(formatWh(lostWh)) Wh", Color.primary.opacity(0.2))
+            ])
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func powerDetailCells(_ metrics: HardwareVitalsInfo) -> [(String, String)] {
+        [
+            ("vitals.power.health".localized, "\(metrics.batteryHealthPercent)%"),
+            ("vitals.power.cycles".localized, "\(metrics.batteryCycleCount)"),
+            ("vitals.power.temp".localized, String(
+                format: "%.0f °C",
+                metrics.batteryTemperatureCelsius
+            )),
+            ("vitals.power.condition".localized, metrics.batteryCondition)
+        ]
+    }
+
+    private func formatWatts(_ value: Double) -> String {
+        String(format: "%.1f W", value)
+    }
+
+    private func formatSignedWatts(_ value: Double) -> String {
+        if abs(value) < 0.05 { return "0 W" }
+        return String(format: "%+.1f W", value)
+    }
+
+    private func formatWh(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
+    private func noBatterySheet(
+        metrics: HardwareVitalsInfo,
         powerColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Network Deep Card
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Image(systemName: "network")
-                        .foregroundColor(netColor)
-                    Text(String(format: "vitals.networkInterface".localized, metrics.networkInterfaceName))
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Spacer()
-                    Text(metrics.localIPAddress)
-                        .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1.5)
-                        .background(Color.primary.opacity(0.05))
-                        .cornerRadius(4)
-                }
-
-                HStack(spacing: 8) {
-                    HStack(spacing: 3) {
-                        Text("↓")
-                            .font(.system(size: 9.5, weight: .bold))
-                            .foregroundColor(netColor)
-                        Text(formatSpeed(metrics.networkDownSpeed))
-                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                    }
-                    HStack(spacing: 3) {
-                        Text("↑")
-                            .font(.system(size: 9.5, weight: .bold))
-                            .foregroundColor(Color(hex: "#0A84FF"))
-                        Text(formatSpeed(metrics.networkUpSpeed))
-                            .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                    }
-                    Spacer()
-                }
-
-                HStack(spacing: 4) {
-                    breakdownPill(label: "Total In", value: "\(String(format: "%.2f", metrics.networkTotalReceivedGB)) GB", color: netColor)
-                    breakdownPill(label: "Total Out", value: "\(String(format: "%.2f", metrics.networkTotalSentGB)) GB", color: Color(hex: "#0A84FF"))
-                }
-            }
-            .padding(7)
-            .background(Color.primary.opacity(0.035))
-            .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
-
-            // Storage & Battery Deep Card
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Image(systemName: "internaldrive")
-                        .foregroundColor(diskColor)
-                    Text("vitals.diskPower".localized)
-                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                    Spacer()
-                    Text(String(format: "vitals.diskFreeGB".localized, Int(metrics.diskFreeGB)))
-                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        .foregroundColor(diskColor)
-                }
-
-                HStack(spacing: 4) {
-                    breakdownPill(label: "Disk Read", value: formatSpeed(metrics.diskReadBytesPerSec), color: .secondary)
-                    breakdownPill(label: "Disk Write", value: formatSpeed(metrics.diskWriteBytesPerSec), color: .secondary)
-                }
-
-                Divider().opacity(0.3)
-
-                HStack(spacing: 4) {
-                    breakdownPill(label: "Battery", value: "\(metrics.batteryLevel)% · \(metrics.powerSource)", color: powerColor)
-                    breakdownPill(label: "Health", value: "\(metrics.batteryHealthPercent)%", color: .secondary)
-                    breakdownPill(label: "Cycles", value: "\(metrics.batteryCycleCount)", color: .secondary)
-                    breakdownPill(label: "Temp", value: "\(String(format: "%.1f", metrics.batteryTemperatureCelsius))°C", color: .secondary)
-                }
-            }
-            .padding(7)
-            .background(Color.primary.opacity(0.035))
-            .cornerRadius(8)
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(palette.borderColor.opacity(0.16), lineWidth: 0.6))
+            vitalsBandHeader(
+                title: "BATTERY",
+                detail: "vitals.power.noBattery".localized,
+                tint: powerColor
+            )
+            Text(String(
+                format: "vitals.power.noBatteryDetail".localized,
+                metrics.thermalStateLabel
+            ))
+            .font(.system(size: 7.5, design: .monospaced))
+            .foregroundColor(.secondary)
+            .lineLimit(2)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @MainActor
+    private enum BatteryState {
+        case charging
+        case onBattery
+        case fullyCharged
+
+        var label: String {
+            switch self {
+            case .charging: "vitals.power.charging".localized
+            case .onBattery: "vitals.power.onBattery".localized
+            case .fullyCharged: "vitals.power.fullyCharged".localized
+            }
+        }
+    }
+
+    private func batteryState(_ metrics: HardwareVitalsInfo) -> BatteryState {
+        if metrics.batteryLevel >= 100,
+           !metrics.isCharging,
+           metrics.powerSource == "AC Power" {
+            return .fullyCharged
+        }
+        return metrics.isCharging ? .charging : .onBattery
+    }
+
+    private func batteryFooter(
+        _ metrics: HardwareVitalsInfo,
+        state: BatteryState
+    ) -> String {
+        var pieces: [String] = [metrics.powerSource.uppercased()]
+
+        switch state {
+        case .fullyCharged:
+            pieces.append("vitals.power.fullyChargedToken".localized)
+        case .charging, .onBattery:
+            if let minutes = metrics.batteryTimeRemainingMinutes, minutes > 0 {
+                let time = String(format: "%d:%02d", minutes / 60, minutes % 60)
+                let key = state == .charging
+                    ? "vitals.power.timeToFull"
+                    : "vitals.power.timeLeft"
+                pieces.append(String(format: key.localized, time))
+            }
+        }
+
+        if metrics.batteryVoltageVolts > 0 {
+            pieces.append(String(
+                format: "vitals.power.volts".localized,
+                String(format: "%.1f", metrics.batteryVoltageVolts)
+            ))
+        }
+
+        return pieces.joined(separator: " · ")
     }
 
     // MARK: - Tab: Processes
@@ -2278,6 +3183,8 @@ public struct VitalsTimeSeriesGraphView: View {
     public let height: CGFloat
     public let scope: VitalsTimeScope
     public let showsGrid: Bool
+    public let showsMarkings: Bool
+    public let showsAreaFill: Bool
 
     public init(
         points: [VitalsHistoryPoint],
@@ -2285,7 +3192,9 @@ public struct VitalsTimeSeriesGraphView: View {
         palette: ThemePalette,
         height: CGFloat = 46.0,
         scope: VitalsTimeScope = .realTime30s,
-        showsGrid: Bool = true
+        showsGrid: Bool = true,
+        showsMarkings: Bool = true,
+        showsAreaFill: Bool = true
     ) {
         self.points = points
         self.color = color
@@ -2293,19 +3202,36 @@ public struct VitalsTimeSeriesGraphView: View {
         self.height = height
         self.scope = scope
         self.showsGrid = showsGrid
+        self.showsMarkings = showsMarkings
+        self.showsAreaFill = showsAreaFill
     }
 
     /// The visible points, mapped onto the window. The vertical domain follows
     /// the data instead of a fixed 0…1: a metric that moves between 58% and
     /// 62% drew a flat line before, and "no visible change" is the one thing a
     /// sparkline must never say about data that did change.
+    private func visiblePoints() -> [VitalsHistoryPoint] {
+        let now = Date()
+        let windowSec = scope.durationSeconds
+        return points.filter { now.timeIntervalSince($0.timestamp) <= windowSec }
+    }
+
+    /// A flat series is a line, never a filled block: the area only says
+    /// something when there is both movement and more than a single sample.
+    private func areaFillIsMeaningful(for visible: [VitalsHistoryPoint]) -> Bool {
+        guard showsAreaFill, visible.count >= 2 else { return false }
+        let values = visible.map(\.value)
+        guard let low = values.min(), let high = values.max() else { return false }
+        return high - low >= 0.005
+    }
+
     private func computePlotPoints(width: CGFloat, height: CGFloat) -> [CGPoint] {
         let now = Date()
         let windowSec = scope.durationSeconds
 
-        let recent = points.filter { now.timeIntervalSince($0.timestamp) <= windowSec }
+        let recent = visiblePoints()
         let currentVal = points.last?.value ?? 0.0
-        let domain = valueDomain(recent)
+        let domain = valueDomain(recent, fallback: currentVal)
         let span = max(domain.upperBound - domain.lowerBound, 0.0001)
 
         func yPosition(_ value: Double) -> CGFloat {
@@ -2331,28 +3257,35 @@ public struct VitalsTimeSeriesGraphView: View {
     }
 
     /// Padded min…max of the visible samples, with a floor on the span so a
-    /// constant reading sits in the middle instead of filling the chart.
-    private func valueDomain(_ recent: [VitalsHistoryPoint]) -> ClosedRange<CGFloat> {
-        let values = recent.map { CGFloat(min(max($0.value, 0.0), 1.0)) }
+    /// constant reading sits in the middle instead of filling the chart. The
+    /// domain is a view window, not the metric's legal range, so 0% and 100%
+    /// keep the same half-span around them instead of hugging an edge.
+    private func valueDomain(
+        _ recent: [VitalsHistoryPoint],
+        fallback: Double
+    ) -> ClosedRange<CGFloat> {
+        let values = recent.isEmpty
+            ? [CGFloat(min(max(fallback, 0.0), 1.0))]
+            : recent.map { CGFloat(min(max($0.value, 0.0), 1.0)) }
         guard let low = values.min(), let high = values.max() else { return 0...1 }
         let minimumSpan: CGFloat = 0.05
         if high - low < minimumSpan {
             let mid = (low + high) / 2
-            let lower = max(mid - minimumSpan / 2, 0)
-            return lower...min(lower + minimumSpan, 1)
+            return (mid - minimumSpan / 2)...(mid + minimumSpan / 2)
         }
         let padding = (high - low) * 0.15
         return max(low - padding, 0)...min(high + padding, 1)
     }
 
     public var body: some View {
-        let showMarkings = height >= 34.0
+        let showMarkings = showsMarkings && height >= 34.0
         let canvasH = showMarkings ? max(height - 11.0, 10.0) : height
 
         VStack(spacing: showMarkings ? 2 : 0) {
             GeometryReader { geo in
                 let w = geo.size.width
                 let h = geo.size.height
+                let visible = visiblePoints()
                 let plotPoints = computePlotPoints(width: w, height: h)
 
                 ZStack {
@@ -2371,25 +3304,27 @@ public struct VitalsTimeSeriesGraphView: View {
 
                     if !plotPoints.isEmpty {
                         // Area fill under curve
-                        Path { path in
-                            if let first = plotPoints.first {
-                                path.move(to: CGPoint(x: first.x, y: h))
-                                for pt in plotPoints {
-                                    path.addLine(to: pt)
+                        if areaFillIsMeaningful(for: visible) {
+                            Path { path in
+                                if let first = plotPoints.first {
+                                    path.move(to: CGPoint(x: first.x, y: h))
+                                    for pt in plotPoints {
+                                        path.addLine(to: pt)
+                                    }
+                                    if let last = plotPoints.last {
+                                        path.addLine(to: CGPoint(x: last.x, y: h))
+                                    }
+                                    path.closeSubpath()
                                 }
-                                if let last = plotPoints.last {
-                                    path.addLine(to: CGPoint(x: last.x, y: h))
-                                }
-                                path.closeSubpath()
                             }
-                        }
-                        .fill(
-                            LinearGradient(
-                                colors: [color.opacity(0.5), color.opacity(0.06)],
-                                startPoint: .top,
-                                endPoint: .bottom
+                            .fill(
+                                LinearGradient(
+                                    colors: [color.opacity(0.5), color.opacity(0.06)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
                             )
-                        )
+                        }
 
                         // Top line
                         Path { path in

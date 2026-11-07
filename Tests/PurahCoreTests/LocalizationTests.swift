@@ -145,7 +145,17 @@ struct LocalizationTests {
             // +3: Quick Notes names its untagged folder and per-tag actions.
             // +3: the System page states what each rail percentage means next.
             // -1: the orphaned plugin-selection hint left with the old sidebar.
-            .traditionalChinese: 670,
+            // +23: the Compute, Net/Disk and Power tabs share one sheet
+            // grammar, adding their headers, footer sentences and core
+            // accessibility labels.
+            // +6: the Compute RAM footer drops its "/ total" half when the
+            // machine has no swap, and the CPU legend names the thermal state.
+            // +3: memory pressure reads in the reader's language too.
+            // +9: the Power tab gains its flow and capacity band titles,
+            // adapter/system/battery labels, INPUT and DESIGN formats.
+            // +1: the CAPACITY legend word for DESIGN, distinct from its
+            // format string.
+            .traditionalChinese: 718,
             .japanese: 151,
             .korean: 151,
             .french: 151,
