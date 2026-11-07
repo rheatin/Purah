@@ -593,16 +593,32 @@ public final class HardwareVitalsService {
     public static let shared = HardwareVitalsService()
 
     public private(set) var metrics: HardwareVitalsInfo = .init()
-    public private(set) var cpuHistory: [VitalsHistoryPoint] = []
-    public private(set) var gpuHistory: [VitalsHistoryPoint] = []
-    public private(set) var ramHistory: [VitalsHistoryPoint] = []
-    public private(set) var powerHistory: [VitalsHistoryPoint] = []
-    public private(set) var networkHistory: [VitalsHistoryPoint] = []
-    public private(set) var networkDownHistory: [VitalsHistoryPoint] = []
-    public private(set) var networkUpHistory: [VitalsHistoryPoint] = []
-    public private(set) var diskHistory: [VitalsHistoryPoint] = []
-    public private(set) var diskReadHistory: [VitalsHistoryPoint] = []
-    public private(set) var diskWriteHistory: [VitalsHistoryPoint] = []
+    private var cpuBuffer = VitalsHistoryBuffer()
+    private var gpuBuffer = VitalsHistoryBuffer()
+    private var ramBuffer = VitalsHistoryBuffer()
+    private var powerBuffer = VitalsHistoryBuffer()
+    private var networkBuffer = VitalsHistoryBuffer()
+    private var networkDownBuffer = VitalsHistoryBuffer()
+    private var networkUpBuffer = VitalsHistoryBuffer()
+    private var diskBuffer = VitalsHistoryBuffer()
+    private var diskReadBuffer = VitalsHistoryBuffer()
+    private var diskWriteBuffer = VitalsHistoryBuffer()
+    private var batteryStateHistory = VitalsStateHistory()
+
+    @ObservationIgnored private var batteryStateBucketStart: Date?
+    @ObservationIgnored private var batteryStateValue = 0
+
+    public var cpuHistory: [VitalsHistoryPoint] { cpuBuffer.tiers.fast }
+    public var gpuHistory: [VitalsHistoryPoint] { gpuBuffer.tiers.fast }
+    public var ramHistory: [VitalsHistoryPoint] { ramBuffer.tiers.fast }
+    public var powerHistory: [VitalsHistoryPoint] { powerBuffer.tiers.fast }
+    public var networkHistory: [VitalsHistoryPoint] { networkBuffer.tiers.fast }
+    public var networkDownHistory: [VitalsHistoryPoint] { networkDownBuffer.tiers.fast }
+    public var networkUpHistory: [VitalsHistoryPoint] { networkUpBuffer.tiers.fast }
+    public var diskHistory: [VitalsHistoryPoint] { diskBuffer.tiers.fast }
+    public var diskReadHistory: [VitalsHistoryPoint] { diskReadBuffer.tiers.fast }
+    public var diskWriteHistory: [VitalsHistoryPoint] { diskWriteBuffer.tiers.fast }
+    public var batteryStatePoints: [VitalsHistoryPoint] { batteryStateHistory.points }
 
     public var selectedTimeScope: VitalsTimeScope = .realTime30s
     public var isDrawerVisible: Bool = false {
@@ -766,71 +782,121 @@ public final class HardwareVitalsService {
         refreshMetrics(includeProcesses: false)
     }
 
+    private func buffer(for metric: VitalsMetricType) -> VitalsHistoryBuffer {
+        switch metric {
+        case .cpu: return cpuBuffer
+        case .gpu: return gpuBuffer
+        case .ram: return ramBuffer
+        case .power: return powerBuffer
+        case .network: return networkDownBuffer
+        case .disk: return diskBuffer
+        }
+    }
+
     public func history(for metric: VitalsMetricType, scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
         let activeScope = scope ?? selectedTimeScope
-        let allPoints: [VitalsHistoryPoint] = {
-            switch metric {
-            case .cpu: return cpuHistory
-            case .gpu: return gpuHistory
-            case .ram: return ramHistory
-            case .power: return powerHistory
-            case .network: return networkDownHistory
-            case .disk: return diskHistory
-            }
-        }()
-        let now = Date()
-        let dur = activeScope.durationSeconds
-        return allPoints.filter { now.timeIntervalSince($0.timestamp) <= dur }
+        let source = VitalsHistoryBuffer.source(
+            tiers: buffer(for: metric).tiers,
+            scope: activeScope
+        )
+        let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
+        return source.points.filter { $0.timestamp >= cutoff }
     }
 
     public func networkUpHistory(scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
         let activeScope = scope ?? selectedTimeScope
-        let now = Date()
-        let dur = activeScope.durationSeconds
-        return networkUpHistory.filter { now.timeIntervalSince($0.timestamp) <= dur }
+        let source = VitalsHistoryBuffer.source(
+            tiers: networkUpBuffer.tiers,
+            scope: activeScope
+        )
+        let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
+        return source.points.filter { $0.timestamp >= cutoff }
     }
 
     public func diskReadHistory(scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
         let activeScope = scope ?? selectedTimeScope
-        let now = Date()
-        let dur = activeScope.durationSeconds
-        return diskReadHistory.filter { now.timeIntervalSince($0.timestamp) <= dur }
+        let source = VitalsHistoryBuffer.source(
+            tiers: diskReadBuffer.tiers,
+            scope: activeScope
+        )
+        let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
+        return source.points.filter { $0.timestamp >= cutoff }
     }
 
     public func diskWriteHistory(scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
         let activeScope = scope ?? selectedTimeScope
-        let now = Date()
-        let dur = activeScope.durationSeconds
-        return diskWriteHistory.filter { now.timeIntervalSince($0.timestamp) <= dur }
+        let source = VitalsHistoryBuffer.source(
+            tiers: diskWriteBuffer.tiers,
+            scope: activeScope
+        )
+        let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
+        return source.points.filter { $0.timestamp >= cutoff }
     }
 
-    private func appendHistory(_ array: inout [VitalsHistoryPoint], point: VitalsHistoryPoint, maxSamples: Int = 2880) {
-        let maxAge: TimeInterval = 24 * 3600 // Retain up to 24 hours of telemetry
-        let now = point.timestamp
-        if array.capacity < maxSamples + 10 {
-            array.reserveCapacity(maxSamples + 10)
+    // MARK: - Column API
+
+    public func columns(for metric: VitalsMetricType, scope: VitalsTimeScope) -> [VitalsBucket] {
+        VitalsHistoryBuffer.columns(tiers: buffer(for: metric).tiers, scope: scope)
+    }
+
+    public func networkUpColumns(scope: VitalsTimeScope) -> [VitalsBucket] {
+        VitalsHistoryBuffer.columns(tiers: networkUpBuffer.tiers, scope: scope)
+    }
+
+    public func diskReadColumns(scope: VitalsTimeScope) -> [VitalsBucket] {
+        VitalsHistoryBuffer.columns(tiers: diskReadBuffer.tiers, scope: scope)
+    }
+
+    public func diskWriteColumns(scope: VitalsTimeScope) -> [VitalsBucket] {
+        VitalsHistoryBuffer.columns(tiers: diskWriteBuffer.tiers, scope: scope)
+    }
+
+    /// The real span the series can currently cover, used by the footers to
+    /// say "12 h · available 1 h 20 m" while the tiers are still filling.
+    public func availableSpan(for metric: VitalsMetricType, now: Date = Date()) -> TimeInterval {
+        guard let oldest = buffer(for: metric).oldestTimestamp else { return 0 }
+        return max(now.timeIntervalSince(oldest), 0)
+    }
+
+    public func batteryStateCells(range: TimeInterval, now: Date = Date()) -> [VitalsStateCell] {
+        batteryStateHistory.cells(
+            range: range,
+            now: now,
+            currentState: metrics.batteryIsPresent ? batteryStateValue : nil
+        )
+    }
+
+    private func recordBatteryState(_ state: Int, at now: Date) {
+        let interval = VitalsStateHistory.interval
+        let start = Date(
+            timeIntervalSince1970: floor(now.timeIntervalSince1970 / interval) * interval
+        )
+        if let lastStart = batteryStateBucketStart {
+            if start > lastStart {
+                batteryStateHistory.appendCompleted(
+                    start: lastStart,
+                    state: batteryStateValue
+                )
+                batteryStateBucketStart = start
+            }
+        } else {
+            batteryStateBucketStart = start
         }
-        array.append(point)
-        // Purge points older than 24 hours
-        if let first = array.first, now.timeIntervalSince(first.timestamp) > maxAge {
-            array.removeAll { now.timeIntervalSince($0.timestamp) > maxAge }
-        }
-        // Strict boundary: 2880 points (24 hours at 30-second cadence)
-        if array.count > maxSamples {
-            let overflow = array.count - maxSamples
-            array.removeFirst(overflow)
-        }
+        batteryStateValue = state
     }
 
     public func saveHistoryToDisk() {
         let container = VitalsPersistedHistory(
-            cpu: cpuHistory,
-            gpu: gpuHistory,
-            ram: ramHistory,
-            power: powerHistory,
-            networkDown: networkDownHistory,
-            networkUp: networkUpHistory,
-            disk: diskHistory
+            cpu: cpuBuffer.tiers,
+            gpu: gpuBuffer.tiers,
+            ram: ramBuffer.tiers,
+            power: powerBuffer.tiers,
+            networkDown: networkDownBuffer.tiers,
+            networkUp: networkUpBuffer.tiers,
+            disk: diskBuffer.tiers,
+            diskRead: diskReadBuffer.tiers,
+            diskWrite: diskWriteBuffer.tiers,
+            batteryState: batteryStateHistory
         )
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
@@ -848,19 +914,51 @@ public final class HardwareVitalsService {
             let data = try Data(contentsOf: historyFileURL)
             let container = try JSONDecoder().decode(VitalsPersistedHistory.self, from: data)
             let now = Date()
-            let maxAge: TimeInterval = 24 * 3600
 
-            // Strictly filter loaded points to within 24 hours
-            self.cpuHistory = container.cpu.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
-            self.gpuHistory = container.gpu.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
-            self.ramHistory = container.ram.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
-            self.powerHistory = container.power.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
-            self.networkDownHistory = container.networkDown.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
-            self.networkUpHistory = container.networkUp.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
-            self.networkHistory = self.networkDownHistory
-            self.diskHistory = container.disk.filter { now.timeIntervalSince($0.timestamp) <= maxAge }
+            func filtered(_ history: VitalsTieredHistory) -> VitalsTieredHistory {
+                VitalsTieredHistory(
+                    fast: Array(history.fast
+                        .filter { now.timeIntervalSince($0.timestamp) <= 300 }
+                        .suffix(VitalsHistoryBuffer.fastCapacity)),
+                    minute: Array(history.minute
+                        .filter { now.timeIntervalSince($0.timestamp) <= 3600 }
+                        .suffix(VitalsHistoryBuffer.minuteCapacity)),
+                    coarse: Array(history.coarse
+                        .filter { now.timeIntervalSince($0.timestamp) <= 43_200 }
+                        .suffix(VitalsHistoryBuffer.coarseCapacity))
+                )
+            }
+
+            self.cpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.cpu))
+            self.gpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.gpu))
+            self.ramBuffer = VitalsHistoryBuffer(tiers: filtered(container.ram))
+            self.powerBuffer = VitalsHistoryBuffer(tiers: filtered(container.power))
+            self.networkDownBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown))
+            self.networkUpBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkUp))
+            // The combined network series is derived at runtime; the persisted
+            // file only carries the two directions.
+            self.networkBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown))
+            self.diskBuffer = VitalsHistoryBuffer(tiers: filtered(container.disk))
+            self.diskReadBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskRead))
+            self.diskWriteBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskWrite))
+            self.batteryStateHistory = VitalsStateHistory(
+                points: container.batteryState.points.filter {
+                    now.timeIntervalSince($0.timestamp) <= 43_200
+                }
+            )
         } catch {
             // In case of corrupt file, fallback to empty history
+            cpuBuffer = VitalsHistoryBuffer()
+            gpuBuffer = VitalsHistoryBuffer()
+            ramBuffer = VitalsHistoryBuffer()
+            powerBuffer = VitalsHistoryBuffer()
+            networkBuffer = VitalsHistoryBuffer()
+            networkDownBuffer = VitalsHistoryBuffer()
+            networkUpBuffer = VitalsHistoryBuffer()
+            diskBuffer = VitalsHistoryBuffer()
+            diskReadBuffer = VitalsHistoryBuffer()
+            diskWriteBuffer = VitalsHistoryBuffer()
+            batteryStateHistory = VitalsStateHistory()
         }
     }
 
@@ -1025,26 +1123,34 @@ public final class HardwareVitalsService {
         )
 
         let now = Date()
-        appendHistory(&cpuHistory, point: VitalsHistoryPoint(timestamp: now, value: cpuBreakdown.totalUsage))
-        appendHistory(&gpuHistory, point: VitalsHistoryPoint(timestamp: now, value: gpu))
-        appendHistory(&ramHistory, point: VitalsHistoryPoint(timestamp: now, value: mem.usage))
-        appendHistory(&powerHistory, point: VitalsHistoryPoint(timestamp: now, value: Double(battery.level) / 100.0))
+        cpuBuffer.append(VitalsHistoryPoint(timestamp: now, value: cpuBreakdown.totalUsage))
+        gpuBuffer.append(VitalsHistoryPoint(timestamp: now, value: gpu))
+        ramBuffer.append(VitalsHistoryPoint(timestamp: now, value: mem.usage))
+        powerBuffer.append(VitalsHistoryPoint(timestamp: now, value: Double(battery.level) / 100.0))
         let netRatio = min((net.down + net.up) / 10_485_760.0, 1.0)
         let downRatio = min(net.down / 10_485_760.0, 1.0)
         let upRatio = min(net.up / 10_485_760.0, 1.0)
-        appendHistory(&networkHistory, point: VitalsHistoryPoint(timestamp: now, value: netRatio))
-        appendHistory(&networkDownHistory, point: VitalsHistoryPoint(timestamp: now, value: downRatio))
-        appendHistory(&networkUpHistory, point: VitalsHistoryPoint(timestamp: now, value: upRatio))
+        networkBuffer.append(VitalsHistoryPoint(timestamp: now, value: netRatio))
+        networkDownBuffer.append(VitalsHistoryPoint(timestamp: now, value: downRatio))
+        networkUpBuffer.append(VitalsHistoryPoint(timestamp: now, value: upRatio))
         let diskRatio = disk.totalGB > 0 ? (disk.totalGB - disk.freeGB) / disk.totalGB : 0.5
-        appendHistory(&diskHistory, point: VitalsHistoryPoint(timestamp: now, value: diskRatio))
-        appendHistory(&diskReadHistory, point: VitalsHistoryPoint(
+        diskBuffer.append(VitalsHistoryPoint(timestamp: now, value: diskRatio))
+        diskReadBuffer.append(VitalsHistoryPoint(
             timestamp: now,
             value: min(diskIO.readBytesPerSec / 10_485_760.0, 1.0)
         ))
-        appendHistory(&diskWriteHistory, point: VitalsHistoryPoint(
+        diskWriteBuffer.append(VitalsHistoryPoint(
             timestamp: now,
             value: min(diskIO.writeBytesPerSec / 10_485_760.0, 1.0)
         ))
+        let batteryState: Int = {
+            guard battery.isPresent else { return 0 }
+            if battery.level >= 100, !battery.isCharging, battery.source == "AC Power" {
+                return 2
+            }
+            return battery.isCharging ? 1 : 0
+        }()
+        recordBatteryState(batteryState, at: now)
 
         // The rail only needs the cheap metrics above. The 580-process walk
         // runs in the background and publishes on a later main-actor turn.

@@ -436,10 +436,10 @@ struct VitalsAndScriptTests {
         #expect(!reloadedService.cpuHistory.isEmpty)
         #expect(!reloadedService.networkDownHistory.isEmpty)
 
-        // Verify multi-resolution time scopes (30s, 1h, 24h)
+        // Verify multi-resolution time scopes (30s, 1h, 12h)
         let recent30s = reloadedService.history(for: .cpu, scope: .realTime30s)
-        let day24h = reloadedService.history(for: .cpu, scope: .day24h)
-        #expect(recent30s.count <= day24h.count)
+        let hours12 = reloadedService.history(for: .cpu, scope: .hours12)
+        #expect(recent30s.count <= hours12.count)
     }
 
     @Test("Script Runway defines default maintenance actions")

@@ -22,6 +22,9 @@ public final class VitalsPluginState: Sendable {
     /// Which metric the Processes inspector sorts and draws. Like
     /// `headerMetric`, this is a control selection, not disposable view state.
     public var processSortMetric: ProcessSortMetric
+    /// The range each charted band remembers. "Never chosen" resolves to the
+    /// default one-hour view; the Overview always reads 30 s directly.
+    public private(set) var metricScopes: [VitalsMetricType: VitalsTimeScope]
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
@@ -66,6 +69,22 @@ public final class VitalsPluginState: Sendable {
     public func setProcessSortMetric(_ metric: ProcessSortMetric) {
         processSortMetric = metric
         storage.set(metric.rawValue, forKey: "processSortMetric")
+    }
+
+    public func scope(for metric: VitalsMetricType) -> VitalsTimeScope {
+        metricScopes[metric] ?? .hour1
+    }
+
+    public func setScope(_ scope: VitalsTimeScope, for metric: VitalsMetricType) {
+        metricScopes[metric] = scope
+        persistScopes()
+    }
+
+    private func persistScopes() {
+        let encoded = Dictionary(
+            uniqueKeysWithValues: metricScopes.map { ($0.key.rawValue, $0.value) }
+        )
+        storage.setCodable(encoded, forKey: "metricScopes")
     }
 
     public init(storage: (any PurahPluginStorage)? = nil) {
@@ -119,6 +138,16 @@ public final class VitalsPluginState: Sendable {
             resolvedStorage.set(clampedLimit, forKey: "maxRailMetrics")
         }
         self.thresholds = resolvedStorage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
+        let storedScopes = resolvedStorage.codable(
+            forKey: "metricScopes",
+            as: [String: VitalsTimeScope].self
+        ) ?? [:]
+        self.metricScopes = Dictionary(
+            uniqueKeysWithValues: storedScopes.compactMap { key, value in
+                guard let metric = VitalsMetricType(rawValue: key) else { return nil }
+                return (metric, value)
+            }
+        )
     }
 
     public func history(for metric: VitalsMetricType) -> [VitalsHistoryPoint] {
@@ -167,6 +196,16 @@ public final class VitalsPluginState: Sendable {
         if let thresh = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) {
             self.thresholds = thresh
         }
+        let storedScopes = storage.codable(
+            forKey: "metricScopes",
+            as: [String: VitalsTimeScope].self
+        ) ?? [:]
+        self.metricScopes = Dictionary(
+            uniqueKeysWithValues: storedScopes.compactMap { key, value in
+                guard let metric = VitalsMetricType(rawValue: key) else { return nil }
+                return (metric, value)
+            }
+        )
         refreshRailPowerVisibility()
     }
 
@@ -176,6 +215,7 @@ public final class VitalsPluginState: Sendable {
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(enabledMetrics, forKey: "enabledMetrics")
         storage.setCodable(thresholds, forKey: "thresholds")
+        persistScopes()
         refreshRailPowerVisibility()
     }
 

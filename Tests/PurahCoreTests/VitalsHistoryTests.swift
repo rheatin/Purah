@@ -1,0 +1,187 @@
+import Foundation
+import Testing
+@testable import PurahCore
+
+@Suite("Vitals tiered history")
+struct VitalsHistoryTests {
+    private let base = Date(timeIntervalSince1970: 1_800_000_000)
+
+    private func point(_ offset: TimeInterval, _ value: Double) -> VitalsHistoryPoint {
+        VitalsHistoryPoint(timestamp: base.addingTimeInterval(offset), value: value)
+    }
+
+    @Test("Sixty one-second samples become one minute mean at the boundary")
+    func minuteBucketClosesAtBoundary() {
+        var buffer = VitalsHistoryBuffer()
+        for index in 0..<60 {
+            buffer.append(point(TimeInterval(index), 1.0))
+        }
+        buffer.append(point(60, 9.0))
+
+        #expect(buffer.tiers.minute.count == 1)
+        #expect(buffer.tiers.minute.first?.timestamp == base)
+        #expect(buffer.tiers.minute.first?.value == 1.0)
+    }
+
+    @Test("A minute with 61 samples does not double-count the boundary sample")
+    func sixtyOneSamplesStayOneBucket() {
+        var buffer = VitalsHistoryBuffer()
+        for index in 0..<60 {
+            buffer.append(point(TimeInterval(index), 1.0))
+        }
+        buffer.append(point(30.5, 1.0))
+        buffer.append(point(60, 7.0))
+
+        #expect(buffer.tiers.minute.count == 1)
+        #expect(buffer.tiers.minute.first?.value == 1.0)
+    }
+
+    @Test("An hour of history yields sixty minute buckets")
+    func hourColumns() {
+        var buffer = VitalsHistoryBuffer()
+        for index in 0...3600 {
+            buffer.append(point(TimeInterval(index), 1.0))
+        }
+
+        let buckets = VitalsHistoryBuffer.columns(
+            tiers: buffer.tiers,
+            scope: .hour1,
+            now: base.addingTimeInterval(3600)
+        )
+        #expect(buckets.count == 60)
+        #expect(buckets.allSatisfy { abs($0.mean - 1.0) < 0.0001 })
+        #expect(buckets.last?.end == base.addingTimeInterval(3600))
+    }
+
+    @Test("Ten minutes under twelve hours fills sixty slots spanning ten minutes")
+    func shortHistoryFillsTwelveHourWindow() {
+        var buffer = VitalsHistoryBuffer()
+        for index in 0...600 {
+            buffer.append(point(TimeInterval(index), 1.0))
+        }
+
+        let now = base.addingTimeInterval(600)
+        let buckets = VitalsHistoryBuffer.columns(
+            tiers: buffer.tiers,
+            scope: .hours12,
+            now: now
+        )
+        #expect(buckets.count == 60)
+        #expect(buckets.first?.start == now.addingTimeInterval(-600))
+        #expect(buckets.allSatisfy { $0.mean > 0.99 })
+        #expect(buckets.last?.end == now)
+    }
+
+    @Test("Twenty minutes under an hour fills sixty wider buckets")
+    func shortHistoryWidensHourBuckets() {
+        var buffer = VitalsHistoryBuffer()
+        for index in 0...1200 {
+            buffer.append(point(TimeInterval(index), 1.0))
+        }
+
+        let now = base.addingTimeInterval(1200)
+        let buckets = VitalsHistoryBuffer.columns(
+            tiers: buffer.tiers,
+            scope: .hour1,
+            now: now
+        )
+        #expect(buckets.count == 60)
+        #expect(buckets.first?.start == now.addingTimeInterval(-1200))
+        #expect(buckets.last?.end == now)
+        let width = buckets[1].end.timeIntervalSince(buckets[1].start)
+        #expect(abs(width - 20) < 0.001)
+    }
+
+    @Test("An empty series produces no buckets")
+    func emptySeriesHasNoColumns() {
+        let buckets = VitalsHistoryBuffer.columns(
+            tiers: VitalsTieredHistory(),
+            scope: .hour1
+        )
+        #expect(buckets.isEmpty)
+    }
+
+    @Test("Sparse samples keep the same sixty equal slots as dense samples")
+    func sparseSamplesKeepEqualSlots() throws {
+        let now = base.addingTimeInterval(30)
+        let dense = (0...30).map { point(TimeInterval($0), Double($0) / 30) }
+        let sparse = stride(from: 0, through: 30, by: 5).map {
+            point(TimeInterval($0), Double($0) / 30)
+        }
+
+        let denseBuckets = VitalsHistoryBuffer.columns(
+            fast: dense,
+            scope: .realTime30s,
+            now: now
+        )
+        let sparseBuckets = VitalsHistoryBuffer.columns(
+            fast: sparse,
+            scope: .realTime30s,
+            now: now
+        )
+
+        #expect(denseBuckets.count == 60)
+        #expect(sparseBuckets.count == 60)
+        let firstWidth = try #require(sparseBuckets.first).end.timeIntervalSince(
+            sparseBuckets[0].start
+        )
+        #expect(sparseBuckets.allSatisfy {
+            abs($0.end.timeIntervalSince($0.start) - firstWidth) < 0.0001
+        })
+        #expect(sparseBuckets.filter { $0.mean > 0 }.count < denseBuckets.filter { $0.mean > 0 }.count)
+    }
+
+    @Test("A v1 single-array payload loads into the fast tier")
+    func legacyPayloadLoadsIntoFastTier() throws {
+        let legacy = ["cpu": [point(0, 0.25), point(1, 0.5)]]
+        let data = try JSONEncoder().encode(legacy)
+        let decoded = try JSONDecoder().decode(VitalsPersistedHistory.self, from: data)
+
+        #expect(decoded.version == 1)
+        #expect(decoded.cpu.fast.count == 2)
+        #expect(decoded.cpu.fast.last?.value == 0.5)
+        #expect(decoded.cpu.minute.isEmpty)
+        #expect(decoded.cpu.coarse.isEmpty)
+    }
+
+    @Test("A malformed payload fails to decode instead of inventing history")
+    func malformedPayloadThrows() {
+        #expect(throws: (any Error).self) {
+            try JSONDecoder().decode(
+                VitalsPersistedHistory.self,
+                from: Data("{\"cpu\": 7}".utf8)
+            )
+        }
+    }
+
+    @Test("Battery cells keep ten-minute width and put the live state in the current bucket")
+    func batteryStateCellsFillTheRange() {
+        var history = VitalsStateHistory()
+        for index in 0..<5 {
+            history.appendCompleted(
+                start: base.addingTimeInterval(Double(index - 5) * 600),
+                state: index % 3
+            )
+        }
+
+        let cells = history.cells(
+            range: 3600,
+            now: base,
+            currentState: 2
+        )
+        #expect(cells.count == 6)
+        #expect(cells.first?.start == base.addingTimeInterval(-3000))
+        #expect(cells.last?.start == base)
+        #expect(cells.last?.state == 2)
+        #expect(cells.first?.state == 0)
+        #expect(cells.allSatisfy { $0.end.timeIntervalSince($0.start) == 600 })
+
+        let short = history.cells(
+            range: 1200,
+            now: base,
+            currentState: 1
+        )
+        #expect(short.count == 2)
+        #expect(short.last?.state == 1)
+    }
+}

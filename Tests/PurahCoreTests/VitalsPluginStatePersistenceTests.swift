@@ -126,4 +126,33 @@ struct VitalsPluginStatePersistenceTests {
         #expect(state.processSortMetric == .cpu)
         #expect(storage.string(forKey: "processSortMetric") == ProcessSortMetric.cpu.rawValue)
     }
+
+    @Test("A never-chosen range defaults to one hour")
+    func testScopeDefaultsToOneHour() throws {
+        let suite = "vitals_scope_default_\(UUID().uuidString)"
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let state = VitalsPluginState(storage: storage)
+
+        for metric in VitalsMetricType.allCases {
+            #expect(state.scope(for: metric) == .hour1)
+        }
+    }
+
+    @Test("Each metric's chosen range persists independently")
+    func testScopePersistsPerMetric() throws {
+        let suite = "vitals_scope_persist_\(UUID().uuidString)"
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let state = VitalsPluginState(storage: storage)
+        state.setScope(.hours12, for: .gpu)
+        state.setScope(.minutes5, for: .network)
+
+        let reloaded = VitalsPluginState(storage: storage)
+        #expect(reloaded.scope(for: .gpu) == .hours12)
+        #expect(reloaded.scope(for: .network) == .minutes5)
+        #expect(reloaded.scope(for: .cpu) == .hour1)
+    }
 }

@@ -157,7 +157,8 @@ struct LocalizationTests {
             // format string.
             // +3: the POWER FLOW strip captions under adapter, system and
             // battery.
-            .traditionalChinese: 721,
+            // +2: the column footer's "now" and "available %@" span labels.
+            .traditionalChinese: 723,
             .japanese: 151,
             .korean: 151,
             .french: 151,

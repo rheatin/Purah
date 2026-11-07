@@ -187,6 +187,15 @@ struct VitalsThroughputDomain: Equatable, Sendable {
     }
 }
 
+/// The three directional series that share a metric (`.network` is download,
+/// `.disk` is capacity), used by the test seam that renders each row with its
+/// own curve.
+enum VitalsThroughputSeries: Hashable, Sendable {
+    case networkUp
+    case diskRead
+    case diskWrite
+}
+
 // MARK: - Composite Full Drawer View
 public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
@@ -195,6 +204,9 @@ public struct HardwareVitalsDrawerView: View {
     /// Test seam: the overview render tests need deterministic curves, while
     /// the cells' live readings still come from the probe-injected service.
     private let historyOverride: [VitalsMetricType: [VitalsHistoryPoint]]?
+    /// Test seam for the rows that share `.network` or `.disk` with another
+    /// direction.
+    private let throughputOverride: [VitalsThroughputSeries: [VitalsHistoryPoint]]?
 
     private var vitals: HardwareVitalsService {
         service
@@ -211,6 +223,7 @@ public struct HardwareVitalsDrawerView: View {
         self.store = store
         self.service = .shared
         self.historyOverride = nil
+        self.throughputOverride = nil
     }
 
     /// Test seam: a drawer reads one service instance, so a probe-injected
@@ -225,6 +238,7 @@ public struct HardwareVitalsDrawerView: View {
         self.store = store
         self.service = service
         self.historyOverride = nil
+        self.throughputOverride = nil
     }
 
     /// Test seam for render harnesses that need a fixed curve (for example a
@@ -233,22 +247,117 @@ public struct HardwareVitalsDrawerView: View {
         state: VitalsPluginState,
         store: PurahWorkspaceStore,
         service: HardwareVitalsService,
-        historyOverride: [VitalsMetricType: [VitalsHistoryPoint]]
+        historyOverride: [VitalsMetricType: [VitalsHistoryPoint]],
+        throughputOverride: [VitalsThroughputSeries: [VitalsHistoryPoint]] = [:]
     ) {
         self.state = state
         self.store = store
         self.service = service
         self.historyOverride = historyOverride
+        self.throughputOverride = throughputOverride.isEmpty ? nil : throughputOverride
     }
 
-    private func history(
+    private func columnBuckets(
         _ metric: VitalsMetricType,
         scope: VitalsTimeScope
-    ) -> [VitalsHistoryPoint] {
+    ) -> [VitalsBucket] {
         if let points = historyOverride?[metric] {
-            return points
+            return VitalsHistoryBuffer.columns(fast: points, scope: scope)
         }
-        return vitals.history(for: metric, scope: scope)
+        return vitals.columns(for: metric, scope: scope)
+    }
+
+    private func columnBuckets(
+        _ series: VitalsThroughputSeries,
+        scope: VitalsTimeScope
+    ) -> [VitalsBucket] {
+        if let points = throughputOverride?[series] {
+            return VitalsHistoryBuffer.columns(fast: points, scope: scope)
+        }
+        switch series {
+        case .networkUp:
+            return vitals.networkUpColumns(scope: scope)
+        case .diskRead:
+            return vitals.diskReadColumns(scope: scope)
+        case .diskWrite:
+            return vitals.diskWriteColumns(scope: scope)
+        }
+    }
+
+    private func availableSpan(_ metric: VitalsMetricType) -> TimeInterval {
+        if let points = historyOverride?[metric],
+           let oldest = points.map(\.timestamp).min() {
+            return max(Date().timeIntervalSince(oldest), 0)
+        }
+        return vitals.availableSpan(for: metric)
+    }
+
+    private func rangeFooter(_ metric: VitalsMetricType, scope: VitalsTimeScope) -> String {
+        VitalsColumnFormatting.rangeFooter(
+            scope: scope,
+            available: availableSpan(metric)
+        )
+    }
+
+    private func detailWithRange(
+        _ detail: String,
+        metric: VitalsMetricType,
+        scope: VitalsTimeScope
+    ) -> String {
+        let range = VitalsColumnFormatting.duration(scope.durationSeconds)
+        return detail.isEmpty ? range : "\(detail) · \(range)"
+    }
+
+    private func cycleScope(_ metric: VitalsMetricType) {
+        let all = VitalsTimeScope.allCases
+        let current = state.scope(for: metric)
+        guard let index = all.firstIndex(of: current) else { return }
+        state.setScope(all[(index + 1) % all.count], for: metric)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+    }
+
+    /// The ribbon records one state per ten-minute bucket, so its availability
+    /// is counted in whole cells rather than seconds.
+    private func batteryStateAvailableSpan() -> TimeInterval {
+        let interval = VitalsStateHistory.interval
+        guard let oldest = vitals.batteryStatePoints.first?.timestamp else {
+            return vitals.metrics.batteryIsPresent ? interval : 0
+        }
+        let now = Date()
+        let currentStart = Date(
+            timeIntervalSince1970: floor(now.timeIntervalSince1970 / interval) * interval
+        )
+        let oldestStart = Date(
+            timeIntervalSince1970: floor(oldest.timeIntervalSince1970 / interval) * interval
+        )
+        let count = max(
+            Int((currentStart.timeIntervalSince(oldestStart) / interval).rounded()) + 1,
+            1
+        )
+        return Double(count) * interval
+    }
+
+    private func batteryRibbonCells(scope: VitalsTimeScope) -> [VitalsStateCell] {
+        let interval = VitalsStateHistory.interval
+        let availableCount = max(
+            Int((batteryStateAvailableSpan() / interval).rounded()),
+            1
+        )
+        let selectedCount = max(
+            Int((scope.durationSeconds / interval).rounded()),
+            1
+        )
+        let count = min(selectedCount, availableCount)
+        return vitals.batteryStateCells(
+            range: Double(count) * interval
+        )
+    }
+
+    private func batteryRangeFooter(scope: VitalsTimeScope) -> String {
+        VitalsColumnFormatting.rangeFooter(
+            scope: scope,
+            available: batteryStateAvailableSpan()
+        )
     }
 
     public init(store: PurahWorkspaceStore) {
@@ -600,7 +709,7 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: metrics.cpuUsage,
                     tint: cpuColor,
                     detail: "Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Load \(String(format: "%.1f", metrics.loadAverage1m))",
-                    history: history(.cpu, scope: .realTime30s),
+                    plot: AnyView(overviewColumnPlot(metric: .cpu)),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "CPU",
@@ -615,7 +724,7 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: metrics.gpuUsage,
                     tint: gpuColor,
                     detail: "\(metrics.chipModelName) · \(metrics.thermalStateLabel)",
-                    history: history(.gpu, scope: .realTime30s),
+                    plot: AnyView(overviewColumnPlot(metric: .gpu)),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "GPU",
@@ -634,7 +743,7 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: metrics.memoryUsage,
                     tint: ramColor,
                     detail: ramDetail(metrics),
-                    history: history(.ram, scope: .realTime30s),
+                    plot: AnyView(overviewColumnPlot(metric: .ram)),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "RAM",
@@ -649,7 +758,16 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: Double(metrics.batteryLevel) / 100.0,
                     tint: powerColor,
                     detail: "Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)",
-                    history: history(.power, scope: .realTime30s),
+                    plot: AnyView(
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            VitalsStateRibbon(
+                                cells: batteryRibbonCells(scope: .realTime30s)
+                            )
+                            .frame(height: 8)
+                            Spacer(minLength: 0)
+                        }
+                    ),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "BATTERY",
@@ -661,7 +779,7 @@ public struct HardwareVitalsDrawerView: View {
 
             overviewHairline
 
-            overviewNetworkBand(metrics: metrics, netColor: netColor)
+            overviewNetworkBand(metrics: metrics)
 
             if showsDeepTelemetry {
                 overviewHairline
@@ -680,7 +798,7 @@ public struct HardwareVitalsDrawerView: View {
         ratio: Double,
         tint: Color,
         detail: String,
-        history: [VitalsHistoryPoint],
+        plot: AnyView,
         spokenLabel: String
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -699,22 +817,7 @@ public struct HardwareVitalsDrawerView: View {
 
             vitalsRail(ratio: ratio, tint: tint)
 
-            GeometryReader { geo in
-                VitalsTimeSeriesGraphView(
-                    points: history,
-                    color: tint,
-                    palette: palette,
-                    height: max(geo.size.height, 1),
-                    scope: .realTime30s,
-                    showsGrid: false,
-                    showsMarkings: false,
-                    // The cell sits directly under its own rail, so its trace
-                    // reads on the same 0…1 scale. A 1% idle GPU hugs the
-                    // baseline instead of zooming its own noise across the
-                    // whole plot; the larger tabs keep the adaptive domain.
-                    domainUpperBound: 1.0
-                )
-            }
+            plot
             .frame(maxHeight: .infinity)
             .frame(minHeight: 10)
 
@@ -728,6 +831,21 @@ public struct HardwareVitalsDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(spokenLabel)
+    }
+
+    /// The Overview cell reads on the same fixed 0…1 scale as the rail above
+    /// it, so a 1% idle reading stays a 1% column instead of zooming its own
+    /// noise across the plot.
+    private func overviewColumnPlot(metric: VitalsMetricType) -> some View {
+        VitalsColumnStrip(
+            buckets: columnBuckets(metric, scope: .realTime30s),
+            domain: .percentage,
+            tint: VitalsColorResolver.identityColor(for: metric),
+            metric: metric,
+            thresholds: effectiveThresholds,
+            hoveredIndex: .constant(nil),
+            showsHover: false
+        )
     }
 
     private func ramDetail(_ metrics: HardwareVitalsInfo) -> String {
@@ -800,15 +918,21 @@ public struct HardwareVitalsDrawerView: View {
     }
 
     private func overviewNetworkBand(
-        metrics: HardwareVitalsInfo,
-        netColor: Color
+        metrics: HardwareVitalsInfo
     ) -> some View {
-        VStack(spacing: 5) {
+        let downBuckets = columnBuckets(.network, scope: .realTime30s)
+        let upBuckets = columnBuckets(.networkUp, scope: .realTime30s)
+        let domain = throughputDomain([downBuckets, upBuckets])
+        let downTint = VitalsColorResolver.identityColor(for: .network)
+        let upTint = Color(hex: "#0A84FF")
+
+        return VStack(spacing: 5) {
             overviewNetworkRow(
                 label: "NET ↓",
                 speed: metrics.networkDownSpeed,
-                tint: netColor,
-                history: vitals.history(for: .network, scope: .realTime30s),
+                tint: downTint,
+                buckets: downBuckets,
+                domain: domain,
                 total: metrics.networkTotalReceivedGB,
                 spokenLabel: String(
                     format: "vitals.a11y.networkDown".localized,
@@ -818,8 +942,9 @@ public struct HardwareVitalsDrawerView: View {
             overviewNetworkRow(
                 label: "NET ↑",
                 speed: metrics.networkUpSpeed,
-                tint: netColor.opacity(0.7),
-                history: vitals.networkUpHistory(scope: .realTime30s),
+                tint: upTint,
+                buckets: upBuckets,
+                domain: domain,
                 total: metrics.networkTotalSentGB,
                 spokenLabel: String(
                     format: "vitals.a11y.networkUp".localized,
@@ -836,7 +961,8 @@ public struct HardwareVitalsDrawerView: View {
         label: String,
         speed: Double,
         tint: Color,
-        history: [VitalsHistoryPoint],
+        buckets: [VitalsBucket],
+        domain: VitalsColumnDomain,
         total: Double,
         spokenLabel: String
     ) -> some View {
@@ -850,14 +976,14 @@ public struct HardwareVitalsDrawerView: View {
                 .foregroundColor(tint)
                 .lineLimit(1)
                 .fixedSize()
-            VitalsTimeSeriesGraphView(
-                points: history,
-                color: tint,
-                palette: palette,
-                height: 10,
-                scope: .realTime30s,
-                showsGrid: false,
-                showsMarkings: false
+            VitalsColumnStrip(
+                buckets: buckets,
+                domain: domain,
+                tint: tint,
+                metric: .network,
+                thresholds: effectiveThresholds,
+                hoveredIndex: .constant(nil),
+                showsHover: false
             )
             .frame(maxWidth: .infinity)
             Text(String(format: "Σ %.1f G", total))
@@ -1090,72 +1216,22 @@ public struct HardwareVitalsDrawerView: View {
         }
     }
 
-    private func vitalsThroughputRow(
-        glyph: String,
-        value: String,
-        tint: Color,
-        history: [VitalsHistoryPoint],
-        total: String,
-        upperBound: Double,
-        showsAreaFill: Bool
-    ) -> some View {
-        ZStack(alignment: .center) {
-            GeometryReader { geo in
-                VitalsTimeSeriesGraphView(
-                    points: history,
-                    color: tint,
-                    palette: palette,
-                    height: max(geo.size.height, 1),
-                    scope: .hour1,
-                    showsGrid: false,
-                    showsMarkings: false,
-                    showsAreaFill: showsAreaFill,
-                    domainUpperBound: upperBound,
-                    hidesZeroSeries: true,
-                    logLowerBound: 1_024 / Self.throughputHistoryScale
-                )
-                .padding(.leading, 72)
-                .padding(.trailing, 68)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            HStack(spacing: 6) {
-                HStack(spacing: 3) {
-                    Text(glyph)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(tint)
-                    Text(value)
-                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                        .foregroundColor(Color.primary.opacity(0.88))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                .frame(width: 66, alignment: .leading)
-
-                Spacer(minLength: 0)
-
-                Text(total)
-                    .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .frame(width: 62, alignment: .trailing)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxHeight: .infinity)
-        .frame(minHeight: 20)
-    }
-
     /// Throughput histories store rates divided by 10 MiB/s (the service's
     /// existing normalisation), so a shared ceiling has to be converted into
     /// that same unit.
     private static let throughputHistoryScale = 10_485_760.0
 
-    private func throughputCeiling(_ series: [[VitalsHistoryPoint]]) -> Double {
-        let maximumRatio = series.flatMap { $0 }.map(\.value).max() ?? 0
+    /// Both rows of a band share one log domain: 1 KB/s at the bottom and a
+    /// nice-number ceiling above the busiest bucket, never below 1 MB/s.
+    private func throughputDomain(_ series: [[VitalsBucket]]) -> VitalsColumnDomain {
+        let maximumRatio = series.flatMap { $0 }.map(\.mean).max() ?? 0
         let ceilingBytes = VitalsThroughputDomain.ceiling(
             for: max(maximumRatio, 0) * Self.throughputHistoryScale
         )
-        return ceilingBytes / Self.throughputHistoryScale
+        return .log(
+            lower: 1_024 / Self.throughputHistoryScale,
+            upper: ceilingBytes / Self.throughputHistoryScale
+        )
     }
 
     // MARK: - Tab: Compute (CPU, GPU & RAM)
@@ -1185,6 +1261,8 @@ public struct HardwareVitalsDrawerView: View {
             : String(format: "%.0f M", metrics.gpuMemoryInUseMB)
         let swapUsedGB = metrics.memorySwapUsedMB / 1024.0
         let swapTotalGB = metrics.memorySwapTotalMB / 1024.0
+        let gpuScope = state.scope(for: .gpu)
+        let ramScope = state.scope(for: .ram)
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 6) {
@@ -1220,81 +1298,84 @@ public struct HardwareVitalsDrawerView: View {
 
             vitalsHairline
 
-            VStack(alignment: .leading, spacing: 5) {
-                vitalsBandHeader(
-                    title: "GPU",
-                    detail: gpuDetail,
-                    value: "\(Int(metrics.gpuUsage * 100))%",
-                    tint: gpuColor
-                )
-                vitalsRail(ratio: metrics.gpuUsage, tint: gpuColor)
-                GeometryReader { geo in
-                    VitalsTimeSeriesGraphView(
-                        points: vitals.history(for: .gpu, scope: .hour1),
-                        color: gpuColor,
-                        palette: palette,
-                        height: min(max(geo.size.height, 20), 44),
-                        scope: .hour1,
-                        showsGrid: false,
-                        showsMarkings: false
-                    )
-                }
-                .frame(minHeight: 20, maxHeight: 44)
-                vitalsLegend([
-                    ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
-                    ("TILER", "\(Int(metrics.gpuTilerUsage * 100))", Color.primary.opacity(0.45)),
-                    ("MEM", gpuMemory, Color.primary.opacity(0.8))
-                ])
-            }
+            VitalsMetricColumnBand(
+                metric: .gpu,
+                title: "GPU",
+                detail: detailWithRange(gpuDetail, metric: .gpu, scope: gpuScope),
+                liveValue: "\(Int(metrics.gpuUsage * 100))%",
+                tint: gpuColor,
+                columnTint: VitalsColorResolver.identityColor(for: .gpu),
+                railRatio: metrics.gpuUsage,
+                buckets: columnBuckets(.gpu, scope: gpuScope),
+                domain: .percentage,
+                scope: gpuScope,
+                thresholds: effectiveThresholds,
+                nowLabel: "vitals.range.now".localized,
+                liveFooter: nil,
+                rangeFooter: rangeFooter(.gpu, scope: gpuScope),
+                valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
+                plotMinHeight: 20,
+                plotMaxHeight: 44,
+                extra: AnyView(
+                    vitalsLegend([
+                        ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
+                        ("TILER", "\(Int(metrics.gpuTilerUsage * 100))", Color.primary.opacity(0.45)),
+                        ("MEM", gpuMemory, Color.primary.opacity(0.8))
+                    ])
+                ),
+                onCycle: { cycleScope(.gpu) }
+            )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .topLeading)
 
             vitalsHairline
 
-            VStack(alignment: .leading, spacing: 5) {
-                vitalsBandHeader(
-                    title: "RAM",
-                    detail: String(
+            VitalsMetricColumnBand(
+                metric: .ram,
+                title: "RAM",
+                detail: detailWithRange(
+                    String(
                         format: "vitals.compute.ramDetail".localized,
                         compactGB(metrics.memoryTotalGB)
                     ),
-                    value: "\(Int(metrics.memoryUsage * 100))%",
-                    tint: ramColor
-                )
-                vitalsRail(ratio: metrics.memoryUsage, tint: ramColor)
-                GeometryReader { geo in
-                    VitalsTimeSeriesGraphView(
-                        points: vitals.history(for: .ram, scope: .hour1),
-                        color: ramColor,
-                        palette: palette,
-                        height: max(geo.size.height, 1),
-                        scope: .hour1,
-                        showsGrid: false,
-                        showsMarkings: false
-                    )
-                }
-                .frame(maxHeight: .infinity)
-                .frame(minHeight: 22)
-                vitalsCompositionBar(segments: [
-                    (metrics.memoryActiveGB, ramColor.opacity(0.9)),
-                    (metrics.memoryWiredGB, Color.primary.opacity(0.42)),
-                    (metrics.memoryCompressedGB, VitalsColorResolver.warningYellow.opacity(0.85)),
-                    (metrics.memoryCachedGB, Color.primary.opacity(0.20)),
-                    (metrics.memoryFreeGB, Color.primary.opacity(0.08))
-                ])
-                vitalsLegend([
-                    ("ACTIVE", compactGB(metrics.memoryActiveGB), ramColor),
-                    ("WIRED", compactGB(metrics.memoryWiredGB), Color.primary.opacity(0.55)),
-                    ("COMPR", compactGB(metrics.memoryCompressedGB), VitalsColorResolver.warningYellow),
-                    ("CACHED", compactGB(metrics.memoryCachedGB), Color.primary.opacity(0.30)),
-                    ("FREE", compactGB(metrics.memoryFreeGB), Color.primary.opacity(0.16))
-                ])
-                Text(ramFooter(metrics, usedGB: swapUsedGB, totalGB: swapTotalGB))
-                .font(.system(size: 7.5, design: .monospaced))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-            }
+                    metric: .ram,
+                    scope: ramScope
+                ),
+                liveValue: "\(Int(metrics.memoryUsage * 100))%",
+                tint: ramColor,
+                columnTint: VitalsColorResolver.identityColor(for: .ram),
+                railRatio: metrics.memoryUsage,
+                buckets: columnBuckets(.ram, scope: ramScope),
+                domain: .percentage,
+                scope: ramScope,
+                thresholds: effectiveThresholds,
+                nowLabel: "vitals.range.now".localized,
+                liveFooter: ramFooter(metrics, usedGB: swapUsedGB, totalGB: swapTotalGB),
+                rangeFooter: rangeFooter(.ram, scope: ramScope),
+                valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
+                plotMinHeight: 22,
+                plotMaxHeight: nil,
+                extra: AnyView(
+                    VStack(alignment: .leading, spacing: 5) {
+                        vitalsCompositionBar(segments: [
+                            (metrics.memoryActiveGB, ramColor.opacity(0.9)),
+                            (metrics.memoryWiredGB, Color.primary.opacity(0.42)),
+                            (metrics.memoryCompressedGB, VitalsColorResolver.warningYellow.opacity(0.85)),
+                            (metrics.memoryCachedGB, Color.primary.opacity(0.20)),
+                            (metrics.memoryFreeGB, Color.primary.opacity(0.08))
+                        ])
+                        vitalsLegend([
+                            ("ACTIVE", compactGB(metrics.memoryActiveGB), ramColor),
+                            ("WIRED", compactGB(metrics.memoryWiredGB), Color.primary.opacity(0.55)),
+                            ("COMPR", compactGB(metrics.memoryCompressedGB), VitalsColorResolver.warningYellow),
+                            ("CACHED", compactGB(metrics.memoryCachedGB), Color.primary.opacity(0.30)),
+                            ("FREE", compactGB(metrics.memoryFreeGB), Color.primary.opacity(0.16))
+                        ])
+                    }
+                ),
+                onCycle: { cycleScope(.ram) }
+            )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1429,91 +1510,115 @@ public struct HardwareVitalsDrawerView: View {
         netColor: Color
     ) -> some View {
         let upColor = Color(hex: "#0A84FF")
+        let writeColor = Color.primary.opacity(0.5)
         let usedGB = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
         let usedRatio = metrics.diskTotalGB > 0 ? usedGB / metrics.diskTotalGB : 0
-        let downHistory = vitals.history(for: .network, scope: .hour1)
-        let upHistory = vitals.networkUpHistory(scope: .hour1)
-        let readHistory = vitals.diskReadHistory(scope: .hour1)
-        let writeHistory = vitals.diskWriteHistory(scope: .hour1)
-        // Both rows in a band share one ceiling, so a quiet upload is not
+        let netScope = state.scope(for: .network)
+        let diskScope = state.scope(for: .disk)
+        let downBuckets = columnBuckets(.network, scope: netScope)
+        let upBuckets = columnBuckets(.networkUp, scope: netScope)
+        let readBuckets = columnBuckets(.diskRead, scope: diskScope)
+        let writeBuckets = columnBuckets(.diskWrite, scope: diskScope)
+        // Both rows in a band share one log domain, so a quiet upload is not
         // stretched to the height of a busy download.
-        let netCeiling = throughputCeiling([downHistory, upHistory])
-        let diskCeiling = throughputCeiling([readHistory, writeHistory])
+        let netDomain = throughputDomain([downBuckets, upBuckets])
+        let diskDomain = throughputDomain([readBuckets, writeBuckets])
+        let rateFormatter: (Double) -> String = {
+            formatSpeed($0 * Self.throughputHistoryScale)
+        }
 
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 5) {
-                vitalsBandHeader(
-                    title: "NETWORK",
-                    detail: "\(metrics.networkInterfaceName) · \(metrics.localIPAddress)",
-                    tint: netColor
-                )
-                vitalsThroughputRow(
-                    glyph: "↓",
-                    value: formatSpeed(metrics.networkDownSpeed),
-                    tint: netColor,
-                    history: downHistory,
-                    total: "Σ \(compactGB(metrics.networkTotalReceivedGB)) G",
-                    upperBound: netCeiling,
-                    showsAreaFill: true
-                )
-                .frame(maxHeight: .infinity)
-                vitalsThroughputRow(
-                    glyph: "↑",
-                    value: formatSpeed(metrics.networkUpSpeed),
-                    tint: upColor,
-                    history: upHistory,
-                    total: "Σ \(compactGB(metrics.networkTotalSentGB)) G",
-                    upperBound: netCeiling,
-                    showsAreaFill: true
-                )
-                .frame(maxHeight: .infinity)
-            }
+            VitalsThroughputBand(
+                metric: .network,
+                title: "NETWORK",
+                detail: detailWithRange(
+                    "\(metrics.networkInterfaceName) · \(metrics.localIPAddress)",
+                    metric: .network,
+                    scope: netScope
+                ),
+                headerValue: "",
+                tint: netColor,
+                rows: [
+                    VitalsThroughputBandRow(
+                        glyph: "↓",
+                        liveValue: formatSpeed(metrics.networkDownSpeed),
+                        tint: VitalsColorResolver.identityColor(for: .network),
+                        buckets: downBuckets,
+                        total: "Σ \(compactGB(metrics.networkTotalReceivedGB)) G"
+                    ),
+                    VitalsThroughputBandRow(
+                        glyph: "↑",
+                        liveValue: formatSpeed(metrics.networkUpSpeed),
+                        tint: upColor,
+                        buckets: upBuckets,
+                        total: "Σ \(compactGB(metrics.networkTotalSentGB)) G"
+                    )
+                ],
+                domain: netDomain,
+                scope: netScope,
+                thresholds: effectiveThresholds,
+                nowLabel: "vitals.range.now".localized,
+                rangeFooter: rangeFooter(.network, scope: netScope),
+                valueFormatter: rateFormatter,
+                extra: nil,
+                onCycle: { cycleScope(.network) }
+            )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             vitalsHairline
 
-            VStack(alignment: .leading, spacing: 5) {
-                vitalsBandHeader(
-                    title: "DISK",
-                    detail: String(
+            VitalsThroughputBand(
+                metric: .disk,
+                title: "DISK",
+                detail: detailWithRange(
+                    String(
                         format: "vitals.disk.bootDisk".localized,
                         compactGB(metrics.diskTotalGB)
                     ),
-                    value: "\(Int((usedRatio * 100).rounded()))%",
-                    tint: diskColor
-                )
-                vitalsThroughputRow(
-                    glyph: "R",
-                    value: formatSpeed(metrics.diskReadBytesPerSec),
-                    tint: diskColor,
-                    history: readHistory,
-                    total: "Σ \(compactGB(metrics.diskReadTotalGB)) G",
-                    upperBound: diskCeiling,
-                    showsAreaFill: true
-                )
-                .frame(maxHeight: .infinity)
-                vitalsThroughputRow(
-                    glyph: "W",
-                    value: formatSpeed(metrics.diskWriteBytesPerSec),
-                    tint: Color.primary.opacity(0.5),
-                    history: writeHistory,
-                    total: "Σ \(compactGB(metrics.diskWriteTotalGB)) G",
-                    upperBound: diskCeiling,
-                    showsAreaFill: true
-                )
-                .frame(maxHeight: .infinity)
-                vitalsCompositionBar(segments: [
-                    (usedGB, diskColor.opacity(0.75)),
-                    (metrics.diskFreeGB, Color.primary.opacity(0.08))
-                ])
-                vitalsLegend([
-                    ("USED", "\(compactGB(usedGB)) G", diskColor),
-                    ("FREE", "\(compactGB(metrics.diskFreeGB)) G", Color.primary.opacity(0.8)),
-                    ("TOTAL", "\(compactGB(metrics.diskTotalGB)) G", Color.primary.opacity(0.3))
-                ])
-            }
+                    metric: .disk,
+                    scope: diskScope
+                ),
+                headerValue: "\(Int((usedRatio * 100).rounded()))%",
+                tint: diskColor,
+                rows: [
+                    VitalsThroughputBandRow(
+                        glyph: "R",
+                        liveValue: formatSpeed(metrics.diskReadBytesPerSec),
+                        tint: VitalsColorResolver.identityColor(for: .disk),
+                        buckets: readBuckets,
+                        total: "Σ \(compactGB(metrics.diskReadTotalGB)) G"
+                    ),
+                    VitalsThroughputBandRow(
+                        glyph: "W",
+                        liveValue: formatSpeed(metrics.diskWriteBytesPerSec),
+                        tint: writeColor,
+                        buckets: writeBuckets,
+                        total: "Σ \(compactGB(metrics.diskWriteTotalGB)) G"
+                    )
+                ],
+                domain: diskDomain,
+                scope: diskScope,
+                thresholds: effectiveThresholds,
+                nowLabel: "vitals.range.now".localized,
+                rangeFooter: rangeFooter(.disk, scope: diskScope),
+                valueFormatter: rateFormatter,
+                extra: AnyView(
+                    VStack(alignment: .leading, spacing: 5) {
+                        vitalsCompositionBar(segments: [
+                            (usedGB, diskColor.opacity(0.75)),
+                            (metrics.diskFreeGB, Color.primary.opacity(0.08))
+                        ])
+                        vitalsLegend([
+                            ("USED", "\(compactGB(usedGB)) G", diskColor),
+                            ("FREE", "\(compactGB(metrics.diskFreeGB)) G", Color.primary.opacity(0.8)),
+                            ("TOTAL", "\(compactGB(metrics.diskTotalGB)) G", Color.primary.opacity(0.3))
+                        ])
+                    }
+                ),
+                onCycle: { cycleScope(.disk) }
+            )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1584,7 +1689,10 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
-        .frame(height: max(availableHeight - 4, 220), alignment: .top)
+        // The bands decide the content height. `minHeight` only lets a tall
+        // card's spare room go to the flow strip; at a short card the content
+        // is taller than the viewport and the scroll body owns the overflow.
+        .frame(minHeight: max(availableHeight - 4, 0), alignment: .top)
     }
 
     private func batteryBand(
@@ -1592,10 +1700,13 @@ public struct HardwareVitalsDrawerView: View {
         state: BatteryState,
         powerColor: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        let scope = self.state.scope(for: .power)
+        let rangeLabel = batteryRangeFooter(scope: scope)
+
+        return VStack(alignment: .leading, spacing: 5) {
             vitalsBandHeader(
                 title: "BATTERY",
-                detail: state.label,
+                detail: detailWithRange(state.label, metric: .power, scope: scope),
                 value: "\(metrics.batteryLevel)%",
                 tint: powerColor
             )
@@ -1603,11 +1714,26 @@ public struct HardwareVitalsDrawerView: View {
                 ratio: Double(metrics.batteryLevel) / 100.0,
                 tint: powerColor
             )
-            Text(batteryFooter(metrics, state: state))
-                .font(.system(size: 7.5, design: .monospaced))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            VitalsStateRibbon(cells: batteryRibbonCells(scope: scope))
+                .frame(height: 8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    cycleScope(.power)
+                }
+            VitalsStateRibbonLegend()
+            HStack(spacing: 5) {
+                Text(batteryFooter(metrics, state: state))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 2)
+                if !rangeLabel.isEmpty {
+                    Text(rangeLabel)
+                        .foregroundColor(.secondary.opacity(0.8))
+                        .lineLimit(1)
+                }
+            }
+            .font(.system(size: 7.5, design: .monospaced))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -3545,7 +3671,7 @@ public struct VitalsRowSparkline: View {
     public let palette: ThemePalette
     public let height: CGFloat
 
-    /// Tapping cycles the window, so a 24h trend is one click away from a chip
+    /// Tapping cycles the window, so a 12h trend is one click away from a chip
     /// that has no room for a scope picker.
     @State private var scope: VitalsTimeScope = .realTime30s
 
