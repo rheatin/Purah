@@ -181,14 +181,12 @@ public struct AIAssistantPlugin: PurahPodPlugin {
         return AnyView(
             PurahHeaderGroup {
                 PurahHeaderButton(
-                    systemImage: "clock.arrow.circlepath",
-                    help: "help.chatHistory".localized,
+                    systemImage: "square.and.pencil",
+                    help: "help.newChat".localized,
                     tint: context.accentColor,
-                    isActive: state.isShowingHistoryPanel
+                    isEmphasized: true
                 ) {
-                    withAnimation(PurahMotionPolicy.surfaceSoft) {
-                        state.isShowingHistoryPanel.toggle()
-                    }
+                    state.createNewSession()
                 }
 
                 PurahHeaderButton(
@@ -200,16 +198,15 @@ public struct AIAssistantPlugin: PurahPodPlugin {
                     state.toggleFavoriteSession(id: state.activeSessionId)
                 }
 
-                // `square.and.pencil` is the compose glyph every Mac app uses;
-                // `plus.bubble` reads as "add a chat bubble" and optically
-                // outweighed the other two.
                 PurahHeaderButton(
-                    systemImage: "square.and.pencil",
-                    help: "help.newChat".localized,
+                    systemImage: "clock.arrow.circlepath",
+                    help: "help.chatHistory".localized,
                     tint: context.accentColor,
-                    isEmphasized: true
+                    isActive: state.isShowingHistoryPanel
                 ) {
-                    state.createNewSession()
+                    withAnimation(PurahMotionPolicy.surfaceSoft) {
+                        state.isShowingHistoryPanel.toggle()
+                    }
                 }
             }
         )

@@ -51,9 +51,9 @@ public struct TodoPlugin: PurahPodPlugin {
         AnyView(
             PurahHeaderGroup {
                 PurahHeaderButton(
-                    systemImage: state.showsCompleted ? "circle" : "circle.fill",
+                    systemImage: "circle",
                     help: "todo.tab.open".localized,
-                    tint: context.accentColor,
+                    tint: .primary,
                     isActive: !state.showsCompleted
                 ) {
                     state.showsCompleted = false

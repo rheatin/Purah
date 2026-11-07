@@ -317,10 +317,13 @@ public struct PurahHeaderMenuLabel: View {
                 .opacity(0.75)
         }
         .padding(.horizontal, PurahHeaderMetrics.pillPaddingH)
-        .padding(.vertical, PurahHeaderMetrics.pillPaddingV)
         .background(
-            RoundedRectangle(cornerRadius: PurahHeaderMetrics.pillCorner, style: .continuous)
-                .fill(tint.opacity(isHovered ? PurahHeaderMetrics.activeFill : PurahHeaderMetrics.menuFill))
+            Group {
+                if isHovered {
+                    RoundedRectangle(cornerRadius: PurahHeaderMetrics.pillCorner, style: .continuous)
+                        .fill(tint.opacity(PurahHeaderMetrics.menuFill))
+                }
+            }
         )
         .foregroundColor(tint)
         .contentShape(Rectangle())

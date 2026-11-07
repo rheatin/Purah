@@ -121,7 +121,18 @@ struct NotesHeaderNoteMenu: View {
                         )
                     }
                 } label: {
-                    Text(group.tag?.name ?? "notes.untaggedGroup".localized)
+                    if let tag = group.tag {
+                        let tint = Color.readableTagTint(hex: tag.colorHex)
+                        Label {
+                            Text(tag.name)
+                                .foregroundColor(tint)
+                        } icon: {
+                            Image(nsImage: Self.tagDotImage(hex: tag.colorHex))
+                                .renderingMode(.original)
+                        }
+                    } else {
+                        Text("notes.untaggedGroup".localized)
+                    }
                 }
             }
 
@@ -146,6 +157,17 @@ struct NotesHeaderNoteMenu: View {
         // header, so a long filename ellipsizes here instead of widening the
         // row until "Quick Notes" wraps onto a second line.
         .help("notes.switchNote".localized)
+    }
+
+    @MainActor
+    private static func tagDotImage(hex: String) -> NSImage {
+        let image = NSImage(size: NSSize(width: 14, height: 14), flipped: false) { rect in
+            NSColor(Color.readableTagTint(hex: hex)).setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 3, dy: 3)).fill()
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 }
 

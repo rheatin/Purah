@@ -25,9 +25,33 @@ struct HeaderMenuTintRenderTests {
 
         print("HEADER_TINT_PIXELS title=\(title) blue=\(blue) yellow=\(yellow) sparkles=\(sparkles)")
         #expect(title > 0, "The menu title rendered without tinted ink")
-        #expect(blue > 500, "Blue menu ink is missing or reduced to the icon and chevron")
-        #expect(yellow > 400, "Yellow menu ink is missing or reduced to the icon and chevron")
+        // The trigger has no resting fill, so these are ink pixels only:
+        // measured 671 title / 795 blue / 673 yellow / 81 sparkles. The floors
+        // sit well below that but above the icon-and-chevron-only range, so a
+        // regression to an unpainted title fails instead of hiding in a pill.
+        #expect(blue > 700, "Blue menu ink is missing or reduced to the icon and chevron")
+        #expect(yellow > 600, "Yellow menu ink is missing or reduced to the icon and chevron")
         #expect(sparkles > 40, "Sparkles menu glyph rendered without its tint")
+    }
+
+    @Test("Header menu trigger has no resting plate")
+    @MainActor
+    func headerMenuTriggerHasNoRestingPlate() throws {
+        let plain = try tintedPixelCount(
+            tintHex: "#0A84FF",
+            sample: .notesPill("Design notes")
+        )
+        let titleOnly = try tintedPixelCount(
+            tintHex: "#0A84FF",
+            sample: .titleOnlyPill("Design notes"),
+            trailingInkExclusion: 10
+        )
+
+        print("HEADER_PLATE_PIXELS plain=\(plain) titleOnly=\(titleOnly)")
+        // A resting `menuFill` plate covered the whole label, so most of its
+        // area matched the tint family. Ink alone is a small fraction of that.
+        #expect(plain < 1_400, "A resting fill is still painted behind the menu label")
+        #expect(titleOnly > 300, "The title's own ink did not render")
     }
 
     @MainActor
@@ -57,13 +81,28 @@ struct HeaderMenuTintRenderTests {
         hosting.layoutSubtreeIfNeeded()
         hosting.displayIfNeeded()
 
+        // Render at a fixed 2x. `bitmapImageRepForCachingDisplay` follows the
+        // window's backing scale, so on a screen-less session the same view
+        // produced a quarter of the ink pixels and these floors failed.
+        let scale: CGFloat = 2
         let bitmap = try #require(
-            hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds)
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: Int((hosting.bounds.width * scale).rounded()),
+                pixelsHigh: Int((hosting.bounds.height * scale).rounded()),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
         )
+        bitmap.size = hosting.bounds.size
         hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
 
         let components = try #require(HexColor.parse(tintHex))
-        let scale = CGFloat(bitmap.pixelsWide) / hosting.bounds.width
         return countTintedPixels(
             in: bitmap,
             tint: components,

@@ -1313,8 +1313,6 @@ struct ClipboardFormatPills: View {
                         .foregroundColor(tint)
                         .padding(.horizontal, 4.5)
                         .padding(.vertical, 1)
-                        .background(Capsule().fill(tint.opacity(0.14)))
-                        .overlay(Capsule().stroke(tint.opacity(0.35), lineWidth: 0.6))
                 }
                 .purahHeaderMenuStyle()
                 .fixedSize()
