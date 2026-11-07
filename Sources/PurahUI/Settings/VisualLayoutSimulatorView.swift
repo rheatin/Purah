@@ -11,7 +11,6 @@ public struct VisualLayoutSimulatorView: View {
     @State private var newProfileName: String = ""
     /// The profile whose name is being edited, if any.
     @State private var renamingProfileId: UUID?
-
     private var theme: ThemeManager {
         ThemeManager.shared
     }
@@ -612,48 +611,22 @@ public struct VisualLayoutSimulatorView: View {
         // stripe + the fixed icon column + the two 6pt gaps.
         let controlsIndent: CGFloat = isStackedInCluster ? 29 : 20
 
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 8) {
-                assemblyPodIdentity(
-                    pod: pod,
-                    isStackedInCluster: isStackedInCluster,
-                    palette: palette
-                )
+        AssemblyRowLayout(controlsIndent: controlsIndent) {
+            assemblyPodIdentity(
+                pod: pod,
+                isStackedInCluster: isStackedInCluster,
+                palette: palette
+            )
 
-                Spacer(minLength: 8)
+            assemblyPodControls(
+                pod: pod,
+                railPods: railPods,
+                maxExistingPage: maxExistingPage,
+                isStackedInCluster: isStackedInCluster,
+                palette: palette
+            )
 
-                assemblyPodControls(
-                    pod: pod,
-                    railPods: railPods,
-                    maxExistingPage: maxExistingPage,
-                    isStackedInCluster: isStackedInCluster,
-                    palette: palette
-                )
-                assemblyPodUnmountButton(pod: pod)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .center, spacing: 8) {
-                    assemblyPodIdentity(
-                        pod: pod,
-                        isStackedInCluster: isStackedInCluster,
-                        palette: palette
-                    )
-
-                    Spacer(minLength: 8)
-
-                    assemblyPodUnmountButton(pod: pod)
-                }
-
-                assemblyPodControls(
-                    pod: pod,
-                    railPods: railPods,
-                    maxExistingPage: maxExistingPage,
-                    isStackedInCluster: isStackedInCluster,
-                    palette: palette
-                )
-                .padding(.leading, controlsIndent)
-            }
+            assemblyPodUnmountButton(pod: pod)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
@@ -701,36 +674,15 @@ public struct VisualLayoutSimulatorView: View {
         isStackedInCluster: Bool,
         palette: ThemePalette
     ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
-                assemblyPodPageControl(pod: pod, maxExistingPage: maxExistingPage, palette: palette)
-                assemblyPodStackControl(
-                    pod: pod,
-                    railPods: railPods,
-                    isStackedInCluster: isStackedInCluster
-                )
-                Spacer(minLength: 2)
-                assemblyPodReorderButtons(pod: pod, palette: palette)
-                assemblyPodTransferButton(pod: pod, palette: palette)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    assemblyPodPageControl(pod: pod, maxExistingPage: maxExistingPage, palette: palette)
-                    assemblyPodStackControl(
-                        pod: pod,
-                        railPods: railPods,
-                        isStackedInCluster: isStackedInCluster
-                    )
-                    Spacer(minLength: 0)
-                }
-
-                HStack(spacing: 6) {
-                    assemblyPodReorderButtons(pod: pod, palette: palette)
-                    assemblyPodTransferButton(pod: pod, palette: palette)
-                    Spacer(minLength: 0)
-                }
-            }
+        AssemblyControlsLayout() {
+            assemblyPodPageControl(pod: pod, maxExistingPage: maxExistingPage, palette: palette)
+            assemblyPodStackControl(
+                pod: pod,
+                railPods: railPods,
+                isStackedInCluster: isStackedInCluster
+            )
+            assemblyPodReorderButtons(pod: pod, palette: palette)
+            assemblyPodTransferButton(pod: pod, palette: palette)
         }
     }
 
@@ -831,6 +783,12 @@ public struct VisualLayoutSimulatorView: View {
             .fixedSize(horizontal: true, vertical: false)
             .help(String(format: "help.stackWithModule".localized, pod.name))
             .accessibilityLabel(String(format: "help.stackWithModule".localized, pod.name))
+        } else {
+            // A stable fourth slot: the controls layout reads page / stack /
+            // reorder / transfer by position, so this must not collapse into
+            // an `EmptyView` and shift the trailing pair.
+            Color.clear
+                .frame(width: 0, height: 0)
         }
     }
 
@@ -1394,5 +1352,292 @@ public struct VisualLayoutSimulatorView: View {
         let target = store.contextProfiles.defaultProfileId ?? profiles.first?.id
         guard let target else { return }
         addApp(bundleId, to: target, store: store)
+    }
+}
+
+/// One assembly row: identity, controls group, unmount.
+///
+/// A row is one line only when its own three children fit there; otherwise the
+/// controls move to a second line under the identity. Deciding from the row's
+/// content — rather than from the rail column's width — is what lets a short
+/// row stay on one line in a narrow column. A `Layout` measures the children
+/// directly, so the menus are not rebuilt for candidate arrangements the way
+/// they were under nested `ViewThatFits`.
+private struct AssemblyRowLayout: Layout {
+    let controlsIndent: CGFloat
+    private let spacing: CGFloat = 8
+    private let lineSpacing: CGFloat = 6
+
+    struct Cache {
+        var width: CGFloat = -1
+        var identity: CGSize = .zero
+        var controls: CGSize = .zero
+        var unmount: CGSize = .zero
+        var narrowControls: CGSize = .zero
+        var narrowIdentity: CGSize = .zero
+        var isWide = true
+    }
+
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache()
+    }
+
+    func updateCache(_ cache: inout Cache, subviews: Subviews) {
+        cache.width = -1
+    }
+
+    private func measure(width: CGFloat, subviews: Subviews, cache: inout Cache) {
+        guard cache.width != width else { return }
+        cache.width = width
+        cache.identity = subviews[0].sizeThatFits(.unspecified)
+        cache.controls = subviews[1].sizeThatFits(.unspecified)
+        cache.unmount = subviews[2].sizeThatFits(.unspecified)
+        cache.isWide = cache.identity.width + cache.controls.width
+            + cache.unmount.width + spacing * 2 <= width
+        if !cache.isWide, width.isFinite {
+            let identityWidth = max(width - cache.unmount.width - spacing, 0)
+            cache.narrowIdentity = subviews[0].sizeThatFits(
+                ProposedViewSize(width: identityWidth, height: nil)
+            )
+            let controlsWidth = max(width - controlsIndent, 0)
+            cache.narrowControls = subviews[1].sizeThatFits(
+                ProposedViewSize(width: controlsWidth, height: nil)
+            )
+        }
+    }
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) -> CGSize {
+        let width = proposal.width ?? .infinity
+        measure(width: width, subviews: subviews, cache: &cache)
+
+        if cache.isWide {
+            let idealWidth = cache.identity.width + cache.controls.width
+                + cache.unmount.width + spacing * 2
+            return CGSize(
+                width: proposal.width ?? idealWidth,
+                height: max(
+                    cache.identity.height,
+                    cache.controls.height,
+                    cache.unmount.height
+                )
+            )
+        }
+
+        let firstLineHeight = max(cache.narrowIdentity.height, cache.unmount.height)
+        let idealWidth = max(
+            cache.narrowIdentity.width + spacing + cache.unmount.width,
+            controlsIndent + cache.narrowControls.width
+        )
+        return CGSize(
+            width: proposal.width ?? idealWidth,
+            height: firstLineHeight + lineSpacing + cache.narrowControls.height
+        )
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) {
+        measure(width: bounds.width, subviews: subviews, cache: &cache)
+
+        if cache.isWide {
+            let midY = bounds.midY
+            subviews[0].place(
+                at: CGPoint(x: bounds.minX, y: midY - cache.identity.height / 2),
+                proposal: ProposedViewSize(
+                    width: cache.identity.width,
+                    height: cache.identity.height
+                )
+            )
+            subviews[2].place(
+                at: CGPoint(x: bounds.maxX - cache.unmount.width, y: midY - cache.unmount.height / 2),
+                proposal: ProposedViewSize(
+                    width: cache.unmount.width,
+                    height: cache.unmount.height
+                )
+            )
+            subviews[1].place(
+                at: CGPoint(
+                    x: bounds.maxX - cache.unmount.width - spacing - cache.controls.width,
+                    y: midY - cache.controls.height / 2
+                ),
+                proposal: ProposedViewSize(
+                    width: cache.controls.width,
+                    height: cache.controls.height
+                )
+            )
+            return
+        }
+
+        let firstLineHeight = max(cache.narrowIdentity.height, cache.unmount.height)
+        subviews[0].place(
+            at: bounds.origin,
+            proposal: ProposedViewSize(
+                width: max(bounds.width - cache.unmount.width - spacing, 0),
+                height: cache.narrowIdentity.height
+            )
+        )
+        subviews[2].place(
+            at: CGPoint(
+                x: bounds.maxX - cache.unmount.width,
+                y: bounds.minY + (firstLineHeight - cache.unmount.height) / 2
+            ),
+            proposal: ProposedViewSize(
+                width: cache.unmount.width,
+                height: cache.unmount.height
+            )
+        )
+        subviews[1].place(
+            at: CGPoint(
+                x: bounds.minX + controlsIndent,
+                y: bounds.minY + firstLineHeight + lineSpacing
+            ),
+            proposal: ProposedViewSize(
+                width: max(bounds.width - controlsIndent, 0),
+                height: cache.narrowControls.height
+            )
+        )
+    }
+}
+
+/// The page / stack / reorder / transfer group.
+///
+/// One line when the group's ideal width fits the width it is given, with the
+/// flexible gap before reorder + transfer exactly where the old wide `HStack`
+/// had its `Spacer`. Otherwise the old narrow split: page + stack, then
+/// reorder + transfer.
+private struct AssemblyControlsLayout: Layout {
+    private let spacing: CGFloat = 6
+    private let minimumCenterGap: CGFloat = 2
+
+    struct Cache {
+        var width: CGFloat = -1
+        var sizes: [CGSize] = []
+        var isOneLine = true
+        var oneLineWidth: CGFloat = 0
+        var twoLineSize: CGSize = .zero
+    }
+
+    func makeCache(subviews: Subviews) -> Cache {
+        Cache()
+    }
+
+    func updateCache(_ cache: inout Cache, subviews: Subviews) {
+        cache.width = -1
+    }
+
+    private func measure(width: CGFloat, subviews: Subviews, cache: inout Cache) {
+        guard cache.width != width else { return }
+        cache.width = width
+        cache.sizes = subviews.indices.map { subviews[$0].sizeThatFits(.unspecified) }
+
+        let visible = cache.sizes.filter { $0.width > 0.5 }
+        let idealWidth = visible.reduce(0) { $0 + $1.width }
+            + spacing * CGFloat(max(visible.count - 1, 0))
+            + minimumCenterGap
+        let idealHeight = visible.map(\.height).max() ?? 0
+
+        if width.isFinite, idealWidth > width {
+            let firstHeights = [cache.sizes[0].height, cache.sizes[1].height]
+            let secondHeights = [cache.sizes[2].height, cache.sizes[3].height]
+            cache.isOneLine = false
+            cache.twoLineSize = CGSize(
+                width: width,
+                height: (firstHeights.max() ?? 0) + spacing + (secondHeights.max() ?? 0)
+            )
+        } else {
+            cache.isOneLine = true
+            cache.oneLineWidth = idealWidth
+            cache.twoLineSize = CGSize(width: idealWidth, height: idealHeight)
+        }
+    }
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) -> CGSize {
+        let width = proposal.width ?? .infinity
+        measure(width: width, subviews: subviews, cache: &cache)
+        if cache.isOneLine {
+            return CGSize(
+                width: proposal.width ?? cache.oneLineWidth,
+                height: cache.sizes.map(\.height).max() ?? 0
+            )
+        }
+        return cache.twoLineSize
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Cache
+    ) {
+        measure(width: bounds.width, subviews: subviews, cache: &cache)
+
+        if cache.isOneLine {
+            let midY = bounds.midY
+
+            var leadingX = bounds.minX
+            for index in [0, 1] where cache.sizes[index].width > 0.5 {
+                let size = cache.sizes[index]
+                subviews[index].place(
+                    at: CGPoint(x: leadingX, y: midY - size.height / 2),
+                    proposal: ProposedViewSize(width: size.width, height: size.height)
+                )
+                leadingX += size.width + spacing
+            }
+
+            var trailingX = bounds.maxX
+            for index in [3, 2] where cache.sizes[index].width > 0.5 {
+                let size = cache.sizes[index]
+                trailingX -= size.width
+                subviews[index].place(
+                    at: CGPoint(x: trailingX, y: midY - size.height / 2),
+                    proposal: ProposedViewSize(width: size.width, height: size.height)
+                )
+                trailingX -= spacing
+            }
+            return
+        }
+
+        let firstHeights = [cache.sizes[0].height, cache.sizes[1].height]
+        let secondHeights = [cache.sizes[2].height, cache.sizes[3].height]
+        let firstLineHeight = firstHeights.max() ?? 0
+
+        var firstX = bounds.minX
+        for index in [0, 1] where cache.sizes[index].width > 0.5 {
+            let size = cache.sizes[index]
+            subviews[index].place(
+                at: CGPoint(
+                    x: firstX,
+                    y: bounds.minY + (firstLineHeight - size.height) / 2
+                ),
+                proposal: ProposedViewSize(width: size.width, height: size.height)
+            )
+            firstX += size.width + spacing
+        }
+
+        var secondX = bounds.minX
+        let secondY = bounds.minY + firstLineHeight + spacing
+        let secondLineHeight = secondHeights.max() ?? 0
+        for index in [2, 3] where cache.sizes[index].width > 0.5 {
+            let size = cache.sizes[index]
+            subviews[index].place(
+                at: CGPoint(
+                    x: secondX,
+                    y: secondY + (secondLineHeight - size.height) / 2
+                ),
+                proposal: ProposedViewSize(width: size.width, height: size.height)
+            )
+            secondX += size.width + spacing
+        }
     }
 }
