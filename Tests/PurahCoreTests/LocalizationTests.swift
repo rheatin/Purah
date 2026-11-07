@@ -155,7 +155,9 @@ struct LocalizationTests {
             // adapter/system/battery labels, INPUT and DESIGN formats.
             // +1: the CAPACITY legend word for DESIGN, distinct from its
             // format string.
-            .traditionalChinese: 718,
+            // +3: the POWER FLOW strip captions under adapter, system and
+            // battery.
+            .traditionalChinese: 721,
             .japanese: 151,
             .korean: 151,
             .french: 151,

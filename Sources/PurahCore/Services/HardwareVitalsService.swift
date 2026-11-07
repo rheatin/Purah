@@ -396,6 +396,8 @@ public struct HardwareVitalsInfo: Sendable {
     // Disk I/O
     public var diskReadBytesPerSec: Double
     public var diskWriteBytesPerSec: Double
+    public var diskReadTotalGB: Double
+    public var diskWriteTotalGB: Double
     public var gpuRendererUsage: Double
     public var gpuTilerUsage: Double
     public var gpuMemoryInUseMB: Double
@@ -457,6 +459,8 @@ public struct HardwareVitalsInfo: Sendable {
         networkTotalSentGB: Double = 0.0,
         diskReadBytesPerSec: Double = 0.0,
         diskWriteBytesPerSec: Double = 0.0,
+        diskReadTotalGB: Double = 0.0,
+        diskWriteTotalGB: Double = 0.0,
         gpuRendererUsage: Double = 0.0,
         gpuTilerUsage: Double = 0.0,
         gpuMemoryInUseMB: Double = 0.0,
@@ -515,6 +519,8 @@ public struct HardwareVitalsInfo: Sendable {
         self.networkTotalSentGB = networkTotalSentGB
         self.diskReadBytesPerSec = diskReadBytesPerSec
         self.diskWriteBytesPerSec = diskWriteBytesPerSec
+        self.diskReadTotalGB = diskReadTotalGB
+        self.diskWriteTotalGB = diskWriteTotalGB
         self.gpuRendererUsage = gpuRendererUsage
         self.gpuTilerUsage = gpuTilerUsage
         self.gpuMemoryInUseMB = gpuMemoryInUseMB
@@ -630,7 +636,12 @@ public final class HardwareVitalsService {
     }()
 
     @ObservationIgnored public let storageDirectory: URL
-    @ObservationIgnored private let diskIOProbe: (() -> (readBytesPerSec: Double, writeBytesPerSec: Double))?
+    @ObservationIgnored private let diskIOProbe: (() -> (
+        readBytesPerSec: Double,
+        writeBytesPerSec: Double,
+        readTotalGB: Double,
+        writeTotalGB: Double
+    ))?
     @ObservationIgnored private let batteryProbe: (() -> (
         level: Int,
         isCharging: Bool,
@@ -721,7 +732,12 @@ public final class HardwareVitalsService {
     init(
         storageDirectory: URL,
         processNetworkSampler: ProcessNetworkSampler = ProcessNetworkSampler(),
-        diskIOProbe: @escaping () -> (readBytesPerSec: Double, writeBytesPerSec: Double),
+        diskIOProbe: @escaping () -> (
+            readBytesPerSec: Double,
+            writeBytesPerSec: Double,
+            readTotalGB: Double,
+            writeTotalGB: Double
+        ),
         batteryProbe: @escaping () -> (
             level: Int,
             isCharging: Bool,
@@ -891,9 +907,19 @@ public final class HardwareVitalsService {
         let gpu = gpuDetailed?.device ?? metrics.gpuUsage
         let mem = readMemoryBreakdown()
         let disk = readDiskSpace()
-        let diskIO: (readBytesPerSec: Double, writeBytesPerSec: Double) = isDrawerVisible
+        let diskIO: (
+            readBytesPerSec: Double,
+            writeBytesPerSec: Double,
+            readTotalGB: Double,
+            writeTotalGB: Double
+        ) = isDrawerVisible
             ? (diskIOProbe?() ?? readDiskIOThroughput())
-            : (metrics.diskReadBytesPerSec, metrics.diskWriteBytesPerSec)
+            : (
+                metrics.diskReadBytesPerSec,
+                metrics.diskWriteBytesPerSec,
+                metrics.diskReadTotalGB,
+                metrics.diskWriteTotalGB
+            )
         let battery: (
             level: Int,
             isCharging: Bool,
@@ -976,6 +1002,8 @@ public final class HardwareVitalsService {
             networkTotalSentGB: net.totalSentGB,
             diskReadBytesPerSec: diskIO.readBytesPerSec,
             diskWriteBytesPerSec: diskIO.writeBytesPerSec,
+            diskReadTotalGB: max(diskIO.readTotalGB, metrics.diskReadTotalGB),
+            diskWriteTotalGB: max(diskIO.writeTotalGB, metrics.diskWriteTotalGB),
             gpuRendererUsage: gpuDetailed?.renderer ?? metrics.gpuRendererUsage,
             gpuTilerUsage: gpuDetailed?.tiler ?? metrics.gpuTilerUsage,
             gpuMemoryInUseMB: gpuDetailed?.memoryInUseMB ?? metrics.gpuMemoryInUseMB,
@@ -1161,11 +1189,16 @@ public final class HardwareVitalsService {
         return (freeGB, totalGB)
     }
 
-    public func readDiskIOThroughput() -> (readBytesPerSec: Double, writeBytesPerSec: Double) {
+    public func readDiskIOThroughput() -> (
+        readBytesPerSec: Double,
+        writeBytesPerSec: Double,
+        readTotalGB: Double,
+        writeTotalGB: Double
+    ) {
         var iterator: io_iterator_t = 0
         let matchDict = IOServiceMatching("IOBlockStorageDriver")
         let result = IOServiceGetMatchingServices(kIOMainPortDefault, matchDict, &iterator)
-        guard result == kIOReturnSuccess, iterator != 0 else { return (0.0, 0.0) }
+        guard result == kIOReturnSuccess, iterator != 0 else { return (0.0, 0.0, 0.0, 0.0) }
         defer { IOObjectRelease(iterator) }
 
         var totalRead: UInt64 = 0
@@ -1210,7 +1243,12 @@ public final class HardwareVitalsService {
         buffer.previousDiskWriteBytes = totalWrite
         buffer.previousDiskTimestamp = now
 
-        return (max(readSpeed, 0.0), max(writeSpeed, 0.0))
+        return (
+            max(readSpeed, 0.0),
+            max(writeSpeed, 0.0),
+            Double(totalRead) / 1_073_741_824.0,
+            Double(totalWrite) / 1_073_741_824.0
+        )
     }
 
     public func readBatteryInfo() -> (

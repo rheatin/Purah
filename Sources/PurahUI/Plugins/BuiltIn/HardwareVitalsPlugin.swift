@@ -242,7 +242,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let metrics = state.metrics
         return state.enabledMetrics.map { metric in
-            let color = VitalsColorResolver.color(for: metric, vitals: metrics, thresholds: state.thresholds, palette: context.palette)
+            let color = VitalsColorResolver.statusColor(for: metric, vitals: metrics, thresholds: state.thresholds, palette: context.palette)
             let isAlerting = state.isAlerting(for: metric)
             return PurahPluginSubItem(
                 id: "vitals-\(metric.rawValue)",
@@ -328,7 +328,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         guard let metric = VitalsMetricType(rawValue: metricKey) else { return nil }
         let bodyH = PurahSteppedCardMetrics.bodyHeight(cardHeight: context.slotHeight)
         guard bodyH < steppedDrawerMinimumBodyHeight(subItemId: subItemId) else { return nil }
-        let color = VitalsColorResolver.color(
+        let color = VitalsColorResolver.statusColor(
             for: metric, vitals: state.metrics, thresholds: state.thresholds, palette: context.palette
         )
         return AnyView(
@@ -363,7 +363,7 @@ public struct VitalsRailBarPluginView: View {
         // One gauge, the metric the header pill names. They used to disagree:
         // the header could say "内存 69%" while the pod still drew CPU.
         let metric = state.headerMetric
-        let color = VitalsColorResolver.color(
+        let color = VitalsColorResolver.statusColor(
             for: metric,
             vitals: state.metrics,
             thresholds: state.thresholds,

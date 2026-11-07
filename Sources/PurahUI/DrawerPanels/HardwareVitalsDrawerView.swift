@@ -156,11 +156,45 @@ struct VitalsCoreGridMetrics: Equatable, Sendable {
     }
 }
 
+/// One shared vertical scale for a band's rows, so download and upload (or
+/// read and write) are drawn against the same ceiling instead of each row
+/// normalising to its own maximum.
+struct VitalsThroughputDomain: Equatable, Sendable {
+    /// A quiet link must look quiet: no band ever draws below 1 MB/s.
+    static let floorCeiling: Double = 1_048_576
+
+    let ceiling: Double
+
+    static func ceiling(for maximumBytesPerSecond: Double) -> Double {
+        guard maximumBytesPerSecond.isFinite, maximumBytesPerSecond > floorCeiling else {
+            return floorCeiling
+        }
+        var scale = pow(10.0, floor(log10(maximumBytesPerSecond)) - 2)
+        while scale > 0 {
+            for multiplier in [1.0, 2.0, 5.0] {
+                let candidate = multiplier * scale
+                if candidate >= maximumBytesPerSecond {
+                    return max(candidate, floorCeiling)
+                }
+            }
+            scale *= 10
+        }
+        return floorCeiling
+    }
+
+    init(maximumBytesPerSecond: Double) {
+        self.ceiling = Self.ceiling(for: maximumBytesPerSecond)
+    }
+}
+
 // MARK: - Composite Full Drawer View
 public struct HardwareVitalsDrawerView: View {
     public let state: VitalsPluginState
     public let store: PurahWorkspaceStore
     private let service: HardwareVitalsService
+    /// Test seam: the overview render tests need deterministic curves, while
+    /// the cells' live readings still come from the probe-injected service.
+    private let historyOverride: [VitalsMetricType: [VitalsHistoryPoint]]?
 
     private var vitals: HardwareVitalsService {
         service
@@ -176,6 +210,7 @@ public struct HardwareVitalsDrawerView: View {
         self.state = state
         self.store = store
         self.service = .shared
+        self.historyOverride = nil
     }
 
     /// Test seam: a drawer reads one service instance, so a probe-injected
@@ -189,6 +224,31 @@ public struct HardwareVitalsDrawerView: View {
         self.state = state
         self.store = store
         self.service = service
+        self.historyOverride = nil
+    }
+
+    /// Test seam for render harnesses that need a fixed curve (for example a
+    /// constant GPU series) without faking the whole service.
+    init(
+        state: VitalsPluginState,
+        store: PurahWorkspaceStore,
+        service: HardwareVitalsService,
+        historyOverride: [VitalsMetricType: [VitalsHistoryPoint]]
+    ) {
+        self.state = state
+        self.store = store
+        self.service = service
+        self.historyOverride = historyOverride
+    }
+
+    private func history(
+        _ metric: VitalsMetricType,
+        scope: VitalsTimeScope
+    ) -> [VitalsHistoryPoint] {
+        if let points = historyOverride?[metric] {
+            return points
+        }
+        return vitals.history(for: metric, scope: scope)
     }
 
     public init(store: PurahWorkspaceStore) {
@@ -540,7 +600,7 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: metrics.cpuUsage,
                     tint: cpuColor,
                     detail: "Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Load \(String(format: "%.1f", metrics.loadAverage1m))",
-                    history: vitals.history(for: .cpu, scope: .realTime30s),
+                    history: history(.cpu, scope: .realTime30s),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "CPU",
@@ -555,7 +615,7 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: metrics.gpuUsage,
                     tint: gpuColor,
                     detail: "\(metrics.chipModelName) · \(metrics.thermalStateLabel)",
-                    history: vitals.history(for: .gpu, scope: .realTime30s),
+                    history: history(.gpu, scope: .realTime30s),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "GPU",
@@ -574,7 +634,7 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: metrics.memoryUsage,
                     tint: ramColor,
                     detail: ramDetail(metrics),
-                    history: vitals.history(for: .ram, scope: .realTime30s),
+                    history: history(.ram, scope: .realTime30s),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "RAM",
@@ -589,7 +649,7 @@ public struct HardwareVitalsDrawerView: View {
                     ratio: Double(metrics.batteryLevel) / 100.0,
                     tint: powerColor,
                     detail: "Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)",
-                    history: vitals.history(for: .power, scope: .realTime30s),
+                    history: history(.power, scope: .realTime30s),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
                         "BATTERY",
@@ -614,7 +674,7 @@ public struct HardwareVitalsDrawerView: View {
         .frame(height: sheetHeight, alignment: .top)
     }
 
-    private func overviewCell(
+    func overviewCell(
         title: String,
         value: String,
         ratio: Double,
@@ -637,15 +697,7 @@ public struct HardwareVitalsDrawerView: View {
                     .minimumScaleFactor(0.7)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0.0), 1.0)), 3))
-                }
-            }
-            .frame(height: 2.5)
+            vitalsRail(ratio: ratio, tint: tint)
 
             GeometryReader { geo in
                 VitalsTimeSeriesGraphView(
@@ -655,7 +707,12 @@ public struct HardwareVitalsDrawerView: View {
                     height: max(geo.size.height, 1),
                     scope: .realTime30s,
                     showsGrid: false,
-                    showsMarkings: false
+                    showsMarkings: false,
+                    // The cell sits directly under its own rail, so its trace
+                    // reads on the same 0…1 scale. A 1% idle GPU hugs the
+                    // baseline instead of zooming its own noise across the
+                    // whole plot; the larger tabs keep the adaptive domain.
+                    domainUpperBound: 1.0
                 )
             }
             .frame(maxHeight: .infinity)
@@ -965,10 +1022,10 @@ public struct HardwareVitalsDrawerView: View {
                 Capsule().fill(Color.primary.opacity(0.08))
                 Capsule()
                     .fill(tint)
-                    .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 3))
+                    .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 4))
             }
         }
-        .frame(height: 2.5)
+        .frame(height: 5)
     }
 
     private func vitalsLegend(_ items: [(String, String, Color)]) -> some View {
@@ -1038,22 +1095,11 @@ public struct HardwareVitalsDrawerView: View {
         value: String,
         tint: Color,
         history: [VitalsHistoryPoint],
-        total: String?,
+        total: String,
+        upperBound: Double,
         showsAreaFill: Bool
     ) -> some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 3) {
-                Text(glyph)
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(tint)
-                Text(value)
-                    .font(.system(size: 10.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color.primary.opacity(0.88))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(width: 66, alignment: .leading)
-
+        ZStack(alignment: .center) {
             GeometryReader { geo in
                 VitalsTimeSeriesGraphView(
                     points: history,
@@ -1063,12 +1109,31 @@ public struct HardwareVitalsDrawerView: View {
                     scope: .hour1,
                     showsGrid: false,
                     showsMarkings: false,
-                    showsAreaFill: showsAreaFill
+                    showsAreaFill: showsAreaFill,
+                    domainUpperBound: upperBound,
+                    hidesZeroSeries: true,
+                    logLowerBound: 1_024 / Self.throughputHistoryScale
                 )
+                .padding(.leading, 72)
+                .padding(.trailing, 68)
             }
-            .frame(minHeight: 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if let total {
+            HStack(spacing: 6) {
+                HStack(spacing: 3) {
+                    Text(glyph)
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(tint)
+                    Text(value)
+                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color.primary.opacity(0.88))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(width: 66, alignment: .leading)
+
+                Spacer(minLength: 0)
+
                 Text(total)
                     .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
                     .foregroundColor(.secondary)
@@ -1076,6 +1141,21 @@ public struct HardwareVitalsDrawerView: View {
                     .lineLimit(1)
             }
         }
+        .frame(maxHeight: .infinity)
+        .frame(minHeight: 20)
+    }
+
+    /// Throughput histories store rates divided by 10 MiB/s (the service's
+    /// existing normalisation), so a shared ceiling has to be converted into
+    /// that same unit.
+    private static let throughputHistoryScale = 10_485_760.0
+
+    private func throughputCeiling(_ series: [[VitalsHistoryPoint]]) -> Double {
+        let maximumRatio = series.flatMap { $0 }.map(\.value).max() ?? 0
+        let ceilingBytes = VitalsThroughputDomain.ceiling(
+            for: max(maximumRatio, 0) * Self.throughputHistoryScale
+        )
+        return ceilingBytes / Self.throughputHistoryScale
     }
 
     // MARK: - Tab: Compute (CPU, GPU & RAM)
@@ -1351,6 +1431,14 @@ public struct HardwareVitalsDrawerView: View {
         let upColor = Color(hex: "#0A84FF")
         let usedGB = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
         let usedRatio = metrics.diskTotalGB > 0 ? usedGB / metrics.diskTotalGB : 0
+        let downHistory = vitals.history(for: .network, scope: .hour1)
+        let upHistory = vitals.networkUpHistory(scope: .hour1)
+        let readHistory = vitals.diskReadHistory(scope: .hour1)
+        let writeHistory = vitals.diskWriteHistory(scope: .hour1)
+        // Both rows in a band share one ceiling, so a quiet upload is not
+        // stretched to the height of a busy download.
+        let netCeiling = throughputCeiling([downHistory, upHistory])
+        let diskCeiling = throughputCeiling([readHistory, writeHistory])
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 5) {
@@ -1363,8 +1451,9 @@ public struct HardwareVitalsDrawerView: View {
                     glyph: "↓",
                     value: formatSpeed(metrics.networkDownSpeed),
                     tint: netColor,
-                    history: vitals.history(for: .network, scope: .hour1),
+                    history: downHistory,
                     total: "Σ \(compactGB(metrics.networkTotalReceivedGB)) G",
+                    upperBound: netCeiling,
                     showsAreaFill: true
                 )
                 .frame(maxHeight: .infinity)
@@ -1372,9 +1461,10 @@ public struct HardwareVitalsDrawerView: View {
                     glyph: "↑",
                     value: formatSpeed(metrics.networkUpSpeed),
                     tint: upColor,
-                    history: vitals.networkUpHistory(scope: .hour1),
+                    history: upHistory,
                     total: "Σ \(compactGB(metrics.networkTotalSentGB)) G",
-                    showsAreaFill: false
+                    upperBound: netCeiling,
+                    showsAreaFill: true
                 )
                 .frame(maxHeight: .infinity)
             }
@@ -1398,8 +1488,9 @@ public struct HardwareVitalsDrawerView: View {
                     glyph: "R",
                     value: formatSpeed(metrics.diskReadBytesPerSec),
                     tint: diskColor,
-                    history: vitals.diskReadHistory(scope: .hour1),
-                    total: nil,
+                    history: readHistory,
+                    total: "Σ \(compactGB(metrics.diskReadTotalGB)) G",
+                    upperBound: diskCeiling,
                     showsAreaFill: true
                 )
                 .frame(maxHeight: .infinity)
@@ -1407,9 +1498,10 @@ public struct HardwareVitalsDrawerView: View {
                     glyph: "W",
                     value: formatSpeed(metrics.diskWriteBytesPerSec),
                     tint: Color.primary.opacity(0.5),
-                    history: vitals.diskWriteHistory(scope: .hour1),
-                    total: nil,
-                    showsAreaFill: false
+                    history: writeHistory,
+                    total: "Σ \(compactGB(metrics.diskWriteTotalGB)) G",
+                    upperBound: diskCeiling,
+                    showsAreaFill: true
                 )
                 .frame(maxHeight: .infinity)
                 vitalsCompositionBar(segments: [
@@ -1459,13 +1551,21 @@ public struct HardwareVitalsDrawerView: View {
     ) -> some View {
         let state = batteryState(metrics)
         let capacity = capacityWh(metrics)
+        // The flow strip needs the dead space that the removed battery trace
+        // left behind, but only once the sheet is tall enough to have any.
+        // At the 250 pt floor the bands already fill the card.
+        let flowExpands = availableHeight >= 280
 
         return VStack(spacing: 0) {
             batteryBand(metrics: metrics, state: state, powerColor: powerColor)
 
             if showsPowerFlow(metrics) {
                 vitalsHairline
-                powerFlowBand(metrics: metrics, powerColor: powerColor)
+                powerFlowBand(
+                    metrics: metrics,
+                    powerColor: powerColor,
+                    expands: flowExpands
+                )
             }
 
             if let capacity {
@@ -1484,7 +1584,7 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
         }
-        .frame(height: max(availableHeight - 4, 306), alignment: .top)
+        .frame(height: max(availableHeight - 4, 220), alignment: .top)
     }
 
     private func batteryBand(
@@ -1503,19 +1603,6 @@ public struct HardwareVitalsDrawerView: View {
                 ratio: Double(metrics.batteryLevel) / 100.0,
                 tint: powerColor
             )
-            GeometryReader { geo in
-                VitalsTimeSeriesGraphView(
-                    points: vitals.history(for: .power, scope: .hour1),
-                    color: powerColor,
-                    palette: palette,
-                    height: max(geo.size.height, 1),
-                    scope: .hour1,
-                    showsGrid: false,
-                    showsMarkings: false
-                )
-            }
-            .frame(maxHeight: .infinity)
-            .frame(minHeight: 24)
             Text(batteryFooter(metrics, state: state))
                 .font(.system(size: 7.5, design: .monospaced))
                 .foregroundColor(.secondary)
@@ -1524,7 +1611,7 @@ public struct HardwareVitalsDrawerView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func showsPowerFlow(_ metrics: HardwareVitalsInfo) -> Bool {
@@ -1535,7 +1622,8 @@ public struct HardwareVitalsDrawerView: View {
 
     private func powerFlowBand(
         metrics: HardwareVitalsInfo,
-        powerColor: Color
+        powerColor: Color,
+        expands: Bool
     ) -> some View {
         let onAC = metrics.powerSource == "AC Power"
         let systemWatts: Double = {
@@ -1553,38 +1641,6 @@ public struct HardwareVitalsDrawerView: View {
             segments.append((batteryBar, VitalsColorResolver.warningYellow.opacity(0.85)))
         }
 
-        var legend: [(String, String, Color)] = []
-        if onAC {
-            if metrics.powerAdapterWatts > 0 {
-                legend.append((
-                    "vitals.power.adapter".localized,
-                    formatWatts(metrics.powerAdapterWatts),
-                    Color.primary.opacity(0.4)
-                ))
-            }
-            legend.append((
-                "vitals.power.system".localized,
-                formatWatts(systemWatts),
-                powerColor
-            ))
-            legend.append((
-                "vitals.power.batteryLoad".localized,
-                formatSignedWatts(batteryWatts),
-                VitalsColorResolver.warningYellow
-            ))
-        } else {
-            legend.append((
-                "vitals.power.batteryLoad".localized,
-                formatSignedWatts(batteryWatts),
-                VitalsColorResolver.warningYellow
-            ))
-            legend.append((
-                "vitals.power.system".localized,
-                formatWatts(systemWatts),
-                powerColor
-            ))
-        }
-
         return VStack(alignment: .leading, spacing: 5) {
             vitalsBandHeader(
                 title: "vitals.power.flowTitle".localized,
@@ -1595,29 +1651,83 @@ public struct HardwareVitalsDrawerView: View {
             if !segments.isEmpty {
                 vitalsCompositionBar(segments: segments)
             }
-            vitalsLegend(legend)
-            if onAC, systemWatts > 0 {
-                Text(String(
-                    format: "vitals.power.input".localized,
-                    String(format: "%.1f", systemWatts),
-                    String(format: "%.2f", metrics.powerSystemVolts),
-                    String(format: "%.3f", metrics.powerSystemAmps)
-                ))
-                .font(.system(size: 7.5, design: .monospaced))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            } else if !onAC {
-                Text(onBatteryFlowFooter(metrics))
-                    .font(.system(size: 7.5, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            if expands {
+                Spacer(minLength: 0)
+            }
+            HStack(alignment: .top, spacing: 10) {
+                powerFlowColumn(
+                    label: "vitals.power.adapter".localized,
+                    value: metrics.powerAdapterWatts > 0
+                        ? formatAdapterWatts(metrics.powerAdapterWatts)
+                        : "—",
+                    caption: "vitals.power.adapterCaption".localized,
+                    tint: Color.primary.opacity(0.55)
+                )
+                powerFlowColumn(
+                    label: "vitals.power.system".localized,
+                    value: formatWatts(systemWatts),
+                    caption: "vitals.power.systemCaption".localized,
+                    tint: powerColor
+                )
+                powerFlowColumn(
+                    label: "vitals.power.batteryLoad".localized,
+                    value: formatSignedWatts(batteryWatts),
+                    caption: "vitals.power.batteryCaption".localized,
+                    tint: VitalsColorResolver.warningYellow
+                )
+            }
+            Group {
+                if onAC, systemWatts > 0 {
+                    Text(String(
+                        format: "vitals.power.input".localized,
+                        String(format: "%.1f", systemWatts),
+                        String(format: "%.2f", metrics.powerSystemVolts),
+                        String(format: "%.3f", metrics.powerSystemAmps)
+                    ))
+                } else if !onAC {
+                    Text(onBatteryFlowFooter(metrics))
+                }
+            }
+            .font(.system(size: 7.5, design: .monospaced))
+            .foregroundColor(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            if expands {
+                Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: expands ? .infinity : nil,
+            alignment: .topLeading
+        )
+    }
+
+    private func powerFlowColumn(
+        label: String,
+        value: String,
+        caption: String,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 6.5, weight: .semibold, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .foregroundColor(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(caption)
+                .font(.system(size: 7.5, design: .monospaced))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func onBatteryFlowFooter(_ metrics: HardwareVitalsInfo) -> String {
@@ -1695,8 +1805,16 @@ public struct HardwareVitalsDrawerView: View {
         String(format: "%.1f W", value)
     }
 
+    /// A negotiated adapter rating is a round number, so 100 W earns no
+    /// trailing zero; a rating that really carries a decimal keeps it.
+    private func formatAdapterWatts(_ value: Double) -> String {
+        let tenths = (value * 10).rounded() / 10
+        return tenths == tenths.rounded()
+            ? String(format: "%.0f W", tenths)
+            : String(format: "%.1f W", tenths)
+    }
+
     private func formatSignedWatts(_ value: Double) -> String {
-        if abs(value) < 0.05 { return "0 W" }
         return String(format: "%+.1f W", value)
     }
 
@@ -1757,17 +1875,14 @@ public struct HardwareVitalsDrawerView: View {
     ) -> String {
         var pieces: [String] = [metrics.powerSource.uppercased()]
 
-        switch state {
-        case .fullyCharged:
-            pieces.append("vitals.power.fullyChargedToken".localized)
-        case .charging, .onBattery:
-            if let minutes = metrics.batteryTimeRemainingMinutes, minutes > 0 {
-                let time = String(format: "%d:%02d", minutes / 60, minutes % 60)
-                let key = state == .charging
-                    ? "vitals.power.timeToFull"
-                    : "vitals.power.timeLeft"
-                pieces.append(String(format: key.localized, time))
-            }
+        if state != .fullyCharged,
+           let minutes = metrics.batteryTimeRemainingMinutes,
+           minutes > 0 {
+            let time = String(format: "%d:%02d", minutes / 60, minutes % 60)
+            let key = state == .charging
+                ? "vitals.power.timeToFull"
+                : "vitals.power.timeLeft"
+            pieces.append(String(format: key.localized, time))
         }
 
         if metrics.batteryVoltageVolts > 0 {
@@ -3185,6 +3300,17 @@ public struct VitalsTimeSeriesGraphView: View {
     public let showsGrid: Bool
     public let showsMarkings: Bool
     public let showsAreaFill: Bool
+    /// An explicit 0…upper view window. Throughput rows share one of these so
+    /// the two rows in a band are comparable; percentage traces leave it nil
+    /// and keep the data-following domain.
+    public let domainUpperBound: Double?
+    /// An all-zero series draws nothing at all — the row's own value is the
+    /// reading, and a flat line across a quiet link is decorative ink.
+    public let hidesZeroSeries: Bool
+    /// Throughput plots use a shared logarithmic axis so an idle link and a
+    /// busy one can share a row without the quiet one collapsing onto the
+    /// baseline. Nil keeps the linear percentage behaviour.
+    public let logLowerBound: Double?
 
     public init(
         points: [VitalsHistoryPoint],
@@ -3194,7 +3320,10 @@ public struct VitalsTimeSeriesGraphView: View {
         scope: VitalsTimeScope = .realTime30s,
         showsGrid: Bool = true,
         showsMarkings: Bool = true,
-        showsAreaFill: Bool = true
+        showsAreaFill: Bool = true,
+        domainUpperBound: Double? = nil,
+        hidesZeroSeries: Bool = false,
+        logLowerBound: Double? = nil
     ) {
         self.points = points
         self.color = color
@@ -3204,6 +3333,9 @@ public struct VitalsTimeSeriesGraphView: View {
         self.showsGrid = showsGrid
         self.showsMarkings = showsMarkings
         self.showsAreaFill = showsAreaFill
+        self.domainUpperBound = domainUpperBound
+        self.hidesZeroSeries = hidesZeroSeries
+        self.logLowerBound = logLowerBound
     }
 
     /// The visible points, mapped onto the window. The vertical domain follows
@@ -3218,11 +3350,16 @@ public struct VitalsTimeSeriesGraphView: View {
 
     /// A flat series is a line, never a filled block: the area only says
     /// something when there is both movement and more than a single sample.
+    /// A whole two-point band of movement is enough to earn the fill; a
+    /// one-point wobble (an idle GPU stepping 0↔1%) is still a line.
     private func areaFillIsMeaningful(for visible: [VitalsHistoryPoint]) -> Bool {
+        // Area under a log axis has no meaning: the band would grow with the
+        // distance between samples, not with the value.
+        guard logLowerBound == nil else { return false }
         guard showsAreaFill, visible.count >= 2 else { return false }
         let values = visible.map(\.value)
         guard let low = values.min(), let high = values.max() else { return false }
-        return high - low >= 0.005
+        return high - low >= 0.02
     }
 
     private func computePlotPoints(width: CGFloat, height: CGFloat) -> [CGPoint] {
@@ -3231,10 +3368,20 @@ public struct VitalsTimeSeriesGraphView: View {
 
         let recent = visiblePoints()
         let currentVal = points.last?.value ?? 0.0
-        let domain = valueDomain(recent, fallback: currentVal)
+        let domain: ClosedRange<CGFloat> = {
+            if let upper = domainUpperBound, upper > 0 {
+                return 0...CGFloat(upper)
+            }
+            return valueDomain(recent, fallback: currentVal)
+        }()
         let span = max(domain.upperBound - domain.lowerBound, 0.0001)
 
         func yPosition(_ value: Double) -> CGFloat {
+            if let lower = logLowerBound, lower > 0, domain.upperBound > CGFloat(lower) {
+                let clamped = max(value, lower)
+                let position = log10(clamped / lower) / log10(Double(domain.upperBound) / lower)
+                return height * (1 - CGFloat(min(max(position, 0), 1)))
+            }
             let clamped = min(max(CGFloat(value), domain.lowerBound), domain.upperBound)
             return height - height * ((clamped - domain.lowerBound) / span)
         }
@@ -3286,9 +3433,23 @@ public struct VitalsTimeSeriesGraphView: View {
                 let w = geo.size.width
                 let h = geo.size.height
                 let visible = visiblePoints()
-                let plotPoints = computePlotPoints(width: w, height: h)
+                let currentValue = points.last?.value ?? 0
+                let drawsNothing = hidesZeroSeries
+                    && abs(currentValue) < 0.000_001
+                    && visible.allSatisfy { abs($0.value) < 0.000_001 }
+                let plotPoints = drawsNothing ? [] : computePlotPoints(width: w, height: h)
 
                 ZStack {
+                    // A log row has no fill, so it needs an axis of its own or
+                    // an idle plot reads as a blank rectangle.
+                    if logLowerBound != nil {
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: h - 0.5))
+                            path.addLine(to: CGPoint(x: w, y: h - 0.5))
+                        }
+                        .stroke(Color.primary.opacity(0.10), lineWidth: 0.6)
+                    }
+
                     // Grid background lines at 25%, 50%, 75%
                     if showsGrid {
                         Path { path in

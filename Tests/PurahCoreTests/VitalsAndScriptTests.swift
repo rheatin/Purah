@@ -47,7 +47,7 @@ struct VitalsAndScriptTests {
 
         let service = HardwareVitalsService(
             storageDirectory: tempDir,
-            diskIOProbe: { (readBytesPerSec: 0, writeBytesPerSec: 0) },
+            diskIOProbe: { (readBytesPerSec: 0, writeBytesPerSec: 0, readTotalGB: 0, writeTotalGB: 0) },
             batteryProbe: {
                 (
                     level: 100,
@@ -171,7 +171,12 @@ struct VitalsAndScriptTests {
             storageDirectory: tempDir,
             diskIOProbe: {
                 diskReads += 1
-                return (readBytesPerSec: 1_234, writeBytesPerSec: 5_678)
+                return (
+                    readBytesPerSec: 1_234,
+                    writeBytesPerSec: 5_678,
+                    readTotalGB: Double(diskReads),
+                    writeTotalGB: Double(diskReads) * 2
+                )
             },
             batteryProbe: {
                 batteryReads += 1
@@ -215,6 +220,98 @@ struct VitalsAndScriptTests {
         service.refreshMetrics(includeProcesses: false)
         #expect(diskReads == 1)
         #expect(batteryReads == 2)
+    }
+
+    @Test("Throughput bands share a 1 MB/s floor and nice-number ceilings")
+    func throughputDomainCeilings() {
+        #expect(VitalsThroughputDomain.ceiling(for: 0) == 1_048_576)
+        #expect(VitalsThroughputDomain.ceiling(for: 985) == 1_048_576)
+        #expect(VitalsThroughputDomain.ceiling(for: 985_000) == 1_048_576)
+        #expect(VitalsThroughputDomain.ceiling(for: 2.4 * 1_048_576) == 5_000_000)
+        #expect(VitalsThroughputDomain.ceiling(for: 12 * 1_048_576) == 20_000_000)
+        for maximum in [1_100_000.0, 2_000_000.0, 3_000_000.0, 7_500_000.0] {
+            #expect(VitalsThroughputDomain.ceiling(for: maximum) >= maximum)
+        }
+    }
+
+    @Test("Every metric has its own identity hue, apart from the alert colours")
+    func identityHuesAreDistinct() {
+        let metrics: [VitalsMetricType] = [.cpu, .gpu, .ram, .network, .disk, .power]
+        let hexes = metrics.compactMap { VitalsColorResolver.identityColor(for: $0).toHex() }
+        #expect(hexes.count == 6)
+        #expect(Set(hexes).count == 6)
+        let warning = VitalsColorResolver.warningYellow.toHex()
+        let danger = VitalsColorResolver.dangerRed.toHex()
+        #expect(!hexes.contains(warning ?? ""))
+        #expect(!hexes.contains(danger ?? ""))
+    }
+
+    @Test("A warning breach still overrides the metric's identity hue")
+    func warningOverridesIdentity() {
+        var vitals = HardwareVitalsInfo()
+        vitals.cpuUsage = 0.60
+        let thresholds = VitalsColorThresholds()
+        #expect(
+            VitalsColorResolver.color(for: .cpu, vitals: vitals, thresholds: thresholds).toHex()
+                == VitalsColorResolver.warningYellow.toHex()
+        )
+        #expect(
+            VitalsColorResolver.statusColor(for: .cpu, vitals: vitals, thresholds: thresholds).toHex()
+                == VitalsColorResolver.warningYellow.toHex()
+        )
+    }
+
+    @Test("Disk session totals default to zero and never decrease")
+    func diskTotalsAreMonotonic() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vitals-disk-totals-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var reads = 0
+        let service = HardwareVitalsService(
+            storageDirectory: tempDir,
+            diskIOProbe: {
+                reads += 1
+                return (
+                    readBytesPerSec: 1_024,
+                    writeBytesPerSec: 2_048,
+                    readTotalGB: Double(reads),
+                    writeTotalGB: Double(reads) * 2
+                )
+            },
+            batteryProbe: {
+                (
+                    level: 80,
+                    isCharging: false,
+                    source: "Battery",
+                    healthPercent: 95,
+                    cycleCount: 10,
+                    temperatureCelsius: 30,
+                    isPresent: true,
+                    voltageVolts: 12.5,
+                    chargeWatts: -4,
+                    timeRemainingMinutes: 120,
+                    condition: "Normal",
+                    systemWatts: 0,
+                    systemVolts: 0,
+                    systemAmps: 0,
+                    adapterWatts: 0,
+                    maxCapacityMAh: 4_000,
+                    designCapacityMAh: 4_200
+                )
+            }
+        )
+        #expect(service.metrics.diskReadTotalGB == 0)
+        #expect(service.metrics.diskWriteTotalGB == 0)
+
+        service.isDrawerVisible = true
+        let firstRead = service.metrics.diskReadTotalGB
+        let firstWrite = service.metrics.diskWriteTotalGB
+        service.refreshMetrics(includeProcesses: false)
+        #expect(service.metrics.diskReadTotalGB >= firstRead)
+        #expect(service.metrics.diskWriteTotalGB >= firstWrite)
+        #expect(firstRead >= 0)
+        #expect(firstWrite >= 0)
     }
 
     @Test("Rail power visibility includes decomposed power chips")
@@ -520,7 +617,9 @@ struct VitalsAndScriptTests {
 
         for metric in VitalsMetricType.allCases {
             let color = VitalsColorResolver.color(for: metric, vitals: healthyVitals, thresholds: thresholds)
-            #expect(color == VitalsColorResolver.healthyGreen)
+            #expect(color == VitalsColorResolver.identityColor(for: metric))
+            let railColor = VitalsColorResolver.statusColor(for: metric, vitals: healthyVitals, thresholds: thresholds)
+            #expect(railColor == VitalsColorResolver.healthyGreen)
         }
 
         let overall = VitalsColorResolver.overallVitalsColor(vitals: healthyVitals, thresholds: thresholds)
@@ -976,6 +1075,8 @@ struct VitalsAndScriptTests {
         let diskIO = service.readDiskIOThroughput()
         #expect(diskIO.readBytesPerSec >= 0.0)
         #expect(diskIO.writeBytesPerSec >= 0.0)
+        #expect(diskIO.readTotalGB >= 0.0)
+        #expect(diskIO.writeTotalGB >= 0.0)
 
         let bat = service.readBatteryInfo()
         #expect(bat.level >= 0 && bat.level <= 100)
