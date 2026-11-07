@@ -17,6 +17,8 @@ public final class EdgeMouseMonitor {
     private var localMonitor: Any?
     private var keyDownMonitor: Any?
     private var globalKeyDownMonitor: Any?
+    private var menuTrackingObservers: [NSObjectProtocol] = []
+    private var isMenuTracking = false
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     /// `tapCreate` fails without Input Monitoring, and it was retried on
@@ -78,6 +80,7 @@ public final class EdgeMouseMonitor {
         store.onLocalMouseMove = { [weak self] event in
             self?.handleMouse(event: event)
         }
+        observeMenuTracking()
     }
 
     public func setFrozen(_ isFrozen: Bool) {
@@ -454,6 +457,54 @@ public final class EdgeMouseMonitor {
         }
     }
 
+    /// An open menu belongs to the card that spawned it, even though its
+    /// window is outside the card's hit box. While it tracks, pointer passes
+    /// must not retire the drawer underneath it.
+    private func observeMenuTracking() {
+        let center = NotificationCenter.default
+        menuTrackingObservers.append(
+            center.addObserver(
+                forName: NSMenu.didBeginTrackingNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.beginMenuTracking()
+                }
+            }
+        )
+        menuTrackingObservers.append(
+            center.addObserver(
+                forName: NSMenu.didEndTrackingNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.endMenuTracking()
+                }
+            }
+        )
+    }
+
+    private func beginMenuTracking() {
+        isMenuTracking = true
+        leftExitGraceTask?.cancel()
+        leftExitGraceTask = nil
+        rightExitGraceTask?.cancel()
+        rightExitGraceTask = nil
+        cancelInitialDwell()
+        cancelPortalHover()
+        pushAccumulator.reset()
+        if let edge = store.activePod?.edge {
+            coordinator?.setInteractive(true, for: edge)
+        }
+    }
+
+    private func endMenuTracking() {
+        isMenuTracking = false
+        processMouse(point: NSEvent.mouseLocation, now: Date())
+    }
+
     deinit {
         MainActor.assumeIsolated {
             if let tap = eventTap {
@@ -474,6 +525,9 @@ public final class EdgeMouseMonitor {
             }
             if let monitor = globalKeyDownMonitor {
                 NSEvent.removeMonitor(monitor)
+            }
+            for observer in menuTrackingObservers {
+                NotificationCenter.default.removeObserver(observer)
             }
         }
     }
@@ -705,6 +759,7 @@ public final class EdgeMouseMonitor {
         customVelocity: CGPoint? = nil
     ) {
         guard !isFrozen, !store.isRailsFrozen, (!store.isLiveRailEditingMode || store.isRehearsingBreathingInSculptor) else { return }
+        guard !isMenuTracking else { return }
 
         // A drag that ends outside this app's sight leaves `isDraggingFromDrawer` set, and the
         // guard below then refuses to open a drawer for the rest of the session — both rails
