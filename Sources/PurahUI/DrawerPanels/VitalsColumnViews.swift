@@ -604,7 +604,7 @@ struct VitalsStateRibbon: View {
     static func color(for state: Int?) -> Color {
         switch state {
         case 1: return VitalsColorResolver.powerIdentity
-        case 2: return Color.primary.opacity(0.75)
+        case 2: return VitalsColorResolver.batteryFullIdentity
         case 0: return Color.primary.opacity(0.28)
         default: return .clear
         }

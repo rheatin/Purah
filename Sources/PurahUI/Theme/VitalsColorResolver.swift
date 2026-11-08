@@ -20,6 +20,9 @@ public enum VitalsColorResolver: Sendable {
     /// shares the network green, but the two bands sit in one drawer and a
     /// distinct green keeps them legible as separate instruments.
     public static let powerIdentity = healthyGreen
+    /// A full battery is a good state, not a disabled control. The ribbon's
+    /// third hue makes it read as an instrument alongside charging.
+    public static let batteryFullIdentity = Color(red: 0.30, green: 0.85, blue: 0.90)
 
     public static func identityColor(for metric: VitalsMetricType) -> Color {
         switch metric {

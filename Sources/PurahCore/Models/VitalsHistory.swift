@@ -202,39 +202,24 @@ public struct VitalsHistoryBuffer: Sendable {
             now: now,
             fastResolution: fastResolution
         )
-        // Every range keeps the same 60 slots, so a bar's width is a property
-        // of the window and never of the sample count. When the source is
-        // coarser than the slot (ten minutes of minute buckets in a 12-hour
-        // window), each source mean is carried across the slots its interval
-        // covers instead of leaving empty slots between samples.
-        let targetCount: Double = 60
-        let width = span / targetCount
-        let count = max(Int(targetCount.rounded()), 1)
+        // A slot is one measurement period, never a slice narrower than the
+        // source can fill. The cadence comes from the points themselves
+        // because a series can sample slower than the configured interval
+        // (GPU), and a strip that implies sixty samples where six exist is a
+        // picket fence rather than a chart.
+        let cadence = sampleCadence(source.points, fallback: source.resolution)
+        let count = min(max(Int((span / cadence).rounded(.down)), 1), 60)
+        let width = span / Double(count)
         let gridStart = now.addingTimeInterval(-span)
 
         var sums = [Double](repeating: 0, count: count)
         var counts = [Int](repeating: 0, count: count)
-        let carriesCoarseSamples = source.resolution > fastResolution + 0.0001
-        if width >= source.resolution || !carriesCoarseSamples {
-            for point in source.points {
-                let offset = point.timestamp.timeIntervalSince(gridStart)
-                guard offset >= -0.5, offset <= span + 0.5 else { continue }
-                let index = min(max(Int(offset / width), 0), count - 1)
-                sums[index] += point.value
-                counts[index] += 1
-            }
-        } else {
-            for point in source.points {
-                let start = point.timestamp.timeIntervalSince(gridStart)
-                guard start <= span + 0.5 else { continue }
-                let first = max(Int((start / width).rounded(.down)), 0)
-                let last = min(Int(((start + source.resolution) / width).rounded(.up)) - 1, count - 1)
-                guard first <= last else { continue }
-                for index in first...last {
-                    sums[index] += point.value
-                    counts[index] += 1
-                }
-            }
+        for point in source.points {
+            let offset = point.timestamp.timeIntervalSince(gridStart)
+            guard offset >= -0.5, offset <= span + 0.5 else { continue }
+            let index = min(max(Int(offset / width), 0), count - 1)
+            sums[index] += point.value
+            counts[index] += 1
         }
 
         return (0..<count).map { index in
@@ -243,6 +228,27 @@ public struct VitalsHistoryBuffer: Sendable {
             let mean = counts[index] > 0 ? sums[index] / Double(counts[index]) : 0
             return VitalsBucket(start: start, end: end, mean: mean)
         }
+    }
+
+    /// Median spacing between consecutive source samples. A single point (or
+    /// duplicate timestamps) cannot state a cadence, so the tier's declared
+    /// resolution is used instead.
+    private static func sampleCadence(
+        _ points: [VitalsHistoryPoint],
+        fallback: TimeInterval
+    ) -> TimeInterval {
+        let fallback = max(fallback, 0.001)
+        guard points.count >= 2 else { return fallback }
+        let spacings = zip(points, points.dropFirst())
+            .map { $1.timestamp.timeIntervalSince($0.timestamp) }
+            .filter { $0 > 0 }
+            .sorted()
+        guard !spacings.isEmpty else { return fallback }
+        let middle = spacings.count / 2
+        let median = spacings.count.isMultiple(of: 2)
+            ? (spacings[middle - 1] + spacings[middle]) / 2
+            : spacings[middle]
+        return max(median, 0.001)
     }
 
     /// Convenience for render/test seams that only have raw points.

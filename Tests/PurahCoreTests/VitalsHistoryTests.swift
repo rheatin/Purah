@@ -53,8 +53,8 @@ struct VitalsHistoryTests {
         #expect(buckets.last?.end == base.addingTimeInterval(3600))
     }
 
-    @Test("Ten minutes under twelve hours fills sixty slots spanning ten minutes")
-    func shortHistoryFillsTwelveHourWindow() {
+    @Test("Ten minutes under twelve hours draws ten one-minute columns")
+    func shortHistoryWidensTwelveHourSlots() {
         var buffer = VitalsHistoryBuffer()
         for index in 0...600 {
             buffer.append(point(TimeInterval(index), 1.0))
@@ -66,13 +66,14 @@ struct VitalsHistoryTests {
             scope: .hours12,
             now: now
         )
-        #expect(buckets.count == 60)
+        #expect(buckets.count == 10)
         #expect(buckets.first?.start == now.addingTimeInterval(-600))
         #expect(buckets.allSatisfy { $0.mean > 0.99 })
         #expect(buckets.last?.end == now)
+        #expect(abs(buckets[1].end.timeIntervalSince(buckets[1].start) - 60) < 0.001)
     }
 
-    @Test("Twenty minutes under an hour fills sixty wider buckets")
+    @Test("Twenty minutes under an hour draws twenty one-minute columns")
     func shortHistoryWidensHourBuckets() {
         var buffer = VitalsHistoryBuffer()
         for index in 0...1200 {
@@ -85,11 +86,11 @@ struct VitalsHistoryTests {
             scope: .hour1,
             now: now
         )
-        #expect(buckets.count == 60)
+        #expect(buckets.count == 20)
         #expect(buckets.first?.start == now.addingTimeInterval(-1200))
         #expect(buckets.last?.end == now)
         let width = buckets[1].end.timeIntervalSince(buckets[1].start)
-        #expect(abs(width - 20) < 0.001)
+        #expect(abs(width - 60) < 0.001)
     }
 
     @Test("An empty series produces no buckets")
@@ -101,12 +102,12 @@ struct VitalsHistoryTests {
         #expect(buckets.isEmpty)
     }
 
-    @Test("Sparse samples keep the same sixty equal slots as dense samples")
+    @Test("Sparse samples widen their slots to the cadence and stay equal")
     func sparseSamplesKeepEqualSlots() throws {
         let now = base.addingTimeInterval(30)
-        let dense = (0...30).map { point(TimeInterval($0), Double($0) / 30) }
+        let dense = (0...30).map { point(TimeInterval($0), 1.0) }
         let sparse = stride(from: 0, through: 30, by: 5).map {
-            point(TimeInterval($0), Double($0) / 30)
+            point(TimeInterval($0), 1.0)
         }
 
         let denseBuckets = VitalsHistoryBuffer.columns(
@@ -120,15 +121,17 @@ struct VitalsHistoryTests {
             now: now
         )
 
-        #expect(denseBuckets.count == 60)
-        #expect(sparseBuckets.count == 60)
+        #expect(denseBuckets.count == 30)
+        #expect(sparseBuckets.count == 6)
         let firstWidth = try #require(sparseBuckets.first).end.timeIntervalSince(
             sparseBuckets[0].start
         )
+        #expect(abs(firstWidth - 5) < 0.0001)
         #expect(sparseBuckets.allSatisfy {
             abs($0.end.timeIntervalSince($0.start) - firstWidth) < 0.0001
         })
-        #expect(sparseBuckets.filter { $0.mean > 0 }.count < denseBuckets.filter { $0.mean > 0 }.count)
+        #expect(denseBuckets.allSatisfy { abs($0.mean - 1) < 0.0001 })
+        #expect(sparseBuckets.allSatisfy { abs($0.mean - 1) < 0.0001 })
     }
 
     @Test("Fast-tier capacity follows the sampling interval, not the range")
@@ -138,7 +141,7 @@ struct VitalsHistoryTests {
         #expect(VitalsHistoryBuffer.fastCapacity(forInterval: 5) == 60)
     }
 
-    @Test("A five-second sampler leaves gaps instead of widening thirty-second columns")
+    @Test("A five-second sampler draws six five-second columns")
     func slowSamplerShowsFewerColumns() {
         let now = base.addingTimeInterval(30)
         let points = stride(from: 0, through: 30, by: 5).map {
@@ -152,12 +155,65 @@ struct VitalsHistoryTests {
             fastResolution: 5
         )
 
-        #expect(buckets.count == 60)
-        #expect(buckets.filter { $0.mean > 0 }.count == 7)
+        #expect(buckets.count == 6)
+        #expect(buckets.allSatisfy { abs($0.mean - 1) < 0.0001 })
         let width = buckets[1].end.timeIntervalSince(buckets[1].start)
+        #expect(abs(width - 5) < 0.0001)
         #expect(buckets.allSatisfy {
             abs($0.end.timeIntervalSince($0.start) - width) < 0.0001
         })
+    }
+
+    @Test("Slot count follows cadence and every slot carries a sample")
+    func slotsFollowCadence() {
+        let oneSecond = (0...30).map { point(TimeInterval($0), 1.0) }
+        let thirtySeconds = VitalsHistoryBuffer.columns(
+            fast: oneSecond,
+            scope: .realTime30s,
+            now: base.addingTimeInterval(30)
+        )
+        #expect(thirtySeconds.count == 30)
+        #expect(thirtySeconds.allSatisfy { $0.mean > 0 })
+
+        let fiveSeconds = stride(from: 0, through: 30, by: 5).map {
+            point(TimeInterval($0), 1.0)
+        }
+        let sparseThirtySeconds = VitalsHistoryBuffer.columns(
+            fast: fiveSeconds,
+            scope: .realTime30s,
+            now: base.addingTimeInterval(30)
+        )
+        #expect(sparseThirtySeconds.count == 6)
+        #expect(sparseThirtySeconds.allSatisfy { $0.mean > 0 })
+
+        let minutes = (0...20).map { point(TimeInterval($0) * 60, 1.0) }
+        let twentyMinutes = VitalsHistoryBuffer.columns(
+            tiers: VitalsTieredHistory(minute: minutes),
+            scope: .hour1,
+            now: base.addingTimeInterval(1200)
+        )
+        #expect(twentyMinutes.count == 20)
+        #expect(twentyMinutes.allSatisfy { $0.mean > 0 })
+        #expect(abs(twentyMinutes[1].end.timeIntervalSince(twentyMinutes[1].start) - 60) < 0.001)
+
+        let fiveMinutesOfSamples = (0...300).map { point(TimeInterval($0), 1.0) }
+        let fiveMinutes = VitalsHistoryBuffer.columns(
+            fast: fiveMinutesOfSamples,
+            scope: .minutes5,
+            now: base.addingTimeInterval(300)
+        )
+        #expect(fiveMinutes.count == 60)
+        #expect(fiveMinutes.allSatisfy { $0.mean > 0 })
+
+        let coarse = (0..<60).map { point(TimeInterval($0) * 720, 1.0) }
+        let twelveHours = VitalsHistoryBuffer.columns(
+            tiers: VitalsTieredHistory(coarse: coarse),
+            scope: .hours12,
+            now: base.addingTimeInterval(43_200)
+        )
+        #expect(twelveHours.count == 60)
+        #expect(twelveHours.allSatisfy { $0.mean > 0 })
+        #expect(abs(twelveHours[1].end.timeIntervalSince(twelveHours[1].start) - 720) < 0.001)
     }
 
     @Test("Changing cadence keeps the fast tier at five minutes")
