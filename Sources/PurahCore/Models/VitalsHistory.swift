@@ -43,6 +43,7 @@ public struct VitalsTieredHistory: Codable, Sendable {
 /// the next twelve-minute boundary. The boundary sample that completes a
 /// bucket opens the next one, so it is never counted twice.
 public struct VitalsHistoryBuffer: Sendable {
+    public static let fastCoverage: TimeInterval = 300
     public static let fastCapacity = 300
     public static let minuteCapacity = 60
     public static let coarseCapacity = 60
@@ -52,6 +53,7 @@ public struct VitalsHistoryBuffer: Sendable {
     public static let coarseInterval: TimeInterval = 720
 
     public private(set) var tiers: VitalsTieredHistory
+    public private(set) var maximumFastSamples: Int
 
     private struct Pending {
         var start: Date
@@ -64,8 +66,27 @@ public struct VitalsHistoryBuffer: Sendable {
     private var pendingMinute: Pending?
     private var pendingCoarse: Pending?
 
-    public init(tiers: VitalsTieredHistory = .init()) {
+    public init(
+        tiers: VitalsTieredHistory = .init(),
+        maximumFastSamples: Int = Self.fastCapacity
+    ) {
         self.tiers = tiers
+        self.maximumFastSamples = max(maximumFastSamples, 1)
+        if self.tiers.fast.count > self.maximumFastSamples {
+            self.tiers.fast.removeFirst(self.tiers.fast.count - self.maximumFastSamples)
+        }
+    }
+
+    public static func fastCapacity(forInterval interval: TimeInterval) -> Int {
+        guard interval.isFinite, interval > 0 else { return fastCapacity }
+        return max(Int((fastCoverage / interval).rounded()), 1)
+    }
+
+    public mutating func setFastCapacity(_ capacity: Int) {
+        maximumFastSamples = max(capacity, 1)
+        if tiers.fast.count > maximumFastSamples {
+            tiers.fast.removeFirst(tiers.fast.count - maximumFastSamples)
+        }
     }
 
     /// The newest instant the buffer can describe. The fast tier is the only
@@ -82,7 +103,7 @@ public struct VitalsHistoryBuffer: Sendable {
     }
 
     public mutating func append(_ point: VitalsHistoryPoint) {
-        Self.appendCapped(&tiers.fast, point, capacity: Self.fastCapacity)
+        Self.appendCapped(&tiers.fast, point, capacity: maximumFastSamples)
 
         let minuteStart = Self.bucketStart(point.timestamp, interval: Self.minuteInterval)
         if let pending = pendingMinute, minuteStart > pending.start {
@@ -125,7 +146,8 @@ public struct VitalsHistoryBuffer: Sendable {
     public static func source(
         tiers: VitalsTieredHistory,
         scope: VitalsTimeScope,
-        now: Date = Date()
+        now: Date = Date(),
+        fastResolution: TimeInterval = fastInterval
     ) -> (points: [VitalsHistoryPoint], resolution: TimeInterval) {
         let coverage: (VitalsHistoryPoint?) -> TimeInterval = { point in
             guard let point else { return 0 }
@@ -136,11 +158,11 @@ public struct VitalsHistoryBuffer: Sendable {
             tiers.minute.first?.timestamp,
             tiers.coarse.first?.timestamp
         ].compactMap { $0 }.min()
-        guard let oldest else { return ([], fastInterval) }
+        guard let oldest else { return ([], fastResolution) }
         let span = min(scope.durationSeconds, max(now.timeIntervalSince(oldest), 0))
 
         if coverage(tiers.fast.first) + 1 >= span, !tiers.fast.isEmpty {
-            return (tiers.fast, fastInterval)
+            return (tiers.fast, fastResolution)
         }
         if coverage(tiers.minute.first) + 1 >= span, !tiers.minute.isEmpty {
             return (tiers.minute, minuteInterval)
@@ -152,7 +174,7 @@ public struct VitalsHistoryBuffer: Sendable {
         // exists rather than showing nothing.
         if !tiers.coarse.isEmpty { return (tiers.coarse, coarseInterval) }
         if !tiers.minute.isEmpty { return (tiers.minute, minuteInterval) }
-        return (tiers.fast, fastInterval)
+        return (tiers.fast, fastResolution)
     }
 
     /// Builds the strip's buckets. The grid always ends at `now`; its span is
@@ -161,7 +183,8 @@ public struct VitalsHistoryBuffer: Sendable {
     public static func columns(
         tiers: VitalsTieredHistory,
         scope: VitalsTimeScope,
-        now: Date = Date()
+        now: Date = Date(),
+        fastResolution: TimeInterval = fastInterval
     ) -> [VitalsBucket] {
         let oldest = [
             tiers.fast.first?.timestamp,
@@ -173,7 +196,12 @@ public struct VitalsHistoryBuffer: Sendable {
         let span = min(scope.durationSeconds, available)
         guard span > 0 else { return [] }
 
-        let source = source(tiers: tiers, scope: scope, now: now)
+        let source = source(
+            tiers: tiers,
+            scope: scope,
+            now: now,
+            fastResolution: fastResolution
+        )
         // Every range keeps the same 60 slots, so a bar's width is a property
         // of the window and never of the sample count. When the source is
         // coarser than the slot (ten minutes of minute buckets in a 12-hour
@@ -186,7 +214,8 @@ public struct VitalsHistoryBuffer: Sendable {
 
         var sums = [Double](repeating: 0, count: count)
         var counts = [Int](repeating: 0, count: count)
-        if width >= source.resolution {
+        let carriesCoarseSamples = source.resolution > fastResolution + 0.0001
+        if width >= source.resolution || !carriesCoarseSamples {
             for point in source.points {
                 let offset = point.timestamp.timeIntervalSince(gridStart)
                 guard offset >= -0.5, offset <= span + 0.5 else { continue }
@@ -220,12 +249,14 @@ public struct VitalsHistoryBuffer: Sendable {
     public static func columns(
         fast: [VitalsHistoryPoint],
         scope: VitalsTimeScope,
-        now: Date = Date()
+        now: Date = Date(),
+        fastResolution: TimeInterval = fastInterval
     ) -> [VitalsBucket] {
         columns(
             tiers: VitalsTieredHistory(fast: fast),
             scope: scope,
-            now: now
+            now: now,
+            fastResolution: fastResolution
         )
     }
 

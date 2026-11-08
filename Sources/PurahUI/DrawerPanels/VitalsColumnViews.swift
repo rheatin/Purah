@@ -260,22 +260,47 @@ struct VitalsMetricColumnBand: View {
     let plotMaxHeight: CGFloat?
     let extra: AnyView?
     let onCycle: () -> Void
+    var collapsesWhenEmpty = false
+    var showsFooter = true
     /// Render/test seam: opens the readout on one bucket without a mouse.
     var previewHoveredIndex: Int? = nil
 
+    private struct HoverSnapshot {
+        let buckets: [VitalsBucket]
+        let domain: VitalsColumnDomain
+    }
+
     @State private var hoveredIndex: Int?
+    @State private var hoverSnapshot: HoverSnapshot?
 
     private var effectiveHoveredIndex: Int? {
         hoveredIndex ?? previewHoveredIndex
     }
 
+    private var displayedBuckets: [VitalsBucket] {
+        hoverSnapshot?.buckets ?? buckets
+    }
+
+    private var displayedDomain: VitalsColumnDomain {
+        hoverSnapshot?.domain ?? domain
+    }
+
     private var hoveredBucket: VitalsBucket? {
-        guard let index = effectiveHoveredIndex, buckets.indices.contains(index) else { return nil }
-        return buckets[index]
+        guard let index = effectiveHoveredIndex,
+              displayedBuckets.indices.contains(index) else { return nil }
+        return displayedBuckets[index]
+    }
+
+    private func snapshotHoverIfNeeded() {
+        guard effectiveHoveredIndex != nil, hoverSnapshot == nil else { return }
+        hoverSnapshot = HoverSnapshot(buckets: buckets, domain: domain)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(
+            alignment: .leading,
+            spacing: collapsesWhenEmpty && displayedBuckets.isEmpty ? 0 : 5
+        ) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(title)
                     .font(.system(size: 9.5, weight: .semibold, design: .rounded))
@@ -295,26 +320,46 @@ struct VitalsMetricColumnBand: View {
                     .minimumScaleFactor(0.7)
             }
 
-            VitalsColumnStrip(
-                buckets: buckets,
-                domain: domain,
-                tint: columnTint ?? tint,
-                metric: metric,
-                thresholds: thresholds,
-                hoveredIndex: Binding(
-                    get: { effectiveHoveredIndex },
-                    set: { hoveredIndex = $0 }
-                ),
-                onCycle: onCycle
-            )
-            .frame(minHeight: plotMinHeight, maxHeight: plotMaxHeight ?? .infinity)
+            if !displayedBuckets.isEmpty || !collapsesWhenEmpty {
+                VitalsColumnStrip(
+                    buckets: displayedBuckets,
+                    domain: displayedDomain,
+                    tint: columnTint ?? tint,
+                    metric: metric,
+                    thresholds: thresholds,
+                    hoveredIndex: Binding(
+                        get: { effectiveHoveredIndex },
+                        set: { newValue in
+                            if newValue != nil, hoveredIndex == nil {
+                                hoverSnapshot = HoverSnapshot(buckets: buckets, domain: domain)
+                            }
+                            hoveredIndex = newValue
+                            if newValue == nil {
+                                hoverSnapshot = nil
+                            }
+                        }
+                    ),
+                    onCycle: {
+                        // A range change happens under the cursor, so the
+                        // frozen snapshot would hide the window it just
+                        // switched to. Release the hover first.
+                        hoverSnapshot = nil
+                        hoveredIndex = nil
+                        onCycle()
+                    }
+                )
+                .frame(minHeight: plotMinHeight, maxHeight: plotMaxHeight ?? .infinity)
+            }
 
             if let extra {
                 extra
             }
 
-            footer
+            if showsFooter {
+                footer
+            }
         }
+        .onAppear { snapshotHoverIfNeeded() }
     }
 
     private var footer: some View {
@@ -373,7 +418,13 @@ struct VitalsThroughputBand: View {
         let index: Int
     }
 
+    private struct HoverSnapshot {
+        let rows: [VitalsThroughputBandRow]
+        let domain: VitalsColumnDomain
+    }
+
     @State private var hovered: Hover?
+    @State private var hoverSnapshot: HoverSnapshot?
 
     private var effectiveHover: Hover? {
         hovered ?? previewHoveredRow.flatMap { row in
@@ -381,16 +432,32 @@ struct VitalsThroughputBand: View {
         }
     }
 
+    private var displayedRows: [VitalsThroughputBandRow] {
+        hoverSnapshot?.rows ?? rows
+    }
+
+    private var displayedDomain: VitalsColumnDomain {
+        hoverSnapshot?.domain ?? domain
+    }
+
     private var hoveredRow: VitalsThroughputBandRow? {
-        guard let effectiveHover, rows.indices.contains(effectiveHover.row) else { return nil }
-        return rows[effectiveHover.row]
+        guard let effectiveHover,
+              displayedRows.indices.contains(effectiveHover.row) else { return nil }
+        return displayedRows[effectiveHover.row]
     }
 
     private var hoveredBucket: VitalsBucket? {
         guard let effectiveHover,
-              rows.indices.contains(effectiveHover.row),
-              rows[effectiveHover.row].buckets.indices.contains(effectiveHover.index) else { return nil }
-        return rows[effectiveHover.row].buckets[effectiveHover.index]
+              displayedRows.indices.contains(effectiveHover.row),
+              displayedRows[effectiveHover.row].buckets.indices.contains(effectiveHover.index) else {
+            return nil
+        }
+        return displayedRows[effectiveHover.row].buckets[effectiveHover.index]
+    }
+
+    private func snapshotHoverIfNeeded() {
+        guard effectiveHover != nil, hoverSnapshot == nil else { return }
+        hoverSnapshot = HoverSnapshot(rows: rows, domain: domain)
     }
 
     var body: some View {
@@ -414,11 +481,11 @@ struct VitalsThroughputBand: View {
                     .minimumScaleFactor(0.7)
             }
 
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+            ForEach(Array(displayedRows.enumerated()), id: \.offset) { index, row in
                 ZStack(alignment: .center) {
                     VitalsColumnStrip(
                         buckets: row.buckets,
-                        domain: domain,
+                        domain: displayedDomain,
                         tint: row.tint,
                         metric: metric,
                         thresholds: thresholds,
@@ -426,13 +493,23 @@ struct VitalsThroughputBand: View {
                             get: { effectiveHover?.row == index ? effectiveHover?.index : nil },
                             set: { newValue in
                                 if let newValue {
+                                    if hovered == nil {
+                                        hoverSnapshot = HoverSnapshot(rows: rows, domain: domain)
+                                    }
                                     hovered = Hover(row: index, index: newValue)
                                 } else if hovered?.row == index {
                                     hovered = nil
+                                    hoverSnapshot = nil
                                 }
                             }
                         ),
-                        onCycle: onCycle
+                        onCycle: {
+                            // Same as the single-metric band: the click is
+                            // under the cursor, so the snapshot has to go.
+                            hoverSnapshot = nil
+                            hovered = nil
+                            onCycle()
+                        }
                     )
                     .padding(.leading, 72)
                     .padding(.trailing, 68)
@@ -471,6 +548,7 @@ struct VitalsThroughputBand: View {
 
             footer
         }
+        .onAppear { snapshotHoverIfNeeded() }
     }
 
     private var headerText: String {

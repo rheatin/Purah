@@ -158,7 +158,8 @@ struct LocalizationTests {
             // +3: the POWER FLOW strip captions under adapter, system and
             // battery.
             // +2: the column footer's "now" and "available %@" span labels.
-            .traditionalChinese: 723,
+            // +3: the sampling-interval title, honest caption and seconds label.
+            .traditionalChinese: 726,
             .japanese: 151,
             .korean: 151,
             .french: 151,

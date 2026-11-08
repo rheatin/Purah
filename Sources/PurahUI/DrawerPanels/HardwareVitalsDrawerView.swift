@@ -199,6 +199,7 @@ enum VitalsThroughputSeries: Hashable, Sendable {
 private struct VitalsOverviewHover: Equatable {
     let metric: VitalsMetricType
     let index: Int
+    let buckets: [VitalsBucket]
 }
 
 // MARK: - Composite Full Drawer View
@@ -268,7 +269,11 @@ public struct HardwareVitalsDrawerView: View {
         scope: VitalsTimeScope
     ) -> [VitalsBucket] {
         if let points = historyOverride?[metric] {
-            return VitalsHistoryBuffer.columns(fast: points, scope: scope)
+            return VitalsHistoryBuffer.columns(
+                fast: points,
+                scope: scope,
+                fastResolution: vitals.samplingInterval
+            )
         }
         return vitals.columns(for: metric, scope: scope)
     }
@@ -278,7 +283,11 @@ public struct HardwareVitalsDrawerView: View {
         scope: VitalsTimeScope
     ) -> [VitalsBucket] {
         if let points = throughputOverride?[series] {
-            return VitalsHistoryBuffer.columns(fast: points, scope: scope)
+            return VitalsHistoryBuffer.columns(
+                fast: points,
+                scope: scope,
+                fastResolution: vitals.samplingInterval
+            )
         }
         switch series {
         case .networkUp:
@@ -435,7 +444,7 @@ public struct HardwareVitalsDrawerView: View {
         .onAppear {
             vitals.isDrawerVisible = true
             state.mount(store: store)
-            vitals.startMonitoring()
+            vitals.startMonitoring(interval: TimeInterval(state.samplingIntervalSeconds))
             state.refreshMetrics(includeProcesses: false)
         }
         .onDisappear {
@@ -718,7 +727,6 @@ public struct HardwareVitalsDrawerView: View {
                     tint: cpuColor,
                     detail: "Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Load \(String(format: "%.1f", metrics.loadAverage1m))",
                     hoverMetric: .cpu,
-                    hoverBuckets: cpuBuckets,
                     plot: AnyView(overviewColumnPlot(metric: .cpu, buckets: cpuBuckets)),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
@@ -734,7 +742,6 @@ public struct HardwareVitalsDrawerView: View {
                     tint: gpuColor,
                     detail: "\(metrics.chipModelName) · \(metrics.thermalStateLabel)",
                     hoverMetric: .gpu,
-                    hoverBuckets: gpuBuckets,
                     plot: AnyView(overviewColumnPlot(metric: .gpu, buckets: gpuBuckets)),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
@@ -754,7 +761,6 @@ public struct HardwareVitalsDrawerView: View {
                     tint: ramColor,
                     detail: ramDetail(metrics),
                     hoverMetric: .ram,
-                    hoverBuckets: ramBuckets,
                     plot: AnyView(overviewColumnPlot(metric: .ram, buckets: ramBuckets)),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
@@ -809,7 +815,6 @@ public struct HardwareVitalsDrawerView: View {
         tint: Color,
         detail: String,
         hoverMetric: VitalsMetricType? = nil,
-        hoverBuckets: [VitalsBucket] = [],
         plot: AnyView,
         spokenLabel: String
     ) -> some View {
@@ -817,11 +822,14 @@ public struct HardwareVitalsDrawerView: View {
             guard let hoverMetric,
                   let overviewHover,
                   overviewHover.metric == hoverMetric,
-                  hoverBuckets.indices.contains(overviewHover.index) else {
+                  overviewHover.buckets.indices.contains(overviewHover.index) else {
                 return nil
             }
-            return hoverBuckets[overviewHover.index]
+            return overviewHover.buckets[overviewHover.index]
         }()
+        let displayedValue = hoveredBucket.map {
+            "\(Int(($0.mean * 100).rounded()))%"
+        } ?? value
         let displayedDetail = hoveredBucket.map {
             "\(VitalsColumnFormatting.minuteTime($0.start)) · \(Int(($0.mean * 100).rounded()))%"
         } ?? detail
@@ -833,7 +841,7 @@ public struct HardwareVitalsDrawerView: View {
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 2)
-                Text(value)
+                Text(displayedValue)
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(tint)
                     .lineLimit(1)
@@ -862,8 +870,11 @@ public struct HardwareVitalsDrawerView: View {
         metric: VitalsMetricType,
         buckets: [VitalsBucket]
     ) -> some View {
-        VitalsColumnStrip(
-            buckets: buckets,
+        let displayedBuckets = overviewHover?.metric == metric
+            ? overviewHover?.buckets ?? buckets
+            : buckets
+        return VitalsColumnStrip(
+            buckets: displayedBuckets,
             domain: .percentage,
             tint: VitalsColorResolver.identityColor(for: metric),
             metric: metric,
@@ -875,7 +886,14 @@ public struct HardwareVitalsDrawerView: View {
                 },
                 set: { newValue in
                     if let newValue {
-                        overviewHover = VitalsOverviewHover(metric: metric, index: newValue)
+                        let snapshot = overviewHover?.metric == metric
+                            ? overviewHover?.buckets ?? buckets
+                            : buckets
+                        overviewHover = VitalsOverviewHover(
+                            metric: metric,
+                            index: newValue,
+                            buckets: snapshot
+                        )
                     } else if overviewHover?.metric == metric {
                         overviewHover = nil
                     }
@@ -1187,7 +1205,7 @@ public struct HardwareVitalsDrawerView: View {
                     .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 4))
             }
         }
-        .frame(height: 5)
+        .frame(height: 8)
     }
 
     private func vitalsLegend(_ items: [(String, String, Color)]) -> some View {
@@ -1297,36 +1315,54 @@ public struct HardwareVitalsDrawerView: View {
             : String(format: "%.0f M", metrics.gpuMemoryInUseMB)
         let swapUsedGB = metrics.memorySwapUsedMB / 1024.0
         let swapTotalGB = metrics.memorySwapTotalMB / 1024.0
+        let cpuScope = state.scope(for: .cpu)
         let gpuScope = state.scope(for: .gpu)
         let ramScope = state.scope(for: .ram)
 
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                vitalsBandHeader(
-                    title: "CPU",
-                    detail: cpuDetail,
-                    value: "\(Int(metrics.cpuUsage * 100))%",
-                    tint: cpuColor
-                )
-                vitalsCoreGrid(
-                    usages: metrics.cpuCoreUsages,
-                    performanceCount: metrics.performanceCoreCount,
-                    efficiencyCount: metrics.efficiencyCoreCount,
-                    tint: cpuColor
-                )
-                .padding(.top, 1)
-                vitalsLegend([
-                    ("USR", "\(Int(metrics.cpuUserUsage * 100))", cpuColor),
-                    ("SYS", "\(Int(metrics.cpuSystemUsage * 100))", VitalsColorResolver.warningYellow),
-                    ("IDLE", "\(Int(metrics.cpuIdleUsage * 100))", Color.primary.opacity(0.35)),
-                    ("LOAD", String(format: "%.2f", metrics.loadAverage1m), Color.primary.opacity(0.8)),
-                    (
-                        "vitals.compute.thermal".localized,
-                        localizedThermalState(metrics.thermalStateLabel),
-                        Color.primary.opacity(0.8)
-                    )
-                ])
-            }
+            VitalsMetricColumnBand(
+                metric: .cpu,
+                title: "CPU",
+                detail: detailWithRange(cpuDetail, metric: .cpu, scope: cpuScope),
+                liveValue: "\(Int(metrics.cpuUsage * 100))%",
+                tint: cpuColor,
+                columnTint: VitalsColorResolver.identityColor(for: .cpu),
+                buckets: columnBuckets(.cpu, scope: cpuScope),
+                domain: .percentage,
+                scope: cpuScope,
+                thresholds: effectiveThresholds,
+                nowLabel: "vitals.range.now".localized,
+                liveFooter: nil,
+                rangeFooter: rangeFooter(.cpu, scope: cpuScope),
+                valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
+                plotMinHeight: 20,
+                plotMaxHeight: 34,
+                extra: AnyView(
+                    VStack(alignment: .leading, spacing: 5) {
+                        vitalsCoreGrid(
+                            usages: metrics.cpuCoreUsages,
+                            performanceCount: metrics.performanceCoreCount,
+                            efficiencyCount: metrics.efficiencyCoreCount,
+                            tint: cpuColor
+                        )
+                        .padding(.top, 1)
+                        vitalsLegend([
+                            ("USR", "\(Int(metrics.cpuUserUsage * 100))", cpuColor),
+                            ("SYS", "\(Int(metrics.cpuSystemUsage * 100))", VitalsColorResolver.warningYellow),
+                            ("IDLE", "\(Int(metrics.cpuIdleUsage * 100))", Color.primary.opacity(0.35)),
+                            ("LOAD", String(format: "%.2f", metrics.loadAverage1m), Color.primary.opacity(0.8)),
+                            (
+                                "vitals.compute.thermal".localized,
+                                localizedThermalState(metrics.thermalStateLabel),
+                                Color.primary.opacity(0.8)
+                            )
+                        ])
+                    }
+                ),
+                onCycle: { cycleScope(.cpu) },
+                collapsesWhenEmpty: true,
+                showsFooter: false
+            )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -2518,7 +2554,7 @@ public struct VitalsFocusedDrawerView: View {
             }
         }
         .onAppear {
-            vitals.startMonitoring()
+            vitals.startMonitoring(interval: TimeInterval(state.samplingIntervalSeconds))
             vitals.refreshMetrics(includeProcesses: false)
         }
     }

@@ -155,4 +155,43 @@ struct VitalsPluginStatePersistenceTests {
         #expect(reloaded.scope(for: .network) == .minutes5)
         #expect(reloaded.scope(for: .cpu) == .hour1)
     }
+
+    @Test("Sampling defaults to one second and is written back")
+    func testSamplingDefaultsToOneSecond() throws {
+        let suite = "vitals_sampling_default_\(UUID().uuidString)"
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let state = VitalsPluginState(storage: storage)
+
+        #expect(state.samplingIntervalSeconds == 1)
+        #expect(storage.int(forKey: "samplingIntervalSeconds") == 1)
+    }
+
+    @Test("A chosen sampling interval persists across remount")
+    func testSamplingIntervalPersists() throws {
+        let suite = "vitals_sampling_persist_\(UUID().uuidString)"
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let state = VitalsPluginState(storage: storage)
+        state.setSamplingInterval(5)
+
+        #expect(storage.int(forKey: "samplingIntervalSeconds") == 5)
+        #expect(VitalsPluginState(storage: storage).samplingIntervalSeconds == 5)
+    }
+
+    @Test("A garbage sampling interval falls back to one second")
+    func testSamplingIntervalGarbageFallsBack() throws {
+        let suite = "vitals_sampling_garbage_\(UUID().uuidString)"
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        storage.set(17, forKey: "samplingIntervalSeconds")
+
+        let state = VitalsPluginState(storage: storage)
+
+        #expect(state.samplingIntervalSeconds == 1)
+        #expect(storage.int(forKey: "samplingIntervalSeconds") == 1)
+    }
 }

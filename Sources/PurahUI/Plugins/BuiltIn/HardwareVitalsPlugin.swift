@@ -581,6 +581,58 @@ public struct VitalsPluginSettingsView: View {
                 }
             }
 
+            PurahPluginSettingsCard(
+                title: "vitals.sampling.title".localized,
+                subtitle: "vitals.sampling.caption".localized,
+                icon: "timer",
+                iconColor: Color(hex: "#0A84FF")
+            ) {
+                HStack(spacing: 8) {
+                    ForEach(VitalsPluginState.samplingIntervalOptions, id: \.self) { seconds in
+                        let isSelected = state.samplingIntervalSeconds == seconds
+                        Button {
+                            withAnimation(PurahMotionPolicy.confirm) {
+                                state.setSamplingInterval(seconds)
+                                HardwareVitalsService.shared.restartMonitoring(
+                                    interval: TimeInterval(seconds)
+                                )
+                            }
+                        } label: {
+                            Text(String(format: "vitals.sampling.seconds".localized, seconds))
+                                .font(.system(
+                                    size: 11,
+                                    weight: isSelected ? .bold : .medium,
+                                    design: .monospaced
+                                ))
+                                .foregroundColor(isSelected ? palette.primaryAccent : .secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(
+                                            isSelected
+                                                ? palette.primaryAccent.opacity(0.14)
+                                                : Color.primary.opacity(0.03)
+                                        )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .stroke(
+                                            isSelected
+                                                ? palette.primaryAccent
+                                                : palette.borderColor.opacity(0.2),
+                                            lineWidth: isSelected ? 1.4 : 0.8
+                                        )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            String(format: "vitals.sampling.seconds".localized, seconds)
+                        )
+                    }
+                }
+            }
+
             // Card 2: Dynamic Telemetry Color Thresholds
             PurahPluginSettingsCard(
                 title: "Dynamic Telemetry Color Thresholds",

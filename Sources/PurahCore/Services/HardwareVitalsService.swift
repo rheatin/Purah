@@ -621,6 +621,7 @@ public final class HardwareVitalsService {
     public var batteryStatePoints: [VitalsHistoryPoint] { batteryStateHistory.points }
 
     public var selectedTimeScope: VitalsTimeScope = .realTime30s
+    public private(set) var samplingInterval: TimeInterval = 1.0
     public var isDrawerVisible: Bool = false {
         didSet {
             guard isDrawerVisible, !oldValue else { return }
@@ -793,11 +794,26 @@ public final class HardwareVitalsService {
         }
     }
 
+    private func applyFastCapacityToBuffers() {
+        let capacity = VitalsHistoryBuffer.fastCapacity(forInterval: samplingInterval)
+        cpuBuffer.setFastCapacity(capacity)
+        gpuBuffer.setFastCapacity(capacity)
+        ramBuffer.setFastCapacity(capacity)
+        powerBuffer.setFastCapacity(capacity)
+        networkBuffer.setFastCapacity(capacity)
+        networkDownBuffer.setFastCapacity(capacity)
+        networkUpBuffer.setFastCapacity(capacity)
+        diskBuffer.setFastCapacity(capacity)
+        diskReadBuffer.setFastCapacity(capacity)
+        diskWriteBuffer.setFastCapacity(capacity)
+    }
+
     public func history(for metric: VitalsMetricType, scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
         let activeScope = scope ?? selectedTimeScope
         let source = VitalsHistoryBuffer.source(
             tiers: buffer(for: metric).tiers,
-            scope: activeScope
+            scope: activeScope,
+            fastResolution: samplingInterval
         )
         let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
         return source.points.filter { $0.timestamp >= cutoff }
@@ -807,7 +823,8 @@ public final class HardwareVitalsService {
         let activeScope = scope ?? selectedTimeScope
         let source = VitalsHistoryBuffer.source(
             tiers: networkUpBuffer.tiers,
-            scope: activeScope
+            scope: activeScope,
+            fastResolution: samplingInterval
         )
         let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
         return source.points.filter { $0.timestamp >= cutoff }
@@ -817,7 +834,8 @@ public final class HardwareVitalsService {
         let activeScope = scope ?? selectedTimeScope
         let source = VitalsHistoryBuffer.source(
             tiers: diskReadBuffer.tiers,
-            scope: activeScope
+            scope: activeScope,
+            fastResolution: samplingInterval
         )
         let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
         return source.points.filter { $0.timestamp >= cutoff }
@@ -827,7 +845,8 @@ public final class HardwareVitalsService {
         let activeScope = scope ?? selectedTimeScope
         let source = VitalsHistoryBuffer.source(
             tiers: diskWriteBuffer.tiers,
-            scope: activeScope
+            scope: activeScope,
+            fastResolution: samplingInterval
         )
         let cutoff = Date().addingTimeInterval(-activeScope.durationSeconds)
         return source.points.filter { $0.timestamp >= cutoff }
@@ -836,19 +855,35 @@ public final class HardwareVitalsService {
     // MARK: - Column API
 
     public func columns(for metric: VitalsMetricType, scope: VitalsTimeScope) -> [VitalsBucket] {
-        VitalsHistoryBuffer.columns(tiers: buffer(for: metric).tiers, scope: scope)
+        VitalsHistoryBuffer.columns(
+            tiers: buffer(for: metric).tiers,
+            scope: scope,
+            fastResolution: samplingInterval
+        )
     }
 
     public func networkUpColumns(scope: VitalsTimeScope) -> [VitalsBucket] {
-        VitalsHistoryBuffer.columns(tiers: networkUpBuffer.tiers, scope: scope)
+        VitalsHistoryBuffer.columns(
+            tiers: networkUpBuffer.tiers,
+            scope: scope,
+            fastResolution: samplingInterval
+        )
     }
 
     public func diskReadColumns(scope: VitalsTimeScope) -> [VitalsBucket] {
-        VitalsHistoryBuffer.columns(tiers: diskReadBuffer.tiers, scope: scope)
+        VitalsHistoryBuffer.columns(
+            tiers: diskReadBuffer.tiers,
+            scope: scope,
+            fastResolution: samplingInterval
+        )
     }
 
     public func diskWriteColumns(scope: VitalsTimeScope) -> [VitalsBucket] {
-        VitalsHistoryBuffer.columns(tiers: diskWriteBuffer.tiers, scope: scope)
+        VitalsHistoryBuffer.columns(
+            tiers: diskWriteBuffer.tiers,
+            scope: scope,
+            fastResolution: samplingInterval
+        )
     }
 
     /// The real span the series can currently cover, used by the footers to
@@ -914,12 +949,13 @@ public final class HardwareVitalsService {
             let data = try Data(contentsOf: historyFileURL)
             let container = try JSONDecoder().decode(VitalsPersistedHistory.self, from: data)
             let now = Date()
+            let fastCap = VitalsHistoryBuffer.fastCapacity(forInterval: samplingInterval)
 
             func filtered(_ history: VitalsTieredHistory) -> VitalsTieredHistory {
                 VitalsTieredHistory(
                     fast: Array(history.fast
                         .filter { now.timeIntervalSince($0.timestamp) <= 300 }
-                        .suffix(VitalsHistoryBuffer.fastCapacity)),
+                        .suffix(fastCap)),
                     minute: Array(history.minute
                         .filter { now.timeIntervalSince($0.timestamp) <= 3600 }
                         .suffix(VitalsHistoryBuffer.minuteCapacity)),
@@ -929,18 +965,18 @@ public final class HardwareVitalsService {
                 )
             }
 
-            self.cpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.cpu))
-            self.gpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.gpu))
-            self.ramBuffer = VitalsHistoryBuffer(tiers: filtered(container.ram))
-            self.powerBuffer = VitalsHistoryBuffer(tiers: filtered(container.power))
-            self.networkDownBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown))
-            self.networkUpBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkUp))
+            self.cpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.cpu), maximumFastSamples: fastCap)
+            self.gpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.gpu), maximumFastSamples: fastCap)
+            self.ramBuffer = VitalsHistoryBuffer(tiers: filtered(container.ram), maximumFastSamples: fastCap)
+            self.powerBuffer = VitalsHistoryBuffer(tiers: filtered(container.power), maximumFastSamples: fastCap)
+            self.networkDownBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown), maximumFastSamples: fastCap)
+            self.networkUpBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkUp), maximumFastSamples: fastCap)
             // The combined network series is derived at runtime; the persisted
             // file only carries the two directions.
-            self.networkBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown))
-            self.diskBuffer = VitalsHistoryBuffer(tiers: filtered(container.disk))
-            self.diskReadBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskRead))
-            self.diskWriteBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskWrite))
+            self.networkBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown), maximumFastSamples: fastCap)
+            self.diskBuffer = VitalsHistoryBuffer(tiers: filtered(container.disk), maximumFastSamples: fastCap)
+            self.diskReadBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskRead), maximumFastSamples: fastCap)
+            self.diskWriteBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskWrite), maximumFastSamples: fastCap)
             self.batteryStateHistory = VitalsStateHistory(
                 points: container.batteryState.points.filter {
                     now.timeIntervalSince($0.timestamp) <= 43_200
@@ -962,8 +998,25 @@ public final class HardwareVitalsService {
         }
     }
 
+    private static func normalizedSamplingInterval(_ interval: TimeInterval) -> TimeInterval {
+        guard interval.isFinite, interval >= 1 else { return 1 }
+        return interval
+    }
+
     public func startMonitoring(interval: TimeInterval = 1.0) {
-        guard monitorTask == nil else { return }
+        let interval = Self.normalizedSamplingInterval(interval)
+        if monitorTask != nil {
+            if abs(samplingInterval - interval) > 0.0001 {
+                restartMonitoring(interval: interval)
+            }
+            return
+        }
+        samplingInterval = interval
+        applyFastCapacityToBuffers()
+        // The history file is a crash recovery copy, so its cadence is a wall
+        // clock budget, not a tick count: a slow sampler must not stretch the
+        // ten-minute save window to fifty.
+        let saveIntervalTicks = max(1, Int((600.0 / interval).rounded()))
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self = self else { break }
@@ -979,13 +1032,28 @@ public final class HardwareVitalsService {
                 // The history is redrawn from memory; the file is a crash
                 // recovery copy, and ten minutes of it is ~150MB a day instead
                 // of ~1.4GB. `stopMonitoring` still writes on quit.
-                if self.saveThrottleCounter >= 600 {
+                if self.saveThrottleCounter >= saveIntervalTicks {
                     self.saveThrottleCounter = 0
                     self.saveHistoryToDisk()
                 }
                 try? await Task.sleep(for: .seconds(interval))
             }
         }
+    }
+
+    /// Restarts an already-running monitor with a new cadence. If the monitor
+    /// is idle, this only records the cadence so the next start uses it.
+    public func restartMonitoring(interval: TimeInterval) {
+        let interval = Self.normalizedSamplingInterval(interval)
+        let wasMonitoring = monitorTask != nil
+        guard wasMonitoring else {
+            samplingInterval = interval
+            applyFastCapacityToBuffers()
+            return
+        }
+        guard abs(samplingInterval - interval) > 0.0001 else { return }
+        stopMonitoring()
+        startMonitoring(interval: interval)
     }
 
     public func stopMonitoring() {

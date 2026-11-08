@@ -131,6 +131,51 @@ struct VitalsHistoryTests {
         #expect(sparseBuckets.filter { $0.mean > 0 }.count < denseBuckets.filter { $0.mean > 0 }.count)
     }
 
+    @Test("Fast-tier capacity follows the sampling interval, not the range")
+    func fastCapacityTracksSamplingInterval() {
+        #expect(VitalsHistoryBuffer.fastCapacity(forInterval: 1) == 300)
+        #expect(VitalsHistoryBuffer.fastCapacity(forInterval: 2) == 150)
+        #expect(VitalsHistoryBuffer.fastCapacity(forInterval: 5) == 60)
+    }
+
+    @Test("A five-second sampler leaves gaps instead of widening thirty-second columns")
+    func slowSamplerShowsFewerColumns() {
+        let now = base.addingTimeInterval(30)
+        let points = stride(from: 0, through: 30, by: 5).map {
+            point(TimeInterval($0), 1)
+        }
+
+        let buckets = VitalsHistoryBuffer.columns(
+            fast: points,
+            scope: .realTime30s,
+            now: now,
+            fastResolution: 5
+        )
+
+        #expect(buckets.count == 60)
+        #expect(buckets.filter { $0.mean > 0 }.count == 7)
+        let width = buckets[1].end.timeIntervalSince(buckets[1].start)
+        #expect(buckets.allSatisfy {
+            abs($0.end.timeIntervalSince($0.start) - width) < 0.0001
+        })
+    }
+
+    @Test("Changing cadence keeps the fast tier at five minutes")
+    func changingCadenceKeepsFastCoverage() {
+        var buffer = VitalsHistoryBuffer(
+            maximumFastSamples: VitalsHistoryBuffer.fastCapacity(forInterval: 2)
+        )
+        for index in 0...300 {
+            buffer.append(point(TimeInterval(index), 1))
+        }
+        #expect(buffer.tiers.fast.count == 150)
+        #expect(buffer.tiers.fast.first?.timestamp == base.addingTimeInterval(151))
+
+        buffer.setFastCapacity(VitalsHistoryBuffer.fastCapacity(forInterval: 5))
+        #expect(buffer.tiers.fast.count == 60)
+        #expect(buffer.tiers.fast.first?.timestamp == base.addingTimeInterval(241))
+    }
+
     @Test("A v1 single-array payload loads into the fast tier")
     func legacyPayloadLoadsIntoFastTier() throws {
         let legacy = ["cpu": [point(0, 0.25), point(1, 0.5)]]

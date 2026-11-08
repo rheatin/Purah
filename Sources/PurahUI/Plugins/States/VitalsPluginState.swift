@@ -12,6 +12,7 @@ public final class VitalsPluginState: Sendable {
     public var maxRailMetrics: Int
     public var enabledMetrics: [VitalsMetricType]
     public var thresholds: VitalsColorThresholds
+    public private(set) var samplingIntervalSeconds: Int
     /// Which dashboard the body shows. It lives here, not in the drawer's
     /// view state, because the tabs moved into the header — a different view
     /// that has to read and write the same selection.
@@ -53,11 +54,18 @@ public final class VitalsPluginState: Sendable {
     /// stored value outlives the UI that wrote it: settings saved while the
     /// slider allowed 6 would otherwise stay at 6 forever.
     public static let railMetricRange: ClosedRange<Int> = 2...4
+    public static let samplingIntervalOptions = [1, 2, 5]
 
     public func setMaxRailMetrics(_ count: Int) {
         let clamped = min(max(count, Self.railMetricRange.lowerBound), Self.railMetricRange.upperBound)
         maxRailMetrics = clamped
         storage.set(clamped, forKey: "maxRailMetrics")
+    }
+
+    public func setSamplingInterval(_ seconds: Int) {
+        let resolved = Self.samplingIntervalOptions.contains(seconds) ? seconds : 1
+        samplingIntervalSeconds = resolved
+        storage.set(resolved, forKey: "samplingIntervalSeconds")
     }
 
     public func setHeaderMetric(_ metric: VitalsMetricType) {
@@ -98,6 +106,14 @@ public final class VitalsPluginState: Sendable {
             resolvedStorage = ScopedPluginStorage(pluginId: "vitals")
         }
         self.storage = resolvedStorage
+        let storedSamplingInterval = resolvedStorage.int(forKey: "samplingIntervalSeconds")
+        let resolvedSamplingInterval = Self.samplingIntervalOptions.contains(storedSamplingInterval)
+            ? storedSamplingInterval
+            : 1
+        self.samplingIntervalSeconds = resolvedSamplingInterval
+        if storedSamplingInterval != resolvedSamplingInterval {
+            resolvedStorage.set(resolvedSamplingInterval, forKey: "samplingIntervalSeconds")
+        }
         if resolvedStorage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = resolvedStorage.bool(forKey: "isDecomposed")
         } else {
@@ -183,6 +199,14 @@ public final class VitalsPluginState: Sendable {
     }
 
     public func load() {
+        let storedSamplingInterval = storage.int(forKey: "samplingIntervalSeconds")
+        let resolvedSamplingInterval = Self.samplingIntervalOptions.contains(storedSamplingInterval)
+            ? storedSamplingInterval
+            : 1
+        samplingIntervalSeconds = resolvedSamplingInterval
+        if storedSamplingInterval != resolvedSamplingInterval {
+            storage.set(resolvedSamplingInterval, forKey: "samplingIntervalSeconds")
+        }
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
         } else {
@@ -215,6 +239,7 @@ public final class VitalsPluginState: Sendable {
         storage.set(isDecomposed, forKey: "isDecomposed")
         storage.setCodable(enabledMetrics, forKey: "enabledMetrics")
         storage.setCodable(thresholds, forKey: "thresholds")
+        storage.set(samplingIntervalSeconds, forKey: "samplingIntervalSeconds")
         persistScopes()
         refreshRailPowerVisibility()
     }
@@ -240,7 +265,9 @@ public final class VitalsPluginState: Sendable {
         self.enabledMetrics = store._vitalsEnabledMetrics
         reconcileHeaderMetric()
         refreshRailPowerVisibility()
-        HardwareVitalsService.shared.startMonitoring()
+        HardwareVitalsService.shared.startMonitoring(
+            interval: TimeInterval(samplingIntervalSeconds)
+        )
     }
 
     public func unmount(store: PurahWorkspaceStore) {
