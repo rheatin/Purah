@@ -81,4 +81,37 @@ struct VitalsColumnLayoutTests {
             #expect(abs(pair.1.rect.minX - pair.0.rect.minX - 20.0) < 0.0001)
         }
     }
+
+    @Test("Hovered detail keeps the range and follows the scope's time format")
+    @MainActor
+    func hoveredDetailUsesScopeTimeFormat() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let bucket = VitalsBucket(
+            start: start,
+            end: start.addingTimeInterval(30),
+            mean: 0.5
+        )
+
+        for scope in [VitalsTimeScope.realTime30s, .minutes5] {
+            let text = VitalsColumnFormatting.hoverDetail(
+                for: bucket,
+                scope: scope,
+                rangeLabel: "30 sec"
+            )
+            let time = VitalsColumnFormatting.time(start, scope: scope)
+            #expect(text == "\(time) · 30 sec")
+            #expect(time.split(separator: ":").count == 3)
+        }
+
+        for scope in [VitalsTimeScope.hour1, .hours12] {
+            let text = VitalsColumnFormatting.hoverDetail(
+                for: bucket,
+                scope: scope,
+                rangeLabel: "1 hr"
+            )
+            let time = VitalsColumnFormatting.time(start, scope: scope)
+            #expect(text == "\(time) · 1 hr")
+            #expect(time.split(separator: ":").count == 2)
+        }
+    }
 }

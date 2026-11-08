@@ -221,6 +221,8 @@ public struct HardwareVitalsDrawerView: View {
     private let renderNow: Date?
     /// Test seam for the state points behind the ribbon and the battery cell.
     private let batteryStateOverride: [VitalsHistoryPoint]?
+    /// Test seam for a hovered column in the Compute bands.
+    private let columnHoverPreviews: [VitalsMetricType: Int]
     @State private var overviewHover: VitalsOverviewHover?
     @State private var hoveredBatteryCell: Int?
 
@@ -243,6 +245,7 @@ public struct HardwareVitalsDrawerView: View {
         self.batteryHoverPreview = nil
         self.renderNow = nil
         self.batteryStateOverride = nil
+        self.columnHoverPreviews = [:]
     }
 
     /// Test seam: a drawer reads one service instance, so a probe-injected
@@ -261,6 +264,7 @@ public struct HardwareVitalsDrawerView: View {
         self.batteryHoverPreview = nil
         self.renderNow = nil
         self.batteryStateOverride = nil
+        self.columnHoverPreviews = [:]
     }
 
     /// Test seam for render harnesses that need a fixed curve (for example a
@@ -273,7 +277,8 @@ public struct HardwareVitalsDrawerView: View {
         throughputOverride: [VitalsThroughputSeries: [VitalsHistoryPoint]] = [:],
         batteryHoverPreview: Int? = nil,
         renderNow: Date? = nil,
-        batteryStateOverride: [VitalsHistoryPoint]? = nil
+        batteryStateOverride: [VitalsHistoryPoint]? = nil,
+        columnHoverPreviews: [VitalsMetricType: Int] = [:]
     ) {
         self.state = state
         self.store = store
@@ -283,20 +288,27 @@ public struct HardwareVitalsDrawerView: View {
         self.batteryHoverPreview = batteryHoverPreview
         self.renderNow = renderNow
         self.batteryStateOverride = batteryStateOverride
+        self.columnHoverPreviews = columnHoverPreviews
     }
 
     private func columnBuckets(
         _ metric: VitalsMetricType,
-        scope: VitalsTimeScope
+        scope: VitalsTimeScope,
+        maximumColumns: Int = 60
     ) -> [VitalsBucket] {
         if let points = historyOverride?[metric] {
             return VitalsHistoryBuffer.columns(
                 fast: points,
                 scope: scope,
-                fastResolution: vitals.samplingInterval
+                fastResolution: vitals.samplingInterval,
+                maximumColumns: maximumColumns
             )
         }
-        return vitals.columns(for: metric, scope: scope)
+        return vitals.columns(
+            for: metric,
+            scope: scope,
+            maximumColumns: maximumColumns
+        )
     }
 
     private func columnBuckets(
@@ -760,10 +772,10 @@ public struct HardwareVitalsDrawerView: View {
         let fixedHeight: CGFloat = 54
             + (showsDeepTelemetry ? 23 + 64 + 4 * 0.6 : 2 * 0.6)
         let rowHeight = max((sheetHeight - fixedHeight) / 2, 44)
-        let cpuBuckets = columnBuckets(.cpu, scope: .realTime30s)
-        let gpuBuckets = columnBuckets(.gpu, scope: .realTime30s)
-        let ramBuckets = columnBuckets(.ram, scope: .realTime30s)
-        let batteryBuckets = columnBuckets(.power, scope: .hours12)
+        let cpuBuckets = columnBuckets(.cpu, scope: .realTime30s, maximumColumns: 30)
+        let gpuBuckets = columnBuckets(.gpu, scope: .realTime30s, maximumColumns: 30)
+        let ramBuckets = columnBuckets(.ram, scope: .realTime30s, maximumColumns: 30)
+        let batteryBuckets = columnBuckets(.power, scope: .hours12, maximumColumns: 30)
         let batteryStates = VitalsStateHistory.stateValues(
             for: batteryBuckets,
             points: batteryStatePointsForDisplay
@@ -1384,6 +1396,7 @@ public struct HardwareVitalsDrawerView: View {
                 metric: .cpu,
                 title: "CPU",
                 detail: detailWithRange(cpuDetail, metric: .cpu, scope: cpuScope),
+                rangeLabel: VitalsColumnFormatting.duration(cpuScope.durationSeconds),
                 liveValue: "\(Int(metrics.cpuUsage * 100))%",
                 tint: cpuColor,
                 columnTint: VitalsColorResolver.identityColor(for: .cpu),
@@ -1421,7 +1434,8 @@ public struct HardwareVitalsDrawerView: View {
                 ),
                 onCycle: { cycleScope(.cpu) },
                 collapsesWhenEmpty: true,
-                showsFooter: false
+                showsFooter: false,
+                previewHoveredIndex: columnHoverPreviews[.cpu]
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -1433,6 +1447,7 @@ public struct HardwareVitalsDrawerView: View {
                 metric: .gpu,
                 title: "GPU",
                 detail: detailWithRange(gpuDetail, metric: .gpu, scope: gpuScope),
+                rangeLabel: VitalsColumnFormatting.duration(gpuScope.durationSeconds),
                 liveValue: "\(Int(metrics.gpuUsage * 100))%",
                 tint: gpuColor,
                 columnTint: VitalsColorResolver.identityColor(for: .gpu),
@@ -1453,7 +1468,8 @@ public struct HardwareVitalsDrawerView: View {
                         ("MEM", gpuMemory, Color.primary.opacity(0.8))
                     ])
                 ),
-                onCycle: { cycleScope(.gpu) }
+                onCycle: { cycleScope(.gpu) },
+                previewHoveredIndex: columnHoverPreviews[.gpu]
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -1472,6 +1488,7 @@ public struct HardwareVitalsDrawerView: View {
                     metric: .ram,
                     scope: ramScope
                 ),
+                rangeLabel: VitalsColumnFormatting.duration(ramScope.durationSeconds),
                 liveValue: "\(Int(metrics.memoryUsage * 100))%",
                 tint: ramColor,
                 columnTint: VitalsColorResolver.identityColor(for: .ram),
@@ -1503,7 +1520,8 @@ public struct HardwareVitalsDrawerView: View {
                         ])
                     }
                 ),
-                onCycle: { cycleScope(.ram) }
+                onCycle: { cycleScope(.ram) },
+                previewHoveredIndex: columnHoverPreviews[.ram]
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)

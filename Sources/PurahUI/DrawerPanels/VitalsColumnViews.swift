@@ -214,6 +214,16 @@ enum VitalsColumnFormatting {
         shortFormatter.string(from: date)
     }
 
+    /// The detail line while a column is hovered: the bucket's time plus the
+    /// band's range, passed in so the view never parses its own detail string.
+    static func hoverDetail(
+        for bucket: VitalsBucket,
+        scope: VitalsTimeScope,
+        rangeLabel: String
+    ) -> String {
+        "\(time(bucket.start, scope: scope)) · \(rangeLabel)"
+    }
+
     /// The Power tab's ribbon readout: the cell's wall-clock span followed by
     /// the localized state it recorded.
     static func batteryRibbonReadout(cell: VitalsStateCell) -> String {
@@ -273,6 +283,9 @@ struct VitalsMetricColumnBand: View {
     let metric: VitalsMetricType
     let title: String
     let detail: String
+    /// The range label the detail already carries, supplied separately so the
+    /// hovered detail can rebuild the same suffix without parsing `detail`.
+    let rangeLabel: String
     let liveValue: String
     let tint: Color
     /// Columns carry the metric's identity hue; `tint` is the band's status
@@ -322,6 +335,15 @@ struct VitalsMetricColumnBand: View {
         return displayedBuckets[index]
     }
 
+    private var headerDetail: String {
+        guard let bucket = hoveredBucket else { return detail }
+        return VitalsColumnFormatting.hoverDetail(
+            for: bucket,
+            scope: scope,
+            rangeLabel: rangeLabel
+        )
+    }
+
     private func snapshotHoverIfNeeded() {
         guard effectiveHoveredIndex != nil, hoverSnapshot == nil else { return }
         hoverSnapshot = HoverSnapshot(buckets: buckets, domain: domain)
@@ -337,8 +359,8 @@ struct VitalsMetricColumnBand: View {
                     .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                     .foregroundColor(Color.primary.opacity(0.85))
                     .lineLimit(1)
-                if !detail.isEmpty {
-                    Text(detail)
+                if !headerDetail.isEmpty {
+                    Text(headerDetail)
                         .font(.system(size: 7.5, design: .monospaced))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -395,7 +417,7 @@ struct VitalsMetricColumnBand: View {
 
     private var footer: some View {
         HStack(spacing: 5) {
-            Text(hoveredBucket.map { VitalsColumnFormatting.time($0.start, scope: scope) } ?? nowLabel)
+            Text(nowLabel)
                 .foregroundColor(.secondary)
             if let liveFooter, !liveFooter.isEmpty {
                 Text("·")

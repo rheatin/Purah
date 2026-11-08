@@ -184,7 +184,8 @@ public struct VitalsHistoryBuffer: Sendable {
         tiers: VitalsTieredHistory,
         scope: VitalsTimeScope,
         now: Date = Date(),
-        fastResolution: TimeInterval = fastInterval
+        fastResolution: TimeInterval = fastInterval,
+        maximumColumns: Int = 60
     ) -> [VitalsBucket] {
         let oldest = [
             tiers.fast.first?.timestamp,
@@ -208,7 +209,8 @@ public struct VitalsHistoryBuffer: Sendable {
         // (GPU), and a strip that implies sixty samples where six exist is a
         // picket fence rather than a chart.
         let cadence = sampleCadence(source.points, fallback: source.resolution)
-        let count = min(max(Int((span / cadence).rounded(.down)), 1), 60)
+        let limit = max(maximumColumns, 1)
+        let count = min(max(Int((span / cadence).rounded(.down)), 1), limit)
         let width = span / Double(count)
         let gridStart = now.addingTimeInterval(-span)
 
@@ -256,13 +258,15 @@ public struct VitalsHistoryBuffer: Sendable {
         fast: [VitalsHistoryPoint],
         scope: VitalsTimeScope,
         now: Date = Date(),
-        fastResolution: TimeInterval = fastInterval
+        fastResolution: TimeInterval = fastInterval,
+        maximumColumns: Int = 60
     ) -> [VitalsBucket] {
         columns(
             tiers: VitalsTieredHistory(fast: fast),
             scope: scope,
             now: now,
-            fastResolution: fastResolution
+            fastResolution: fastResolution,
+            maximumColumns: maximumColumns
         )
     }
 

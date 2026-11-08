@@ -854,11 +854,16 @@ public final class HardwareVitalsService {
 
     // MARK: - Column API
 
-    public func columns(for metric: VitalsMetricType, scope: VitalsTimeScope) -> [VitalsBucket] {
+    public func columns(
+        for metric: VitalsMetricType,
+        scope: VitalsTimeScope,
+        maximumColumns: Int = 60
+    ) -> [VitalsBucket] {
         VitalsHistoryBuffer.columns(
             tiers: buffer(for: metric).tiers,
             scope: scope,
-            fastResolution: samplingInterval
+            fastResolution: samplingInterval,
+            maximumColumns: maximumColumns
         )
     }
 

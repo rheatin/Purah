@@ -216,6 +216,33 @@ struct VitalsHistoryTests {
         #expect(abs(twelveHours[1].end.timeIntervalSince(twelveHours[1].start) - 720) < 0.001)
     }
 
+    @Test("The Overview bar budget caps twelve-hour coarse history at thirty")
+    func overviewBarBudgetCapsCoarseHistory() {
+        let coarse = (0..<60).map { point(TimeInterval($0) * 720, 1.0) }
+        let now = base.addingTimeInterval(43_200)
+        let tiers = VitalsTieredHistory(coarse: coarse)
+
+        let limited = VitalsHistoryBuffer.columns(
+            tiers: tiers,
+            scope: .hours12,
+            now: now,
+            maximumColumns: 30
+        )
+        #expect(limited.count == 30)
+        #expect(limited.first?.start == now.addingTimeInterval(-43_200))
+        #expect(limited.last?.end == now)
+        #expect(limited.allSatisfy { $0.mean > 0.99 })
+        let width = limited[1].end.timeIntervalSince(limited[1].start)
+        #expect(abs(width - 1_440) < 0.001)
+
+        let unbounded = VitalsHistoryBuffer.columns(
+            tiers: tiers,
+            scope: .hours12,
+            now: now
+        )
+        #expect(unbounded.count == 60)
+    }
+
     @Test("Changing cadence keeps the fast tier at five minutes")
     func changingCadenceKeepsFastCoverage() {
         var buffer = VitalsHistoryBuffer(
