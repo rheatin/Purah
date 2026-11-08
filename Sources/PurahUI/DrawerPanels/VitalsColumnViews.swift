@@ -204,6 +204,10 @@ enum VitalsColumnFormatting {
         return (precise ? preciseFormatter : shortFormatter).string(from: date)
     }
 
+    static func minuteTime(_ date: Date) -> String {
+        shortFormatter.string(from: date)
+    }
+
     static func duration(_ seconds: TimeInterval) -> String {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .short
@@ -244,7 +248,6 @@ struct VitalsMetricColumnBand: View {
     /// colour (it may already be an alarm hue). A bucket that crosses a
     /// threshold still replaces this with the alert colour for that bucket.
     var columnTint: Color? = nil
-    let railRatio: Double
     let buckets: [VitalsBucket]
     let domain: VitalsColumnDomain
     let scope: VitalsTimeScope
@@ -291,16 +294,6 @@ struct VitalsMetricColumnBand: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: max(geo.size.width * CGFloat(min(max(railRatio, 0), 1)), 4))
-                }
-            }
-            .frame(height: 5)
 
             VitalsColumnStrip(
                 buckets: buckets,
@@ -432,7 +425,11 @@ struct VitalsThroughputBand: View {
                         hoveredIndex: Binding(
                             get: { effectiveHover?.row == index ? effectiveHover?.index : nil },
                             set: { newValue in
-                                hovered = newValue.map { Hover(row: index, index: $0) }
+                                if let newValue {
+                                    hovered = Hover(row: index, index: newValue)
+                                } else if hovered?.row == index {
+                                    hovered = nil
+                                }
                             }
                         ),
                         onCycle: onCycle
@@ -445,7 +442,7 @@ struct VitalsThroughputBand: View {
                             Text(row.glyph)
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundColor(row.tint)
-                            Text(row.liveValue)
+                            Text(leadingValue(row: row, index: index))
                                 .font(.system(size: 10.5, weight: .bold, design: .monospaced))
                                 .foregroundColor(Color.primary.opacity(0.88))
                                 .lineLimit(1)
@@ -479,6 +476,15 @@ struct VitalsThroughputBand: View {
     private var headerText: String {
         guard let bucket = hoveredBucket, let row = hoveredRow else { return headerValue }
         return "\(row.glyph) \(valueFormatter(bucket.mean))"
+    }
+
+    private func leadingValue(row: VitalsThroughputBandRow, index: Int) -> String {
+        guard let effectiveHover,
+              effectiveHover.row == index,
+              row.buckets.indices.contains(effectiveHover.index) else {
+            return row.liveValue
+        }
+        return valueFormatter(row.buckets[effectiveHover.index].mean)
     }
 
     private var footer: some View {
