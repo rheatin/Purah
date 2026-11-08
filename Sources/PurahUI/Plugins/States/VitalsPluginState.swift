@@ -38,7 +38,6 @@ public final class VitalsPluginState: Sendable {
     public var gpuHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.gpuHistory }
     public var ramHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.ramHistory }
     public var powerHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.powerHistory }
-    public var networkHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.networkHistory }
     public var networkDownHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.networkDownHistory }
     public var networkUpHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.networkUpHistory }
     public var diskHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.diskHistory }
@@ -89,8 +88,12 @@ public final class VitalsPluginState: Sendable {
     }
 
     private func persistScopes() {
+        // Persist raw strings, one entry at a time. Decoding a typed enum map
+        // fails whole if a single stored value predates a range rename, which
+        // silently resets every metric's choice. A string map can drop just
+        // the entry that no longer resolves.
         let encoded = Dictionary(
-            uniqueKeysWithValues: metricScopes.map { ($0.key.rawValue, $0.value) }
+            uniqueKeysWithValues: metricScopes.map { ($0.key.rawValue, $0.value.rawValue) }
         )
         storage.setCodable(encoded, forKey: "metricScopes")
     }
@@ -154,16 +157,7 @@ public final class VitalsPluginState: Sendable {
             resolvedStorage.set(clampedLimit, forKey: "maxRailMetrics")
         }
         self.thresholds = resolvedStorage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) ?? VitalsColorThresholds()
-        let storedScopes = resolvedStorage.codable(
-            forKey: "metricScopes",
-            as: [String: VitalsTimeScope].self
-        ) ?? [:]
-        self.metricScopes = Dictionary(
-            uniqueKeysWithValues: storedScopes.compactMap { key, value in
-                guard let metric = VitalsMetricType(rawValue: key) else { return nil }
-                return (metric, value)
-            }
-        )
+        self.metricScopes = Self.loadScopes(from: resolvedStorage)
     }
 
     public func history(for metric: VitalsMetricType) -> [VitalsHistoryPoint] {
@@ -220,17 +214,25 @@ public final class VitalsPluginState: Sendable {
         if let thresh = storage.codable(forKey: "thresholds", as: VitalsColorThresholds.self) {
             self.thresholds = thresh
         }
-        let storedScopes = storage.codable(
-            forKey: "metricScopes",
-            as: [String: VitalsTimeScope].self
-        ) ?? [:]
-        self.metricScopes = Dictionary(
-            uniqueKeysWithValues: storedScopes.compactMap { key, value in
-                guard let metric = VitalsMetricType(rawValue: key) else { return nil }
-                return (metric, value)
-            }
-        )
+        self.metricScopes = Self.loadScopes(from: storage)
         refreshRailPowerVisibility()
+    }
+
+    /// Reads the remembered ranges tolerantly, dropping only entries whose
+    /// metric or range no longer resolves.
+    private static func loadScopes(
+        from storage: any PurahPluginStorage
+    ) -> [VitalsMetricType: VitalsTimeScope] {
+        if let raw = storage.codable(forKey: "metricScopes", as: [String: String].self) {
+            return Dictionary(
+                uniqueKeysWithValues: raw.compactMap { key, value in
+                    guard let metric = VitalsMetricType(rawValue: key),
+                          let scope = VitalsTimeScope(rawValue: value) else { return nil }
+                    return (metric, scope)
+                }
+            )
+        }
+        return [:]
     }
 
     public func save() {

@@ -81,7 +81,7 @@ public struct VitalsHistoryPoint: Codable, Sendable, Identifiable {
 
 // MARK: - Vitals Persisted Telemetry Container
 public struct VitalsPersistedHistory: Codable, Sendable {
-    public static let currentVersion = 2
+    public static let currentVersion = 3
 
     public var version: Int
     public var cpu: VitalsTieredHistory
@@ -94,6 +94,10 @@ public struct VitalsPersistedHistory: Codable, Sendable {
     public var diskRead: VitalsTieredHistory
     public var diskWrite: VitalsTieredHistory
     public var batteryState: VitalsStateHistory
+    /// In-progress minute buckets keyed by series (`cpu`, `gpu`, `network`…).
+    public var pendingMinute: [String: VitalsPendingBucket]?
+    /// In-progress twelve-minute buckets, same keys.
+    public var pendingCoarse: [String: VitalsPendingBucket]?
 
     public init(
         version: Int = VitalsPersistedHistory.currentVersion,
@@ -106,7 +110,9 @@ public struct VitalsPersistedHistory: Codable, Sendable {
         disk: VitalsTieredHistory = .init(),
         diskRead: VitalsTieredHistory = .init(),
         diskWrite: VitalsTieredHistory = .init(),
-        batteryState: VitalsStateHistory = .init()
+        batteryState: VitalsStateHistory = .init(),
+        pendingMinute: [String: VitalsPendingBucket]? = nil,
+        pendingCoarse: [String: VitalsPendingBucket]? = nil
     ) {
         self.version = version
         self.cpu = cpu
@@ -119,6 +125,8 @@ public struct VitalsPersistedHistory: Codable, Sendable {
         self.diskRead = diskRead
         self.diskWrite = diskWrite
         self.batteryState = batteryState
+        self.pendingMinute = pendingMinute
+        self.pendingCoarse = pendingCoarse
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -133,6 +141,8 @@ public struct VitalsPersistedHistory: Codable, Sendable {
         case diskRead
         case diskWrite
         case batteryState
+        case pendingMinute
+        case pendingCoarse
     }
 
     /// Version 1 held a single 1-second array per series. Those points load
@@ -145,16 +155,38 @@ public struct VitalsPersistedHistory: Codable, Sendable {
 
         if let storedVersion, storedVersion >= 2 {
             self.version = storedVersion
+            let networkDown = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .networkDown) ?? .init()
+            let networkUp = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .networkUp) ?? .init()
+            let diskRead = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .diskRead) ?? .init()
+            let diskWrite = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .diskWrite) ?? .init()
             self.cpu = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .cpu) ?? .init()
             self.gpu = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .gpu) ?? .init()
             self.ram = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .ram) ?? .init()
             self.power = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .power) ?? .init()
-            self.networkDown = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .networkDown) ?? .init()
-            self.networkUp = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .networkUp) ?? .init()
             self.disk = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .disk) ?? .init()
-            self.diskRead = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .diskRead) ?? .init()
-            self.diskWrite = try container.decodeIfPresent(VitalsTieredHistory.self, forKey: .diskWrite) ?? .init()
+            if storedVersion < 3 {
+                // Versions 1–2 stored throughput as a 0…1 ratio clamped at
+                // 10 MiB/s. Version 3 stores bytes per second.
+                let scale = 10_485_760.0
+                self.networkDown = Self.scaled(networkDown, by: scale)
+                self.networkUp = Self.scaled(networkUp, by: scale)
+                self.diskRead = Self.scaled(diskRead, by: scale)
+                self.diskWrite = Self.scaled(diskWrite, by: scale)
+            } else {
+                self.networkDown = networkDown
+                self.networkUp = networkUp
+                self.diskRead = diskRead
+                self.diskWrite = diskWrite
+            }
             self.batteryState = try container.decodeIfPresent(VitalsStateHistory.self, forKey: .batteryState) ?? .init()
+            self.pendingMinute = try container.decodeIfPresent(
+                [String: VitalsPendingBucket].self,
+                forKey: .pendingMinute
+            )
+            self.pendingCoarse = try container.decodeIfPresent(
+                [String: VitalsPendingBucket].self,
+                forKey: .pendingCoarse
+            )
             return
         }
 
@@ -164,16 +196,35 @@ public struct VitalsPersistedHistory: Codable, Sendable {
                 fast: try container.decodeIfPresent([VitalsHistoryPoint].self, forKey: key) ?? []
             )
         }
+        let scale = 10_485_760.0
         self.cpu = try legacy(.cpu)
         self.gpu = try legacy(.gpu)
         self.ram = try legacy(.ram)
         self.power = try legacy(.power)
-        self.networkDown = try legacy(.networkDown)
-        self.networkUp = try legacy(.networkUp)
+        self.networkDown = Self.scaled(try legacy(.networkDown), by: scale)
+        self.networkUp = Self.scaled(try legacy(.networkUp), by: scale)
         self.disk = try legacy(.disk)
         self.diskRead = .init()
         self.diskWrite = .init()
         self.batteryState = .init()
+        self.pendingMinute = nil
+        self.pendingCoarse = nil
+    }
+
+    private static func scaled(
+        _ history: VitalsTieredHistory,
+        by factor: Double
+    ) -> VitalsTieredHistory {
+        func scale(_ points: [VitalsHistoryPoint]) -> [VitalsHistoryPoint] {
+            points.map {
+                VitalsHistoryPoint(timestamp: $0.timestamp, value: $0.value * factor)
+            }
+        }
+        return VitalsTieredHistory(
+            fast: scale(history.fast),
+            minute: scale(history.minute),
+            coarse: scale(history.coarse)
+        )
     }
 }
 

@@ -169,9 +169,9 @@ struct VitalsColumnStrip: View {
         case .ram:
             return alertColor(mean, warning: thresholds.ramWarning, danger: thresholds.ramDanger)
         case .network:
-            // Network histories are normalised by 10 MiB/s; the threshold is
+            // Throughput histories are bytes per second; the threshold is
             // megabytes.
-            let megabytes = mean * 10
+            let megabytes = mean / 1_048_576.0
             return alertColor(
                 megabytes,
                 warning: thresholds.networkWarningMB,
@@ -250,16 +250,49 @@ enum VitalsColumnFormatting {
     }
 
     static func duration(_ seconds: TimeInterval) -> String {
+        let formatters = durationFormatters()
+        let formatter = seconds >= 3600 ? formatters.long : formatters.short
+        return formatter.string(from: max(seconds, 0)) ?? ""
+    }
+
+    /// Building a `DateComponentsFormatter`, a calendar and a locale apiece on
+    /// every redraw was measurable: the drawer asks for a range label about
+    /// nine times per frame. Cache both shapes and rebuild only when the app
+    /// language changes, like the `DateFormatter`s above.
+    private static var cachedDurationFormatters: (
+        language: String,
+        short: DateComponentsFormatter,
+        long: DateComponentsFormatter
+    )?
+
+    private static func durationFormatters() -> (
+        short: DateComponentsFormatter,
+        long: DateComponentsFormatter
+    ) {
+        let language = LocalizationManager.shared.resolvedLanguage.rawValue
+        if let cached = cachedDurationFormatters, cached.language == language {
+            return (cached.short, cached.long)
+        }
+        let short = makeDurationFormatter(units: [.minute, .second], language: language)
+        let long = makeDurationFormatter(units: [.hour, .minute], language: language)
+        cachedDurationFormatters = (language, short, long)
+        return (short, long)
+    }
+
+    private static func makeDurationFormatter(
+        units: NSCalendar.Unit,
+        language: String
+    ) -> DateComponentsFormatter {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .short
-        formatter.allowedUnits = seconds >= 3600 ? [.hour, .minute] : [.minute, .second]
+        formatter.allowedUnits = units
         // The app has its own language switch; the formatter must follow it
         // rather than the host locale, or a Chinese UI would print "1 hr".
         var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: LocalizationManager.shared.resolvedLanguage.rawValue)
+        calendar.locale = Locale(identifier: language)
         formatter.calendar = calendar
         formatter.zeroFormattingBehavior = .dropAll
-        return formatter.string(from: max(seconds, 0)) ?? ""
+        return formatter
     }
 
     static func rangeFooter(

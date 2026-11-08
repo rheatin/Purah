@@ -243,20 +243,114 @@ struct VitalsHistoryTests {
         #expect(unbounded.count == 60)
     }
 
-    @Test("Changing cadence keeps the fast tier at five minutes")
-    func changingCadenceKeepsFastCoverage() {
-        var buffer = VitalsHistoryBuffer(
-            maximumFastSamples: VitalsHistoryBuffer.fastCapacity(forInterval: 2)
-        )
-        for index in 0...300 {
-            buffer.append(point(TimeInterval(index), 1))
+    @Test("Fast-tier capacity is a ceiling over the coverage window, not a rule")
+    func changingCadenceKeepsFastCoverage() throws {
+        // A slow sampler's history is older than the fast tier's contract and
+        // must not survive a switch to a faster cadence's larger capacity.
+        var slow = VitalsHistoryBuffer(maximumFastSamples: 300)
+        for index in 0...1_200 {
+            slow.append(point(TimeInterval(index) * 5, 1))
         }
-        #expect(buffer.tiers.fast.count == 150)
-        #expect(buffer.tiers.fast.first?.timestamp == base.addingTimeInterval(151))
+        slow.setFastCapacity(300, now: base.addingTimeInterval(6_000))
+        // The ceiling is 300 points; the five-minute coverage window removes
+        // the older samples first, leaving the boundary point plus 60.
+        #expect(slow.tiers.fast.count == 61)
+        let slowCoverage = base.addingTimeInterval(6_000)
+            .timeIntervalSince(try #require(slow.tiers.fast.first).timestamp)
+        #expect(slowCoverage <= VitalsHistoryBuffer.fastCoverage)
+        #expect(slowCoverage > 290)
 
-        buffer.setFastCapacity(VitalsHistoryBuffer.fastCapacity(forInterval: 5))
-        #expect(buffer.tiers.fast.count == 60)
-        #expect(buffer.tiers.fast.first?.timestamp == base.addingTimeInterval(241))
+        // Five-second samples at the sixty-point ceiling still describe the
+        // full five-minute contract.
+        var fast = VitalsHistoryBuffer(maximumFastSamples: 300)
+        for index in 0..<120 {
+            fast.append(point(TimeInterval(index) * 5, 1))
+        }
+        fast.setFastCapacity(VitalsHistoryBuffer.fastCapacity(forInterval: 5),
+                             now: base.addingTimeInterval(600))
+        #expect(fast.tiers.fast.count == 60)
+        let covered = base.addingTimeInterval(600)
+            .timeIntervalSince(try #require(fast.tiers.fast.first).timestamp)
+        #expect(covered >= VitalsHistoryBuffer.fastCoverage)
+    }
+
+    @Test("A version-2 ratio history migrates to bytes per second")
+    func v2ThroughputMigratesToBytes() throws {
+        let legacy = VitalsPersistedHistory(
+            version: 2,
+            cpu: VitalsTieredHistory(fast: [point(0, 0.42)]),
+            networkDown: VitalsTieredHistory(
+                fast: [point(0, 1.0)],
+                minute: [point(0, 0.5)],
+                coarse: [point(0, 0.25)]
+            ),
+            networkUp: VitalsTieredHistory(fast: [point(0, 0.1)]),
+            diskRead: VitalsTieredHistory(fast: [point(0, 0.2)]),
+            diskWrite: VitalsTieredHistory(fast: [point(0, 0.3)])
+        )
+        let decoded = try JSONDecoder().decode(
+            VitalsPersistedHistory.self,
+            from: JSONEncoder().encode(legacy)
+        )
+
+        #expect(decoded.version == 2)
+        #expect(decoded.networkDown.fast.first?.value == 10_485_760)
+        #expect(decoded.networkDown.minute.first?.value == 5_242_880)
+        #expect(decoded.networkDown.coarse.first?.value == 2_621_440)
+        #expect(decoded.networkUp.fast.first?.value == 1_048_576)
+        #expect(decoded.diskRead.fast.first?.value == 2_097_152)
+        #expect(decoded.diskWrite.fast.first?.value == 3_145_728)
+        #expect(decoded.cpu.fast.first?.value == 0.42)
+    }
+
+    @Test("A version-3 file keeps its raw throughput values")
+    func v3ThroughputRoundTrips() throws {
+        let value = 52_428_800.0
+        let history = VitalsPersistedHistory(
+            networkDown: VitalsTieredHistory(fast: [point(0, value)])
+        )
+        let decoded = try JSONDecoder().decode(
+            VitalsPersistedHistory.self,
+            from: JSONEncoder().encode(history)
+        )
+        #expect(decoded.version == VitalsPersistedHistory.currentVersion)
+        #expect(decoded.networkDown.fast.first?.value == value)
+    }
+
+    @Test("A persisted pending bucket is completed exactly once on reload")
+    func pendingBucketSurvivesReload() throws {
+        var buffer = VitalsHistoryBuffer()
+        for index in 0..<30 {
+            buffer.append(point(TimeInterval(index), 1.0))
+        }
+        let pending = try #require(buffer.pendingMinuteBucket)
+
+        let container = VitalsPersistedHistory(
+            cpu: buffer.tiers,
+            pendingMinute: ["cpu": pending]
+        )
+        let decoded = try JSONDecoder().decode(
+            VitalsPersistedHistory.self,
+            from: JSONEncoder().encode(container)
+        )
+        var restored = VitalsHistoryBuffer(
+            tiers: decoded.cpu,
+            pendingMinute: decoded.pendingMinute?["cpu"]
+        )
+        restored.append(point(60, 3.0))
+
+        let completed = restored.tiers.minute.filter { $0.timestamp == base }
+        #expect(completed.count == 1)
+        #expect(completed.first?.value == 1.0)
+    }
+
+    @Test("A pending bucket older than the newest completed one is dropped")
+    func stalePendingBucketIsDropped() {
+        let buffer = VitalsHistoryBuffer(
+            tiers: VitalsTieredHistory(minute: [point(120, 1)]),
+            pendingMinute: VitalsPendingBucket(start: base, sum: 5, count: 1)
+        )
+        #expect(buffer.pendingMinuteBucket == nil)
     }
 
     @Test("A v1 single-array payload loads into the fast tier")

@@ -15,6 +15,20 @@ public struct VitalsBucket: Identifiable, Sendable, Equatable {
     }
 }
 
+/// The in-progress aggregation for one tier, persisted so a relaunch does not
+/// discard the newest slot. `sum` is the running total and `count` its samples.
+public struct VitalsPendingBucket: Codable, Sendable, Equatable {
+    public var start: Date
+    public var sum: Double
+    public var count: Int
+
+    public init(start: Date, sum: Double, count: Int) {
+        self.start = start
+        self.sum = sum
+        self.count = count
+    }
+}
+
 /// The three persisted retention tiers for one telemetry series.
 ///
 /// The fast tier holds raw samples, the minute tier holds one mean per minute
@@ -68,13 +82,43 @@ public struct VitalsHistoryBuffer: Sendable {
 
     public init(
         tiers: VitalsTieredHistory = .init(),
-        maximumFastSamples: Int = Self.fastCapacity
+        maximumFastSamples: Int = Self.fastCapacity,
+        pendingMinute: VitalsPendingBucket? = nil,
+        pendingCoarse: VitalsPendingBucket? = nil
     ) {
         self.tiers = tiers
         self.maximumFastSamples = max(maximumFastSamples, 1)
         if self.tiers.fast.count > self.maximumFastSamples {
             self.tiers.fast.removeFirst(self.tiers.fast.count - self.maximumFastSamples)
         }
+        // A pending bucket older than the newest completed one would be
+        // completed out of order and corrupt `source()`'s coverage check.
+        if let pendingMinute,
+           pendingMinute.count > 0,
+           pendingMinute.start >= (self.tiers.minute.last?.timestamp ?? .distantPast) {
+            self.pendingMinute = Pending(
+                start: pendingMinute.start,
+                sum: pendingMinute.sum,
+                count: pendingMinute.count
+            )
+        }
+        if let pendingCoarse,
+           pendingCoarse.count > 0,
+           pendingCoarse.start >= (self.tiers.coarse.last?.timestamp ?? .distantPast) {
+            self.pendingCoarse = Pending(
+                start: pendingCoarse.start,
+                sum: pendingCoarse.sum,
+                count: pendingCoarse.count
+            )
+        }
+    }
+
+    public var pendingMinuteBucket: VitalsPendingBucket? {
+        pendingMinute.map { VitalsPendingBucket(start: $0.start, sum: $0.sum, count: $0.count) }
+    }
+
+    public var pendingCoarseBucket: VitalsPendingBucket? {
+        pendingCoarse.map { VitalsPendingBucket(start: $0.start, sum: $0.sum, count: $0.count) }
     }
 
     public static func fastCapacity(forInterval interval: TimeInterval) -> Int {
@@ -82,7 +126,9 @@ public struct VitalsHistoryBuffer: Sendable {
         return max(Int((fastCoverage / interval).rounded()), 1)
     }
 
-    public mutating func setFastCapacity(_ capacity: Int) {
+    public mutating func setFastCapacity(_ capacity: Int, now: Date = Date()) {
+        let cutoff = now.addingTimeInterval(-Self.fastCoverage)
+        tiers.fast.removeAll { $0.timestamp < cutoff }
         maximumFastSamples = max(capacity, 1)
         if tiers.fast.count > maximumFastSamples {
             tiers.fast.removeFirst(tiers.fast.count - maximumFastSamples)

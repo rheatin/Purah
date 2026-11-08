@@ -1342,22 +1342,12 @@ public struct HardwareVitalsDrawerView: View {
         }
     }
 
-    /// Throughput histories store rates divided by 10 MiB/s (the service's
-    /// existing normalisation), so a shared ceiling has to be converted into
-    /// that same unit.
-    private static let throughputHistoryScale = 10_485_760.0
-
     /// Both rows of a band share one log domain: 1 KB/s at the bottom and a
     /// nice-number ceiling above the busiest bucket, never below 1 MB/s.
     private func throughputDomain(_ series: [[VitalsBucket]]) -> VitalsColumnDomain {
-        let maximumRatio = series.flatMap { $0 }.map(\.mean).max() ?? 0
-        let ceilingBytes = VitalsThroughputDomain.ceiling(
-            for: max(maximumRatio, 0) * Self.throughputHistoryScale
-        )
-        return .log(
-            lower: 1_024 / Self.throughputHistoryScale,
-            upper: ceilingBytes / Self.throughputHistoryScale
-        )
+        let maximumBytes = series.flatMap { $0 }.map(\.mean).max() ?? 0
+        let ceilingBytes = VitalsThroughputDomain.ceiling(for: max(maximumBytes, 0))
+        return .log(lower: 1_024, upper: ceilingBytes)
     }
 
     // MARK: - Tab: Compute (CPU, GPU & RAM)
@@ -1670,9 +1660,7 @@ public struct HardwareVitalsDrawerView: View {
         // stretched to the height of a busy download.
         let netDomain = throughputDomain([downBuckets, upBuckets])
         let diskDomain = throughputDomain([readBuckets, writeBuckets])
-        let rateFormatter: (Double) -> String = {
-            formatSpeed($0 * Self.throughputHistoryScale)
-        }
+        let rateFormatter: (Double) -> String = { formatSpeed($0) }
 
         VStack(spacing: 0) {
             VitalsThroughputBand(
@@ -2658,6 +2646,18 @@ public struct VitalsFocusedDrawerView: View {
         }
     }
 
+    /// `VitalsDualTimeSeriesGraphView` still draws 0…1 points, so the focused
+    /// views convert the raw bytes/second history here rather than changing
+    /// the graph or normalising the stored data again.
+    private func graphRatioPoints(_ points: [VitalsHistoryPoint]) -> [VitalsHistoryPoint] {
+        points.map {
+            VitalsHistoryPoint(
+                timestamp: $0.timestamp,
+                value: min($0.value / 10_485_760.0, 1.0)
+            )
+        }
+    }
+
     // MARK: - CPU Focused View
     @ViewBuilder
     private func cpuFocusedView(metrics: HardwareVitalsInfo) -> some View {
@@ -3338,8 +3338,8 @@ public struct VitalsFocusedDrawerView: View {
                 let graphH: CGFloat = max(layoutHeight - (showsHeader ? 32.0 : 17.0), 14.0)
 
                 VitalsDualTimeSeriesGraphView(
-                    downPoints: vitals.history(for: .network, scope: timeScope),
-                    upPoints: vitals.networkUpHistory(scope: timeScope),
+                    downPoints: graphRatioPoints(vitals.history(for: .network, scope: timeScope)),
+                    upPoints: graphRatioPoints(vitals.networkUpHistory(scope: timeScope)),
                     downColor: downColor,
                     upColor: upColor,
                     palette: palette,
@@ -3386,8 +3386,8 @@ public struct VitalsFocusedDrawerView: View {
                 let graphH: CGFloat = max(min(layoutHeight - 64.0, 90.0), 36.0)
 
                 VitalsDualTimeSeriesGraphView(
-                    downPoints: vitals.history(for: .network, scope: timeScope),
-                    upPoints: vitals.networkUpHistory(scope: timeScope),
+                    downPoints: graphRatioPoints(vitals.history(for: .network, scope: timeScope)),
+                    upPoints: graphRatioPoints(vitals.networkUpHistory(scope: timeScope)),
                     downColor: downColor,
                     upColor: upColor,
                     palette: palette,

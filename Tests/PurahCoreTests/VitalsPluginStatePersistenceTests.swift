@@ -156,6 +156,41 @@ struct VitalsPluginStatePersistenceTests {
         #expect(reloaded.scope(for: .cpu) == .hour1)
     }
 
+    @Test("One unknown range does not reset every remembered range")
+    func testUnknownScopeKeepsOtherMetrics() throws {
+        let suite = "vitals_scope_unknown_\(UUID().uuidString)"
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        storage.setCodable(
+            ["cpu": "5m", "gpu": "24h", "not-a-metric": "1h"],
+            forKey: "metricScopes"
+        )
+
+        let state = VitalsPluginState(storage: storage)
+        #expect(state.scope(for: .cpu) == .minutes5)
+        #expect(state.scope(for: .gpu) == .hour1)
+    }
+
+    @Test("A scope map written by an earlier build still loads")
+    func testScopeMapFromEarlierBuildLoads() throws {
+        let suite = "vitals_scope_legacy_\(UUID().uuidString)"
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // `VitalsTimeScope` has String raw values, so an earlier build's
+        // typed map produced the same JSON as today's string map. One reader
+        // covers both shapes.
+        storage.setCodable(
+            ["cpu": VitalsTimeScope.hours12, "ram": VitalsTimeScope.realTime30s],
+            forKey: "metricScopes"
+        )
+
+        let state = VitalsPluginState(storage: storage)
+        #expect(state.scope(for: .cpu) == .hours12)
+        #expect(state.scope(for: .ram) == .realTime30s)
+    }
+
     @Test("Sampling defaults to one second and is written back")
     func testSamplingDefaultsToOneSecond() throws {
         let suite = "vitals_sampling_default_\(UUID().uuidString)"

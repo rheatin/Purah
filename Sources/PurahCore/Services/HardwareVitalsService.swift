@@ -597,7 +597,6 @@ public final class HardwareVitalsService {
     private var gpuBuffer = VitalsHistoryBuffer()
     private var ramBuffer = VitalsHistoryBuffer()
     private var powerBuffer = VitalsHistoryBuffer()
-    private var networkBuffer = VitalsHistoryBuffer()
     private var networkDownBuffer = VitalsHistoryBuffer()
     private var networkUpBuffer = VitalsHistoryBuffer()
     private var diskBuffer = VitalsHistoryBuffer()
@@ -612,7 +611,6 @@ public final class HardwareVitalsService {
     public var gpuHistory: [VitalsHistoryPoint] { gpuBuffer.tiers.fast }
     public var ramHistory: [VitalsHistoryPoint] { ramBuffer.tiers.fast }
     public var powerHistory: [VitalsHistoryPoint] { powerBuffer.tiers.fast }
-    public var networkHistory: [VitalsHistoryPoint] { networkBuffer.tiers.fast }
     public var networkDownHistory: [VitalsHistoryPoint] { networkDownBuffer.tiers.fast }
     public var networkUpHistory: [VitalsHistoryPoint] { networkUpBuffer.tiers.fast }
     public var diskHistory: [VitalsHistoryPoint] { diskBuffer.tiers.fast }
@@ -641,12 +639,22 @@ public final class HardwareVitalsService {
     @ObservationIgnored private let processNetworkSampler: ProcessNetworkSampler
     @ObservationIgnored private var processNetworkTask: Task<Void, Never>?
     @ObservationIgnored private var processNetworkSpeeds: [Int32: ProcessNetworkSpeed] = [:]
-    @ObservationIgnored private var isProcessesTabVisible = false
+    @ObservationIgnored private(set) var isProcessesTabVisible = false
     @ObservationIgnored private var processSamplingTask: Task<Void, Never>?
     @ObservationIgnored private var processSamplingGeneration = 0
 
     // Dedicated Permanent Storage: ~/Library/Application Support/Purah/Vitals/
     @ObservationIgnored public static let defaultStorageDirectory: URL = {
+        // A test process mounts the pod, and unmounting saves history. Point
+        // that at a throwaway directory so a test run can never overwrite the
+        // person's real telemetry file.
+        if NSClassFromString("XCTestCase") != nil {
+            return FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "PurahTests/Vitals-\(UUID().uuidString)",
+                    isDirectory: true
+                )
+        }
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         return appSupport.appendingPathComponent("Purah/Vitals", isDirectory: true)
@@ -800,7 +808,6 @@ public final class HardwareVitalsService {
         gpuBuffer.setFastCapacity(capacity)
         ramBuffer.setFastCapacity(capacity)
         powerBuffer.setFastCapacity(capacity)
-        networkBuffer.setFastCapacity(capacity)
         networkDownBuffer.setFastCapacity(capacity)
         networkUpBuffer.setFastCapacity(capacity)
         diskBuffer.setFastCapacity(capacity)
@@ -906,7 +913,7 @@ public final class HardwareVitalsService {
         )
     }
 
-    private func recordBatteryState(_ state: Int, at now: Date) {
+    func recordBatteryState(_ state: Int, at now: Date) {
         let interval = VitalsStateHistory.interval
         let start = Date(
             timeIntervalSince1970: floor(now.timeIntervalSince1970 / interval) * interval
@@ -926,6 +933,7 @@ public final class HardwareVitalsService {
     }
 
     public func saveHistoryToDisk() {
+        let pending = pendingBuckets()
         let container = VitalsPersistedHistory(
             cpu: cpuBuffer.tiers,
             gpu: gpuBuffer.tiers,
@@ -936,7 +944,9 @@ public final class HardwareVitalsService {
             disk: diskBuffer.tiers,
             diskRead: diskReadBuffer.tiers,
             diskWrite: diskWriteBuffer.tiers,
-            batteryState: batteryStateHistory
+            batteryState: batteryStateHistory,
+            pendingMinute: pending.minute.isEmpty ? nil : pending.minute,
+            pendingCoarse: pending.coarse.isEmpty ? nil : pending.coarse
         )
         do {
             try FileManager.default.createDirectory(at: storageDirectory, withIntermediateDirectories: true)
@@ -946,6 +956,31 @@ public final class HardwareVitalsService {
         } catch {
             // Silently ignore disk write failures in background
         }
+    }
+
+    /// Every series' in-progress aggregation, keyed by its persisted name.
+    private func pendingBuckets() -> (
+        minute: [String: VitalsPendingBucket],
+        coarse: [String: VitalsPendingBucket]
+    ) {
+        let series: [(String, VitalsHistoryBuffer)] = [
+            ("cpu", cpuBuffer),
+            ("gpu", gpuBuffer),
+            ("ram", ramBuffer),
+            ("power", powerBuffer),
+            ("network", networkDownBuffer),
+            ("networkUp", networkUpBuffer),
+            ("disk", diskBuffer),
+            ("diskRead", diskReadBuffer),
+            ("diskWrite", diskWriteBuffer)
+        ]
+        var minute: [String: VitalsPendingBucket] = [:]
+        var coarse: [String: VitalsPendingBucket] = [:]
+        for (key, buffer) in series {
+            minute[key] = buffer.pendingMinuteBucket
+            coarse[key] = buffer.pendingCoarseBucket
+        }
+        return (minute.compactMapValues { $0 }, coarse.compactMapValues { $0 })
     }
 
     public func loadHistoryFromDisk() {
@@ -970,18 +1005,30 @@ public final class HardwareVitalsService {
                 )
             }
 
-            self.cpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.cpu), maximumFastSamples: fastCap)
-            self.gpuBuffer = VitalsHistoryBuffer(tiers: filtered(container.gpu), maximumFastSamples: fastCap)
-            self.ramBuffer = VitalsHistoryBuffer(tiers: filtered(container.ram), maximumFastSamples: fastCap)
-            self.powerBuffer = VitalsHistoryBuffer(tiers: filtered(container.power), maximumFastSamples: fastCap)
-            self.networkDownBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown), maximumFastSamples: fastCap)
-            self.networkUpBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkUp), maximumFastSamples: fastCap)
-            // The combined network series is derived at runtime; the persisted
-            // file only carries the two directions.
-            self.networkBuffer = VitalsHistoryBuffer(tiers: filtered(container.networkDown), maximumFastSamples: fastCap)
-            self.diskBuffer = VitalsHistoryBuffer(tiers: filtered(container.disk), maximumFastSamples: fastCap)
-            self.diskReadBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskRead), maximumFastSamples: fastCap)
-            self.diskWriteBuffer = VitalsHistoryBuffer(tiers: filtered(container.diskWrite), maximumFastSamples: fastCap)
+            func restored(_ history: VitalsTieredHistory, key: String) -> VitalsHistoryBuffer {
+                let pendingMinute = container.pendingMinute?[key].flatMap {
+                    now.timeIntervalSince($0.start) <= 3_600 ? $0 : nil
+                }
+                let pendingCoarse = container.pendingCoarse?[key].flatMap {
+                    now.timeIntervalSince($0.start) <= 43_200 ? $0 : nil
+                }
+                return VitalsHistoryBuffer(
+                    tiers: filtered(history),
+                    maximumFastSamples: fastCap,
+                    pendingMinute: pendingMinute,
+                    pendingCoarse: pendingCoarse
+                )
+            }
+
+            self.cpuBuffer = restored(container.cpu, key: "cpu")
+            self.gpuBuffer = restored(container.gpu, key: "gpu")
+            self.ramBuffer = restored(container.ram, key: "ram")
+            self.powerBuffer = restored(container.power, key: "power")
+            self.networkDownBuffer = restored(container.networkDown, key: "network")
+            self.networkUpBuffer = restored(container.networkUp, key: "networkUp")
+            self.diskBuffer = restored(container.disk, key: "disk")
+            self.diskReadBuffer = restored(container.diskRead, key: "diskRead")
+            self.diskWriteBuffer = restored(container.diskWrite, key: "diskWrite")
             self.batteryStateHistory = VitalsStateHistory(
                 points: container.batteryState.points.filter {
                     now.timeIntervalSince($0.timestamp) <= 43_200
@@ -993,7 +1040,6 @@ public final class HardwareVitalsService {
             gpuBuffer = VitalsHistoryBuffer()
             ramBuffer = VitalsHistoryBuffer()
             powerBuffer = VitalsHistoryBuffer()
-            networkBuffer = VitalsHistoryBuffer()
             networkDownBuffer = VitalsHistoryBuffer()
             networkUpBuffer = VitalsHistoryBuffer()
             diskBuffer = VitalsHistoryBuffer()
@@ -1018,10 +1064,7 @@ public final class HardwareVitalsService {
         }
         samplingInterval = interval
         applyFastCapacityToBuffers()
-        // The history file is a crash recovery copy, so its cadence is a wall
-        // clock budget, not a tick count: a slow sampler must not stretch the
-        // ten-minute save window to fifty.
-        let saveIntervalTicks = max(1, Int((600.0 / interval).rounded()))
+        let saveIntervalTicks = Self.saveIntervalTicks(for: interval)
         monitorTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self = self else { break }
@@ -1046,6 +1089,14 @@ public final class HardwareVitalsService {
         }
     }
 
+    /// The history file is a crash recovery copy, so its cadence is a wall
+    /// clock budget, not a tick count: a slow sampler must not stretch the
+    /// ten-minute save window to fifty.
+    static func saveIntervalTicks(for interval: TimeInterval) -> Int {
+        guard interval.isFinite, interval > 0 else { return 600 }
+        return max(1, Int((600.0 / interval).rounded()))
+    }
+
     /// Restarts an already-running monitor with a new cadence. If the monitor
     /// is idle, this only records the cadence so the next start uses it.
     public func restartMonitoring(interval: TimeInterval) {
@@ -1057,8 +1108,15 @@ public final class HardwareVitalsService {
             return
         }
         guard abs(samplingInterval - interval) > 0.0001 else { return }
+        // `stopMonitoring` is the real teardown and hides the Processes tab.
+        // A cadence change is not a teardown, so restore the tab afterwards
+        // or the inspector freezes with no way back on.
+        let processesVisible = isProcessesTabVisible
         stopMonitoring()
         startMonitoring(interval: interval)
+        if processesVisible {
+            setProcessesTabVisible(true)
+        }
     }
 
     public func stopMonitoring() {
@@ -1200,21 +1258,20 @@ public final class HardwareVitalsService {
         gpuBuffer.append(VitalsHistoryPoint(timestamp: now, value: gpu))
         ramBuffer.append(VitalsHistoryPoint(timestamp: now, value: mem.usage))
         powerBuffer.append(VitalsHistoryPoint(timestamp: now, value: Double(battery.level) / 100.0))
-        let netRatio = min((net.down + net.up) / 10_485_760.0, 1.0)
-        let downRatio = min(net.down / 10_485_760.0, 1.0)
-        let upRatio = min(net.up / 10_485_760.0, 1.0)
-        networkBuffer.append(VitalsHistoryPoint(timestamp: now, value: netRatio))
-        networkDownBuffer.append(VitalsHistoryPoint(timestamp: now, value: downRatio))
-        networkUpBuffer.append(VitalsHistoryPoint(timestamp: now, value: upRatio))
+        // Throughput is stored raw, in bytes per second. The column bands map
+        // it onto a log domain; the legacy dual-line graph normalises it at
+        // its own call sites.
+        networkDownBuffer.append(VitalsHistoryPoint(timestamp: now, value: net.down))
+        networkUpBuffer.append(VitalsHistoryPoint(timestamp: now, value: net.up))
         let diskRatio = disk.totalGB > 0 ? (disk.totalGB - disk.freeGB) / disk.totalGB : 0.5
         diskBuffer.append(VitalsHistoryPoint(timestamp: now, value: diskRatio))
         diskReadBuffer.append(VitalsHistoryPoint(
             timestamp: now,
-            value: min(diskIO.readBytesPerSec / 10_485_760.0, 1.0)
+            value: diskIO.readBytesPerSec
         ))
         diskWriteBuffer.append(VitalsHistoryPoint(
             timestamp: now,
-            value: min(diskIO.writeBytesPerSec / 10_485_760.0, 1.0)
+            value: diskIO.writeBytesPerSec
         ))
         let batteryState: Int = {
             guard battery.isPresent else { return 0 }
@@ -1223,7 +1280,9 @@ public final class HardwareVitalsService {
             }
             return battery.isCharging ? 1 : 0
         }()
-        recordBatteryState(batteryState, at: now)
+        if battery.isPresent {
+            recordBatteryState(batteryState, at: now)
+        }
 
         // The rail only needs the cheap metrics above. The 580-process walk
         // runs in the background and publishes on a later main-actor turn.

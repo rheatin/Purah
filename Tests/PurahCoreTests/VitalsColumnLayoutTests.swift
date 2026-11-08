@@ -45,14 +45,12 @@ struct VitalsColumnLayoutTests {
 
     @Test("The log domain is 1 KB/s to the shared nice-number ceiling")
     func logDomainMatchesThroughputDomain() {
-        let scale = 10_485_760.0
-        let lower = 1_024 / scale
+        let lower = 1_024.0
         let ceilingBytes = VitalsThroughputDomain.ceiling(for: 1_048_576)
-        let upper = ceilingBytes / scale
-        let domain = VitalsColumnDomain.log(lower: lower, upper: upper)
+        let domain = VitalsColumnDomain.log(lower: lower, upper: ceilingBytes)
 
-        #expect(abs(domain.height(for: 5_120 / scale) - 0.232_5) < 0.002)
-        #expect(abs(domain.height(for: 1_048_576 / scale) - 1.0) < 0.0001)
+        #expect(abs(domain.height(for: 5_120) - 0.232_5) < 0.002)
+        #expect(abs(domain.height(for: 1_048_576) - 1.0) < 0.0001)
         #expect(domain.height(for: 0) == 0)
     }
 
