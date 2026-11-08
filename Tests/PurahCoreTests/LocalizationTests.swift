@@ -49,21 +49,6 @@ struct LocalizationTests {
 
         loc.currentLanguage = .traditionalChinese
         #expect(loc.localized("notes.tips.table") == "表格")
-
-        loc.currentLanguage = .japanese
-        #expect(loc.localized("notes.tips.table") == "テーブル")
-
-        loc.currentLanguage = .korean
-        #expect(loc.localized("notes.tips.table") == "표")
-
-        loc.currentLanguage = .french
-        #expect(loc.localized("notes.tips.table") == "Tableau")
-
-        loc.currentLanguage = .german
-        #expect(loc.localized("notes.tips.table") == "Tabelle")
-
-        loc.currentLanguage = .spanish
-        #expect(loc.localized("notes.tips.table") == "Tabla")
     }
 
     @Test("Every language table is a subset of English, never a superset")
@@ -123,7 +108,7 @@ struct LocalizationTests {
             // +8: Traditional Chinese now covers the alert style titles and subtitles.
             // +8: the calendar's Up-Next countdown and Open in Calendar strings.
             // +11: the compact alert card, its channel names, captions and pod suffixes.
-            // The four partial tables below gain those 11 keys plus the three alert style titles.
+            // The partial table below gains those 11 keys plus the three alert style titles.
             // +6: Drop Shelf's Link, Move, undo banner, and failure copy.
             // +1: the shelf's refused-delete warning.
             // +3: the shelf's zone hints; the partial tables also gained the
@@ -159,12 +144,10 @@ struct LocalizationTests {
             // battery.
             // +2: the column footer's "now" and "available %@" span labels.
             // +3: the sampling-interval title, honest caption and seconds label.
-            .traditionalChinese: 726,
-            .japanese: 151,
-            .korean: 151,
-            .french: 151,
-            .german: 151,
-            .spanish: 169
+            // +285: the table is finished. Every English key now has a
+            // Traditional Chinese row, so the pin equals the English table and
+            // the only way to fail it is to delete translations.
+            .traditionalChinese: 1011
         ]
 
         for (language, expected) in pinnedCoverage {
@@ -410,17 +393,62 @@ struct LocalizationTests {
             LocalizationManager.shared.currentLanguage = previous
         }
 
-        LocalizationManager.shared.currentLanguage = .french
-        #expect(UserDefaults.standard.string(forKey: "purah.appLanguage") == "fr")
+        LocalizationManager.shared.currentLanguage = .traditionalChinese
+        #expect(UserDefaults.standard.string(forKey: "purah.appLanguage") == "zh-Hant")
 
         let freshManager = LocalizationManager()
-        #expect(freshManager.currentLanguage == .french)
-        #expect(freshManager.localized("tab.interaction") == "Mouvement et Général")
+        #expect(freshManager.currentLanguage == .traditionalChinese)
 
-        LocalizationManager.shared.currentLanguage = .german
-        #expect(UserDefaults.standard.string(forKey: "purah.appLanguage") == "de")
-        let germanManager = LocalizationManager()
-        #expect(germanManager.currentLanguage == .german)
-        #expect(germanManager.localized("tab.interaction") == "Bewegung & Allgemein")
+        // A value from a removed language (or garbage) resolves to `.system`
+        // and is written back, so the picker shows "System Default" rather
+        // than a value the enum can no longer represent.
+        for removed in ["ja", "fr", "not-a-language"] {
+            UserDefaults.standard.set(removed, forKey: "purah.appLanguage")
+            let manager = LocalizationManager()
+            #expect(manager.currentLanguage == .system)
+            #expect(UserDefaults.standard.string(forKey: "purah.appLanguage") == "system")
+            #expect(LocalizationManager().currentLanguage == .system)
+        }
+    }
+
+    @Test("Every offered language meets the picker's coverage contract")
+    @MainActor
+    func testOfferedLanguageCoverage() {
+        let english = Set(LocalizationManager.keys(for: .english))
+        #expect(!english.isEmpty)
+
+        for language in AppLanguage.allCases where language != .system {
+            let keys = Set(LocalizationManager.keys(for: language))
+            #expect(!keys.isEmpty, "\(language.rawValue) is offered with no table")
+            let orphans = keys.subtracting(english)
+            #expect(
+                orphans.isEmpty,
+                "\(language.rawValue) defines keys English lacks: \(orphans.sorted())"
+            )
+        }
+
+        for complete in [AppLanguage.english, .chinese] {
+            let missing = english.subtracting(Set(LocalizationManager.keys(for: complete)))
+            #expect(
+                missing.isEmpty,
+                """
+                \(complete.rawValue) is missing \(missing.count) keys; \
+                first ten: \(missing.sorted().prefix(10))
+                """
+            )
+        }
+
+        // Traditional Chinese is finished, so the contract it has to meet is
+        // the same one English and Simplified Chinese meet: nothing missing.
+        let traditional = Set(LocalizationManager.keys(for: .traditionalChinese))
+        let missing = english.subtracting(traditional)
+        #expect(
+            missing.isEmpty,
+            """
+            zh-Hant covers \(traditional.count)/\(english.count), \
+            missing \(missing.count) keys; \
+            first ten: \(missing.sorted().prefix(10))
+            """
+        )
     }
 }

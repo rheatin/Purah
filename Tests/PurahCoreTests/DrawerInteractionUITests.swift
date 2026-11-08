@@ -340,9 +340,9 @@ struct DrawerInteractionUITests {
         #expect(PreferencesTab.general.localizedTitle == "General")
         #expect(PreferencesTab.motion.localizedTitle == "Motion")
 
-        LocalizationManager.shared.currentLanguage = .french
-        #expect(PreferencesTab.general.localizedTitle == "Général")
-        #expect(PreferencesTab.motion.localizedTitle == "Mouvement")
+        LocalizationManager.shared.currentLanguage = .traditionalChinese
+        #expect(PreferencesTab.general.localizedTitle == "通用")
+        #expect(PreferencesTab.motion.localizedTitle == "動效")
     }
 
     @Test("ShelfPluginState and DraggableShelfItemNSView drag completion callback")

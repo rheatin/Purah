@@ -214,9 +214,12 @@ public enum PurahConfigBackupManager {
 
         store.loadPersistentState()
 
-        if let langStr = defaults.string(forKey: "purah.appLanguage"),
-           let lang = AppLanguage(rawValue: langStr) {
-            LocalizationManager.shared.currentLanguage = lang
+        if let langStr = defaults.string(forKey: "purah.appLanguage") {
+            // A backup from an earlier build can carry a language this build
+            // no longer offers; resolve it to the system language and write
+            // that back instead of leaving an unrepresentable raw value.
+            LocalizationManager.shared.currentLanguage =
+                AppLanguage(rawValue: langStr) ?? .system
         }
 
         store.invalidateLayoutCache()
