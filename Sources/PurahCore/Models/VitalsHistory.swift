@@ -318,6 +318,24 @@ public struct VitalsStateHistory: Codable, Sendable {
         }
     }
 
+    /// Joins the state history onto a strip's buckets. A bucket takes the
+    /// state in force at its start: the last point at or before that instant.
+    /// A bucket older than the whole state history has no state (`nil`) rather
+    /// than borrowing the first recorded one.
+    public static func stateValues(
+        for buckets: [VitalsBucket],
+        points: [VitalsHistoryPoint]
+    ) -> [Int?] {
+        let ordered = points.sorted { $0.timestamp < $1.timestamp }
+        return buckets.map { bucket in
+            guard let match = ordered.last(where: { $0.timestamp <= bucket.start }),
+                  match.value.isFinite else {
+                return nil
+            }
+            return Int(match.value.rounded())
+        }
+    }
+
     /// Fixed-width ten-minute cells ending at the current bucket. Cells with
     /// no recorded state are left empty (the ribbon draws nothing there).
     public func cells(

@@ -88,6 +88,9 @@ struct VitalsColumnStrip: View {
     let buckets: [VitalsBucket]
     let domain: VitalsColumnDomain
     let tint: Color
+    /// Optional per-bucket colour source. A supplied colour wins over the
+    /// metric's alert logic; nil keeps every existing caller unchanged.
+    var bucketColors: [Color]? = nil
     let metric: VitalsMetricType
     let thresholds: VitalsColorThresholds
     @Binding var hoveredIndex: Int?
@@ -105,7 +108,7 @@ struct VitalsColumnStrip: View {
             ZStack(alignment: .topLeading) {
                 ForEach(bars) { bar in
                     RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(color(for: bar.mean))
+                        .fill(color(for: bar.mean, index: bar.index))
                         .frame(width: bar.rect.width, height: bar.rect.height)
                         .position(x: bar.rect.midX, y: bar.rect.midY)
                 }
@@ -154,7 +157,10 @@ struct VitalsColumnStrip: View {
         }
     }
 
-    private func color(for mean: Double) -> Color {
+    func color(for mean: Double, index: Int) -> Color {
+        if let bucketColors, bucketColors.indices.contains(index) {
+            return bucketColors[index]
+        }
         switch metric {
         case .cpu:
             return alertColor(mean, warning: thresholds.cpuWarning, danger: thresholds.cpuDanger)
@@ -206,6 +212,31 @@ enum VitalsColumnFormatting {
 
     static func minuteTime(_ date: Date) -> String {
         shortFormatter.string(from: date)
+    }
+
+    /// The Power tab's ribbon readout: the cell's wall-clock span followed by
+    /// the localized state it recorded.
+    static func batteryRibbonReadout(cell: VitalsStateCell) -> String {
+        let span = "\(minuteTime(cell.start)) – \(minuteTime(cell.end))"
+        guard let label = batteryStateLabel(cell.state) else { return span }
+        return "\(span) · \(label)"
+    }
+
+    static func batteryRibbonReadout(
+        cells: [VitalsStateCell],
+        index: Int
+    ) -> String? {
+        guard cells.indices.contains(index) else { return nil }
+        return batteryRibbonReadout(cell: cells[index])
+    }
+
+    private static func batteryStateLabel(_ state: Int?) -> String? {
+        switch state {
+        case 1: return "vitals.power.charging".localized
+        case 2: return "vitals.power.fullyCharged".localized
+        case 0: return "vitals.power.onBattery".localized
+        default: return nil
+        }
     }
 
     static func duration(_ seconds: TimeInterval) -> String {
@@ -584,20 +615,48 @@ struct VitalsThroughputBand: View {
 
 struct VitalsStateRibbon: View {
     let cells: [VitalsStateCell]
+    var hoveredIndex: Binding<Int?>? = nil
+    /// Render/test seam: highlights one cell without a pointer.
+    var previewHoveredIndex: Int? = nil
+
+    private var effectiveHoveredIndex: Int? {
+        hoveredIndex?.wrappedValue ?? previewHoveredIndex
+    }
 
     var body: some View {
-        GeometryReader { _ in
+        GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(Color.primary.opacity(0.06))
                 HStack(spacing: 1) {
-                    ForEach(cells) { cell in
+                    ForEach(Array(cells.enumerated()), id: \.element.id) { index, cell in
                         Rectangle()
                             .fill(Self.color(for: cell.state))
+                            .overlay {
+                                if index == effectiveHoveredIndex {
+                                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                                        .stroke(Color.primary.opacity(0.85), lineWidth: 1)
+                                }
+                            }
                     }
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                guard let hoveredIndex, !cells.isEmpty else { return }
+                switch phase {
+                case .active(let location):
+                    let width = max(geo.size.width, 1)
+                    let index = min(
+                        max(Int(location.x / (width / CGFloat(cells.count))), 0),
+                        cells.count - 1
+                    )
+                    hoveredIndex.wrappedValue = index
+                case .ended:
+                    hoveredIndex.wrappedValue = nil
+                }
+            }
         }
     }
 

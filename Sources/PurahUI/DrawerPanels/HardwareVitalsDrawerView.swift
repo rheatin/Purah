@@ -200,6 +200,7 @@ private struct VitalsOverviewHover: Equatable {
     let metric: VitalsMetricType
     let index: Int
     let buckets: [VitalsBucket]
+    let bucketColors: [Color]?
 }
 
 // MARK: - Composite Full Drawer View
@@ -213,7 +214,15 @@ public struct HardwareVitalsDrawerView: View {
     /// Test seam for the rows that share `.network` or `.disk` with another
     /// direction.
     private let throughputOverride: [VitalsThroughputSeries: [VitalsHistoryPoint]]?
+    /// Test seam for the Power tab's ribbon readout, which otherwise needs a
+    /// pointer.
+    private let batteryHoverPreview: Int?
+    /// Test seam for the ribbon's wall-clock cells.
+    private let renderNow: Date?
+    /// Test seam for the state points behind the ribbon and the battery cell.
+    private let batteryStateOverride: [VitalsHistoryPoint]?
     @State private var overviewHover: VitalsOverviewHover?
+    @State private var hoveredBatteryCell: Int?
 
     private var vitals: HardwareVitalsService {
         service
@@ -231,6 +240,9 @@ public struct HardwareVitalsDrawerView: View {
         self.service = .shared
         self.historyOverride = nil
         self.throughputOverride = nil
+        self.batteryHoverPreview = nil
+        self.renderNow = nil
+        self.batteryStateOverride = nil
     }
 
     /// Test seam: a drawer reads one service instance, so a probe-injected
@@ -246,6 +258,9 @@ public struct HardwareVitalsDrawerView: View {
         self.service = service
         self.historyOverride = nil
         self.throughputOverride = nil
+        self.batteryHoverPreview = nil
+        self.renderNow = nil
+        self.batteryStateOverride = nil
     }
 
     /// Test seam for render harnesses that need a fixed curve (for example a
@@ -255,13 +270,19 @@ public struct HardwareVitalsDrawerView: View {
         store: PurahWorkspaceStore,
         service: HardwareVitalsService,
         historyOverride: [VitalsMetricType: [VitalsHistoryPoint]],
-        throughputOverride: [VitalsThroughputSeries: [VitalsHistoryPoint]] = [:]
+        throughputOverride: [VitalsThroughputSeries: [VitalsHistoryPoint]] = [:],
+        batteryHoverPreview: Int? = nil,
+        renderNow: Date? = nil,
+        batteryStateOverride: [VitalsHistoryPoint]? = nil
     ) {
         self.state = state
         self.store = store
         self.service = service
         self.historyOverride = historyOverride
         self.throughputOverride = throughputOverride.isEmpty ? nil : throughputOverride
+        self.batteryHoverPreview = batteryHoverPreview
+        self.renderNow = renderNow
+        self.batteryStateOverride = batteryStateOverride
     }
 
     private func columnBuckets(
@@ -333,12 +354,29 @@ public struct HardwareVitalsDrawerView: View {
 
     /// The ribbon records one state per ten-minute bucket, so its availability
     /// is counted in whole cells rather than seconds.
-    private func batteryStateAvailableSpan() -> TimeInterval {
+    private var batteryStatePointsForDisplay: [VitalsHistoryPoint] {
+        batteryStateOverride ?? vitals.batteryStatePoints
+    }
+
+    private func batteryStateCellsForDisplay(
+        range: TimeInterval,
+        now: Date
+    ) -> [VitalsStateCell] {
+        if let batteryStateOverride {
+            return VitalsStateHistory(points: batteryStateOverride).cells(
+                range: range,
+                now: now,
+                currentState: nil
+            )
+        }
+        return vitals.batteryStateCells(range: range, now: now)
+    }
+
+    private func batteryStateAvailableSpan(now: Date = Date()) -> TimeInterval {
         let interval = VitalsStateHistory.interval
-        guard let oldest = vitals.batteryStatePoints.first?.timestamp else {
+        guard let oldest = batteryStatePointsForDisplay.first?.timestamp else {
             return vitals.metrics.batteryIsPresent ? interval : 0
         }
-        let now = Date()
         let currentStart = Date(
             timeIntervalSince1970: floor(now.timeIntervalSince1970 / interval) * interval
         )
@@ -352,10 +390,13 @@ public struct HardwareVitalsDrawerView: View {
         return Double(count) * interval
     }
 
-    private func batteryRibbonCells(scope: VitalsTimeScope) -> [VitalsStateCell] {
+    private func batteryRibbonCells(
+        scope: VitalsTimeScope,
+        now: Date = Date()
+    ) -> [VitalsStateCell] {
         let interval = VitalsStateHistory.interval
         let availableCount = max(
-            Int((batteryStateAvailableSpan() / interval).rounded()),
+            Int((batteryStateAvailableSpan(now: now) / interval).rounded()),
             1
         )
         let selectedCount = max(
@@ -363,15 +404,19 @@ public struct HardwareVitalsDrawerView: View {
             1
         )
         let count = min(selectedCount, availableCount)
-        return vitals.batteryStateCells(
-            range: Double(count) * interval
+        return batteryStateCellsForDisplay(
+            range: Double(count) * interval,
+            now: now
         )
     }
 
-    private func batteryRangeFooter(scope: VitalsTimeScope) -> String {
+    private func batteryRangeFooter(
+        scope: VitalsTimeScope,
+        now: Date = Date()
+    ) -> String {
         VitalsColumnFormatting.rangeFooter(
             scope: scope,
-            available: batteryStateAvailableSpan()
+            available: batteryStateAvailableSpan(now: now)
         )
     }
 
@@ -718,6 +763,14 @@ public struct HardwareVitalsDrawerView: View {
         let cpuBuckets = columnBuckets(.cpu, scope: .realTime30s)
         let gpuBuckets = columnBuckets(.gpu, scope: .realTime30s)
         let ramBuckets = columnBuckets(.ram, scope: .realTime30s)
+        let batteryBuckets = columnBuckets(.power, scope: .hours12)
+        let batteryStates = VitalsStateHistory.stateValues(
+            for: batteryBuckets,
+            points: batteryStatePointsForDisplay
+        )
+        let batteryColors = batteryStates.map {
+            VitalsStateRibbon.color(for: $0 ?? 0)
+        }
 
         return VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -775,15 +828,13 @@ public struct HardwareVitalsDrawerView: View {
                     value: "\(metrics.batteryLevel)%",
                     tint: powerColor,
                     detail: "Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)",
+                    hoverMetric: .power,
                     plot: AnyView(
-                        VStack(spacing: 0) {
-                            Spacer(minLength: 0)
-                            VitalsStateRibbon(
-                                cells: batteryRibbonCells(scope: .realTime30s)
-                            )
-                            .frame(height: 8)
-                            Spacer(minLength: 0)
-                        }
+                        overviewColumnPlot(
+                            metric: .power,
+                            buckets: batteryBuckets,
+                            bucketColors: batteryColors
+                        )
                     ),
                     spokenLabel: String(
                         format: "vitals.a11y.metric".localized,
@@ -868,15 +919,20 @@ public struct HardwareVitalsDrawerView: View {
     /// stays a 1% column instead of zooming its own noise across the plot.
     private func overviewColumnPlot(
         metric: VitalsMetricType,
-        buckets: [VitalsBucket]
+        buckets: [VitalsBucket],
+        bucketColors: [Color]? = nil
     ) -> some View {
         let displayedBuckets = overviewHover?.metric == metric
             ? overviewHover?.buckets ?? buckets
             : buckets
+        let displayedColors = overviewHover?.metric == metric
+            ? overviewHover?.bucketColors
+            : bucketColors
         return VitalsColumnStrip(
             buckets: displayedBuckets,
             domain: .percentage,
             tint: VitalsColorResolver.identityColor(for: metric),
+            bucketColors: displayedColors,
             metric: metric,
             thresholds: effectiveThresholds,
             hoveredIndex: Binding(
@@ -889,10 +945,14 @@ public struct HardwareVitalsDrawerView: View {
                         let snapshot = overviewHover?.metric == metric
                             ? overviewHover?.buckets ?? buckets
                             : buckets
+                        let snapshotColors = overviewHover?.metric == metric
+                            ? overviewHover?.bucketColors
+                            : bucketColors
                         overviewHover = VitalsOverviewHover(
                             metric: metric,
                             index: newValue,
-                            buckets: snapshot
+                            buckets: snapshot,
+                            bucketColors: snapshotColors
                         )
                     } else if overviewHover?.metric == metric {
                         overviewHover = nil
@@ -1770,7 +1830,14 @@ public struct HardwareVitalsDrawerView: View {
         powerColor: Color
     ) -> some View {
         let scope = self.state.scope(for: .power)
-        let rangeLabel = batteryRangeFooter(scope: scope)
+        let now = renderNow ?? Date()
+        let rangeLabel = batteryRangeFooter(scope: scope, now: now)
+        let ribbonCells = batteryRibbonCells(scope: scope, now: now)
+        let hoveredCellIndex = hoveredBatteryCell ?? batteryHoverPreview
+        let footerText = VitalsColumnFormatting.batteryRibbonReadout(
+            cells: ribbonCells,
+            index: hoveredCellIndex ?? -1
+        ) ?? batteryFooter(metrics, state: state)
 
         return VStack(alignment: .leading, spacing: 5) {
             vitalsBandHeader(
@@ -1783,7 +1850,11 @@ public struct HardwareVitalsDrawerView: View {
                 ratio: Double(metrics.batteryLevel) / 100.0,
                 tint: powerColor
             )
-            VitalsStateRibbon(cells: batteryRibbonCells(scope: scope))
+            VitalsStateRibbon(
+                cells: ribbonCells,
+                hoveredIndex: $hoveredBatteryCell,
+                previewHoveredIndex: batteryHoverPreview
+            )
                 .frame(height: 8)
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -1791,7 +1862,7 @@ public struct HardwareVitalsDrawerView: View {
                 }
             VitalsStateRibbonLegend()
             HStack(spacing: 5) {
-                Text(batteryFooter(metrics, state: state))
+                Text(footerText)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
