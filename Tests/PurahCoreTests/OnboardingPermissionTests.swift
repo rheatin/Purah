@@ -33,9 +33,9 @@ struct OnboardingPermissionTests {
         // `nextOnboardingStep` falls through to `finishOnboarding` when there is
         // no `rawValue + 1`. A step appended after this one would silently take
         // the finish buttons away from the panel that ends the tour.
-        #expect(OnboardingGuideStep.allCases.last == .permissions)
-        #expect(OnboardingGuideStep.allCases.count == 6)
-        #expect(OnboardingGuideStep.permissions.rawValue == 5)
+        #expect(OnboardingGuideStep.allCases.last == .handAndPermissions)
+        #expect(OnboardingGuideStep.allCases.count == 5)
+        #expect(OnboardingGuideStep.handAndPermissions.rawValue == 4)
     }
 
     @Test("Grouping is driven by plugin declarations, not a hardcoded list")

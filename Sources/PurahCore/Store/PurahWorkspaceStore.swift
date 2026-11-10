@@ -25,12 +25,11 @@ public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
 }
 
 public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifiable {
-    case mountPods = 0          // Step 1: Empty Rails -> Mount Pods to Left & Right
-    case decomposeDemo = 1      // Step 2: Decompose Mode -> Composite vs Stepped Chips
-    case breathingDemo = 2      // Step 3: Dynamic Breathing -> Compact & In-Place Accordion
-    case stackDemo = 3          // Step 4: Stack Mode -> Merge Pods & Auto-Disable Decompose
-    case antiTouchCalibration = 4 // Step 5: Anti-Accidental Touch -> Dwell vs Push Force & Sensitivity
-    case permissions = 5        // Step 6: Connect what Purah can see -> one panel, grant or skip
+    case firstPod = 0           // Step 1: Mount one pod and see its drawer
+    case edgeUse = 1            // Step 2: The edge is the door; open a drawer and use it
+    case stack = 2              // Step 3: Two pods, one group
+    case decomposeDemo = 3      // Step 4: One pod, two shapes
+    case handAndPermissions = 4 // Step 5: Tune the edge to your hand and permissions
 
     public var id: Int { rawValue }
 }
@@ -40,13 +39,13 @@ public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifia
 /// opinion about which control the person should touch.
 public enum OnboardingTarget: Equatable, Sendable {
     case none
-    /// Step 1: this dock chip, and the one mount button to press.
+    /// Step 0: this dock chip, and the one mount button to press.
     case dockButton(podId: String, edge: MountEdge)
     /// These pods stay lit; every other pod on the rail dims.
     case railPods(Set<String>)
     /// The physical edge band, with the pods living on it.
     case railBand(MountEdge, pods: Set<String>)
-    /// The permissions panel in the guide dock is the only lit thing.
+    /// The final panel is the only thing the frame points at (it uses no frame).
     case guidePanel
 }
 
@@ -83,22 +82,28 @@ public final class PurahWorkspaceStore {
     public var onAlertSound: ((String) -> Void)? = nil
 
     public var isOnboardingGuideActive: Bool = false
-    public var onboardingStep: OnboardingGuideStep = .mountPods
+    public var onboardingStep: OnboardingGuideStep = .firstPod
     public var isRehearsingBreathingInSculptor: Bool = false
     @ObservationIgnored private var onboardingRehearsalTask: Task<Void, Never>? = nil
+    @ObservationIgnored private var onboardingAutoOpenTask: Task<Void, Never>? = nil
     @ObservationIgnored private var userPodsSnapshotBeforeRehearsal: [SlotPod]? = nil
     @ObservationIgnored private var userDynamicFlagBeforeRehearsal: Bool? = nil
     public var isUsingTemporaryDemoSandbox: Bool = false
     public var isInteractionSettingsTelemetryActive: Bool = false
     public var isGateTelemetryTrackingEnabled: Bool {
-        (isOnboardingGuideActive && onboardingStep == .antiTouchCalibration) || isInteractionSettingsTelemetryActive
+        (isOnboardingGuideActive && onboardingStep == .handAndPermissions) || isInteractionSettingsTelemetryActive
+    }
+    /// The guide's edge and hand steps are about the real rail, not the
+    /// sculptor strip. This is one question with one answer so every window and
+    /// hit-test reads the same thing.
+    public var isOnboardingGuideShowingAmbientRail: Bool {
+        isOnboardingGuideActive && (onboardingStep == .edgeUse || onboardingStep == .handAndPermissions)
     }
     @ObservationIgnored
     public var onDecomposedStateSync: (@MainActor (String, Bool) -> Void)? = nil
 
     public var onboardingDidToggleDecompose: Bool = false
     public var onboardingDidCreateStack: Bool = false
-    public var onboardingBreathingHoveredPods: Set<String> = []
     public var onboardingDidSwitchTriggerMode: Bool = false
     public var onboardingDidTriggerEdgeDrawer: Bool = false
 
@@ -117,19 +122,15 @@ public final class PurahWorkspaceStore {
 
     public var isCurrentOnboardingMissionCompleted: Bool {
         switch onboardingStep {
-        case .mountPods:
-            let leftCount = pods.filter { $0.edge == .left && $0.isEnabled }.count
-            let rightCount = pods.filter { $0.edge == .right && $0.isEnabled }.count
-            return leftCount >= 3 && rightCount >= 3
+        case .firstPod:
+            return pods.contains(where: \.isEnabled)
+        case .edgeUse:
+            return onboardingDidTriggerEdgeDrawer
+        case .stack:
+            return onboardingDidCreateStack || pods.contains { $0.isEnabled && isInSharedMajorPod(podId: $0.id) }
         case .decomposeDemo:
             return onboardingDidToggleDecompose
-        case .stackDemo:
-            return onboardingDidCreateStack || pods.contains { $0.isEnabled && isInSharedMajorPod(podId: $0.id) }
-        case .breathingDemo:
-            return isDynamicBreathingEnabled && onboardingBreathingHoveredPods.count >= 2
-        case .antiTouchCalibration:
-            return onboardingDidTriggerEdgeDrawer
-        case .permissions:
+        case .handAndPermissions:
             // Nothing to do is a completed mission: the step exists to offer a
             // choice, not to extract a grant.
             return true
@@ -143,31 +144,18 @@ public final class PurahWorkspaceStore {
         let enabledIds = Set(enabledPods.map(\.id))
 
         switch onboardingStep {
-        case .mountPods:
-            let leftCount = pods.filter { $0.edge == .left && $0.isEnabled }.count
-            let rightCount = pods.filter { $0.edge == .right && $0.isEnabled }.count
-            if leftCount < 3, let unmounted = pods.first(where: { !$0.isEnabled && $0.edge == .left }) {
-                return .dockButton(podId: unmounted.id, edge: .left)
-            }
-            if leftCount < 3, let unmounted = pods.first(where: { !$0.isEnabled }) {
-                return .dockButton(podId: unmounted.id, edge: .left)
-            }
-            if rightCount < 3, let unmounted = pods.first(where: { !$0.isEnabled && $0.edge == .right }) {
-                return .dockButton(podId: unmounted.id, edge: .right)
-            }
-            if rightCount < 3, let unmounted = pods.first(where: { !$0.isEnabled }) {
-                return .dockButton(podId: unmounted.id, edge: .right)
+        case .firstPod:
+            if let unmounted = pods.first(where: { !$0.isEnabled }) {
+                return .dockButton(podId: unmounted.id, edge: unmounted.defaultEdge ?? unmounted.edge)
             }
             return .railPods(enabledIds)
-        case .decomposeDemo:
-            if enabledIds.contains("vitals") {
-                return .railPods(["vitals"])
-            }
-            if let pod = enabledPods.first(where: { capabilityProvider(for: $0.id) != nil }) {
-                return .railPods([pod.id])
-            }
-            return .none
-        case .stackDemo:
+        case .edgeUse:
+            let leftCount = enabledPods.filter { $0.edge == .left }.count
+            let rightCount = enabledPods.filter { $0.edge == .right }.count
+            let edge: MountEdge = rightCount > leftCount ? .right : .left
+            let edgePods = Set(enabledPods.filter { $0.edge == edge }.map(\.id))
+            return .railBand(edge, pods: edgePods)
+        case .stack:
             let leftPods = enabledPods
                 .filter { $0.edge == .left }
                 .sorted { $0.range.start < $1.range.start }
@@ -180,34 +168,45 @@ public final class PurahWorkspaceStore {
                 return .railPods([stackPods[0].id, stackPods[1].id])
             }
             return .railPods(Set(stackPods.map(\.id)))
-        case .breathingDemo:
-            let leftPods = enabledPods
-                .filter { $0.edge == .left }
-                .sorted { $0.range.start < $1.range.start }
-            let breathingPods = leftPods.count >= 2
-                ? leftPods
-                : enabledPods
-                    .filter { $0.edge == .right }
-                    .sorted { $0.range.start < $1.range.start }
-            return .railPods(Set(breathingPods.prefix(2).map(\.id)))
-        case .antiTouchCalibration:
-            let leftCount = enabledPods.filter { $0.edge == .left }.count
-            let rightCount = enabledPods.filter { $0.edge == .right }.count
-            let edge: MountEdge = rightCount > leftCount ? .right : .left
-            let edgePods = Set(enabledPods.filter { $0.edge == edge }.map(\.id))
-            return .railBand(edge, pods: edgePods)
-        case .permissions:
+        case .decomposeDemo:
+            if let podId = onboardingDemoPodId {
+                return .railPods([podId])
+            }
+            return .none
+        case .handAndPermissions:
             return .guidePanel
         }
+    }
+
+    /// The pod the decompose lesson shows at full size. Vitals is preferred
+    /// because its four chips make the shape change obvious; any mounted
+    /// provider works when Vitals is not on a rail.
+    public var onboardingDemoPodId: String? {
+        if pods.contains(where: { $0.id == "vitals" && $0.isEnabled }) {
+            return "vitals"
+        }
+        return pods.first(where: { $0.isEnabled && capabilityProvider(for: $0.id) != nil })?.id
+    }
+
+    /// The second pod on the rail the stack lesson uses.
+    public var onboardingStackSourcePodId: String? {
+        let leftPods = pods
+            .filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        let railPods = leftPods.count >= 2
+            ? leftPods
+            : pods
+                .filter { $0.edge == .right && $0.isEnabled }
+                .sorted { $0.range.start < $1.range.start }
+        return railPods.count >= 2 ? railPods[1].id : nil
     }
 
     /// Whether a pod is part of what the guide is lighting right now.
     public func isOnboardingTargetPod(_ podId: String) -> Bool {
         switch onboardingTarget {
-        case .none, .guidePanel:
+        case .none, .guidePanel, .dockButton:
+            // A dock button is a chip in the guide dock, not a pod on a rail.
             return false
-        case .dockButton(let targetPodId, _):
-            return targetPodId == podId
         case .railPods(let ids):
             return ids.contains(podId)
         case .railBand(_, let pods):
@@ -423,7 +422,13 @@ public final class PurahWorkspaceStore {
         }
     }
 
-    public func mountPod(id: String, to edge: MountEdge) {
+    /// Mounts a pod on a rail.
+    ///
+    /// `announce` is the guide's payoff: a mount the person just made during
+    /// step 0 opens that pod's drawer once, so they can see what a pod is.
+    /// Rehearsals and per-step staging mount pods the person did not click and
+    /// must stay silent.
+    public func mountPod(id: String, to edge: MountEdge, announce: Bool = true) {
         guard let idx = pods.firstIndex(where: { $0.id == id }) else { return }
         pods[idx].edge = edge
         pods[idx].pageIndex = max(0, currentRailPage(for: edge))
@@ -434,6 +439,30 @@ public final class PurahWorkspaceStore {
             savePersistentState()
             onWindowsRebuildNeeded?()
         }
+        guard announce,
+              isOnboardingGuideActive,
+              onboardingStep == .firstPod else { return }
+        scheduleFirstPodDrawerOpen(podId: id)
+    }
+
+    /// Opens the freshly mounted pod's drawer once, long enough after the mount
+    /// that the rail has laid itself out. Cancelled by any step change,
+    /// dismissal or guide end.
+    private func scheduleFirstPodDrawerOpen(podId: String) {
+        onboardingAutoOpenTask?.cancel()
+        onboardingAutoOpenTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled,
+                  let self,
+                  self.isOnboardingGuideActive,
+                  self.onboardingStep == .firstPod else { return }
+            self.activateDrawer(podId: podId)
+        }
+    }
+
+    private func cancelOnboardingAutoOpen() {
+        onboardingAutoOpenTask?.cancel()
+        onboardingAutoOpenTask = nil
     }
 
     public func isPagePortalRevealed(for edge: MountEdge, isTop: Bool) -> Bool {
@@ -1029,20 +1058,20 @@ public final class PurahWorkspaceStore {
         pinnedDrawerItemIds.contains(id)
     }
 
-    public func activateDrawer(podId: String, itemId: String? = nil) {
+    /// Opens a drawer.
+    ///
+    /// `openedByEdge` names the only path that counts as "the person used the
+    /// edge as a door". The guide's step-0 payoff opens the same drawer
+    /// programmatically and must not complete step 1 for them.
+    public func activateDrawer(podId: String, itemId: String? = nil, openedByEdge: Bool = false) {
         DiagnosticLogger.shared.info("Store", "Drawer activated: podId=\(podId), itemId=\(itemId ?? podId)")
-        if isGateTelemetryTrackingEnabled {
+        if openedByEdge, isOnboardingGuideActive, onboardingStep == .edgeUse {
             onboardingDidTriggerEdgeDrawer = true
+        }
+        if isGateTelemetryTrackingEnabled {
             onboardingGateState = .opened
             onboardingGateProgress = 1.0
             onboardingGateCurrentValue = onboardingGateTargetValue
-        }
-        if isOnboardingGuideActive {
-            if onboardingStep == .breathingDemo {
-                onboardingBreathingHoveredPods.insert(podId)
-            } else if onboardingStep == .decomposeDemo {
-                onboardingDidToggleDecompose = true
-            }
         }
         // Opening the drawer is the acknowledgment. It used to be hover, which
         // was the same moment in almost every case (hovering the rail opens the
@@ -1118,6 +1147,7 @@ public final class PurahWorkspaceStore {
 
     public func dismissActiveDrawer() {
         DiagnosticLogger.shared.info("Store", "Active drawer dismissed")
+        cancelOnboardingAutoOpen()
         onDismissPreviewPanel?()
         activePreviewScreenFrame = nil
         activeDropdownScreenFrame = nil
@@ -4155,7 +4185,7 @@ public final class PurahWorkspaceStore {
             let leftDemoIds = Self.defaultPods().map(\.id)
             setRailPage(0, for: .left)
             for id in leftDemoIds {
-                mountPod(id: id, to: .left)
+                mountPod(id: id, to: .left, announce: false)
                 if let idx = pods.firstIndex(where: { $0.id == id }) {
                     pods[idx].pageIndex = 0
                     pods[idx].majorGroupId = nil
@@ -4169,6 +4199,7 @@ public final class PurahWorkspaceStore {
     }
 
     public func cancelOnboardingRehearsal() {
+        cancelOnboardingAutoOpen()
         onboardingRehearsalTask?.cancel()
         onboardingRehearsalTask = nil
         isRehearsingBreathingInSculptor = false
@@ -4186,7 +4217,6 @@ public final class PurahWorkspaceStore {
         isUsingTemporaryDemoSandbox = false
         onboardingDidToggleDecompose = false
         onboardingDidCreateStack = false
-        onboardingBreathingHoveredPods.removeAll()
         onboardingDidSwitchTriggerMode = false
         onboardingDidTriggerEdgeDrawer = false
         if clearAllPods {
@@ -4202,7 +4232,7 @@ public final class PurahWorkspaceStore {
             leftRailPage = 0
             rightRailPage = 0
         }
-        onboardingStep = .mountPods
+        onboardingStep = .firstPod
         isOnboardingGuideActive = true
         setLiveRailEditingMode(true)
         invalidateLayoutCache()
@@ -4211,46 +4241,36 @@ public final class PurahWorkspaceStore {
     }
 
     public func selectOnboardingStep(_ step: OnboardingGuideStep) {
+        cancelOnboardingAutoOpen()
         cancelOnboardingRehearsal()
         clearOnboardingCalloutTarget()
         onboardingStep = step
         switch step {
-        case .mountPods:
+        case .firstPod:
             isRehearsingBreathingInSculptor = false
-        case .decomposeDemo:
+            dismissActiveDrawer()
+        case .edgeUse:
             isRehearsingBreathingInSculptor = false
-            let hasDecomposable = pods.contains { $0.isEnabled && ["vitals", "scripts", "clipboard", "ai", "calendar"].contains($0.id) }
-            if !hasDecomposable {
-                mountPod(id: "vitals", to: .left)
-                splitPodFromMajorGroup(id: "vitals")
-            }
-            if pods.contains(where: { $0.id == "vitals" && $0.isEnabled }) {
-                _isVitalsDecomposed = false
-                capabilityProvider(for: "vitals")?.setDecomposed(false, store: self)
-                onDecomposedStateSync?("vitals", false)
+            dismissActiveDrawer()
+            onboardingDidTriggerEdgeDrawer = false
+            if !pods.contains(where: \.isEnabled) {
+                mountPod(id: "vitals", to: .left, announce: false)
             }
             normalizePageRanges(for: .left)
             normalizePageRanges(for: .right)
-        case .breathingDemo:
-            onboardingBreathingHoveredPods.removeAll()
-            isDynamicBreathingEnabled = true
-            for pod in pods where !pod.isEnabled {
-                let defaultEdge = pod.defaultEdge ?? pod.edge
-                mountPod(id: pod.id, to: defaultEdge)
-            }
-            normalizePageRanges(for: .left)
-            normalizePageRanges(for: .right)
-            isRehearsingBreathingInSculptor = true
-        case .stackDemo:
+        case .stack:
             isRehearsingBreathingInSculptor = false
             let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
             let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
             if leftPods.count < 2 && rightPods.count < 2 {
-                mountPod(id: "vitals", to: .left)
-                mountPod(id: "shelf", to: .left)
+                mountPod(id: "vitals", to: .left, announce: false)
+                mountPod(id: "shelf", to: .left, announce: false)
                 normalizePageRanges(for: .left)
             }
-        case .antiTouchCalibration:
+        case .decomposeDemo:
+            isRehearsingBreathingInSculptor = false
+            prepareDecomposeDemo()
+        case .handAndPermissions:
             dismissActiveDrawer()
             if edgeTriggerSensitivity == .custom || edgeTriggerSensitivity == .agile {
                 edgeTriggerSensitivity = .balanced
@@ -4260,23 +4280,6 @@ public final class PurahWorkspaceStore {
             onboardingGateProgress = 0.0
             onboardingGateCurrentValue = 0
             onboardingGateTargetValue = Int(activeInitialDwellSeconds * 1000)
-            let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
-            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
-            if leftPods.count < 2 && rightPods.count < 2 {
-                mountPod(id: "vitals", to: .left)
-                mountPod(id: "shelf", to: .left)
-                mountPod(id: "calendar", to: .right)
-                mountPod(id: "scripts", to: .right)
-                normalizePageRanges(for: .left)
-                normalizePageRanges(for: .right)
-            }
-                isRehearsingBreathingInSculptor = true
-        case .permissions:
-            // The last step asks for macOS permissions, which arrive as a sheet
-            // over whatever has focus. Retract anything open and stop the
-            // breathing rehearsal so the panel is the only thing on screen.
-            dismissActiveDrawer()
-            isRehearsingBreathingInSculptor = false
         }
         invalidateLayoutCache()
         onWindowsRebuildNeeded?()
@@ -4319,6 +4322,60 @@ public final class PurahWorkspaceStore {
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
+    }
+
+    /// Step 3 shows the shape change at full size. The pod is split out of any
+    /// stack, set composite, and held at the span its chips need — the same
+    /// span before and after the toggle, so only the shape changes.
+    private func prepareDecomposeDemo() {
+        guard let demoId = onboardingDemoPodId,
+              pods.contains(where: { $0.id == demoId && $0.isEnabled }) else { return }
+        splitPodFromMajorGroup(id: demoId)
+        onboardingDidToggleDecompose = false
+
+        // Measure the decomposed floor, then return to composite. The provider's
+        // setDecomposed(true) asks the layout for that room; the final range is
+        // pinned below so the two modes share one span.
+        setDecomposedForGuide(podId: demoId, decomposed: true)
+        ensurePodFitsDecomposedChips(podId: demoId)
+        let screenH = max(Double(availableScreenHeight(for: pods.first(where: { $0.id == demoId })?.edge ?? .left)), 600.0)
+        let needed = Double(minimumDrawerHeight(for: demoId)) / screenH
+        setDecomposedForGuide(podId: demoId, decomposed: false)
+
+        guard let idx = pods.firstIndex(where: { $0.id == demoId }) else { return }
+        let start = min(max(pods[idx].range.start, 0.02), max(0.96 - needed, 0.02))
+        updatePodRange(id: demoId, newRange: NormalizedRange(start: start, length: needed))
+        if let resolved = pods.firstIndex(where: { $0.id == demoId }),
+           pods[resolved].range.length < needed - 0.001 {
+            pods[resolved].range = NormalizedRange(
+                start: min(max(pods[resolved].range.start, 0.02), max(0.96 - needed, 0.02)),
+                length: min(needed, 0.96)
+            )
+        }
+    }
+
+    /// Sets a pod's mode without marking the decompose mission or firing a
+    /// haptic. Used by the lesson's staging; the person's own toggle still goes
+    /// through `togglePodDecomposedInSculptor`.
+    private func setDecomposedForGuide(podId: String, decomposed: Bool) {
+        switch podId {
+        case "vitals":
+            _isVitalsDecomposed = decomposed
+        case "scripts":
+            _isScriptsDecomposed = decomposed
+        case "ai":
+            _isAIDecomposed = decomposed
+        case "clipboard":
+            ScopedPluginStorage(pluginId: "clipboard", defaults: userDefaults)
+                .set(decomposed, forKey: "isDecomposed")
+        case "calendar":
+            let strategy: CalendarOverflowStrategy = decomposed ? .smartFold : .continuousStream
+            calendarOverflowStrategy = strategy
+        default:
+            break
+        }
+        capabilityProvider(for: podId)?.setDecomposed(decomposed, store: self)
+        onDecomposedStateSync?(podId, decomposed)
     }
 
     public func nextOnboardingStep() {
@@ -4373,12 +4430,12 @@ public final class PurahWorkspaceStore {
     }
 
     public func rehearseMountSamplePods() {
-        mountPod(id: "vitals", to: .left)
-        mountPod(id: "shelf", to: .left)
-        mountPod(id: "terminal", to: .left)
-        mountPod(id: "calendar", to: .right)
-        mountPod(id: "scripts", to: .right)
-        mountPod(id: "todo", to: .right)
+        mountPod(id: "vitals", to: .left, announce: false)
+        mountPod(id: "shelf", to: .left, announce: false)
+        mountPod(id: "terminal", to: .left, announce: false)
+        mountPod(id: "calendar", to: .right, announce: false)
+        mountPod(id: "scripts", to: .right, announce: false)
+        mountPod(id: "todo", to: .right, announce: false)
         normalizePageRanges(for: .left)
         normalizePageRanges(for: .right)
         _ = triggerControlHaptic(.alignment)
@@ -4388,11 +4445,11 @@ public final class PurahWorkspaceStore {
 
     public func rehearseDecomposeDemo(decomposed: Bool? = nil) {
         if !pods.contains(where: { $0.id == "scripts" && $0.isEnabled }) {
-            mountPod(id: "scripts", to: .right)
+            mountPod(id: "scripts", to: .right, announce: false)
         }
         splitPodFromMajorGroup(id: "scripts")
         if !pods.contains(where: { $0.id == "vitals" && $0.isEnabled }) {
-            mountPod(id: "vitals", to: .left)
+            mountPod(id: "vitals", to: .left, announce: false)
         }
         splitPodFromMajorGroup(id: "vitals")
 
@@ -4425,8 +4482,8 @@ public final class PurahWorkspaceStore {
         isRehearsingBreathingInSculptor = false
         var leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
         if leftPods.count < 2 {
-            mountPod(id: "vitals", to: .left)
-            mountPod(id: "shelf", to: .left)
+            mountPod(id: "vitals", to: .left, announce: false)
+            mountPod(id: "shelf", to: .left, announce: false)
             normalizePageRanges(for: .left)
             leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
         }
@@ -4454,7 +4511,7 @@ public final class PurahWorkspaceStore {
         let leftDemoIds = Self.defaultPods().map(\.id)
         setRailPage(0, for: .left)
         for id in leftDemoIds {
-            mountPod(id: id, to: .left)
+            mountPod(id: id, to: .left, announce: false)
             if let idx = pods.firstIndex(where: { $0.id == id }) {
                 pods[idx].pageIndex = 0
                 pods[idx].majorGroupId = nil
@@ -4476,7 +4533,6 @@ public final class PurahWorkspaceStore {
                     self.hoveredPodId = podId
                     self.activeDrawerPodId = podId
                     self.activeDrawerItemId = podId
-                    self.onboardingBreathingHoveredPods.insert(podId)
                     self.invalidateLayoutCache()
                 }
                 self.onWindowsRebuildNeeded?()
@@ -4489,7 +4545,6 @@ public final class PurahWorkspaceStore {
                 self.dismissActiveDrawer()
                 self.restoreUserLayoutSnapshotIfNeeded()
             }
-            self.onboardingBreathingHoveredPods = ["vitals", "shelf"]
             self.isRehearsingBreathingInSculptor = false
             self.invalidateLayoutCache()
             self.onWindowsRebuildNeeded?()

@@ -121,7 +121,9 @@ public final class ScreenEdgeCoordinator {
         self.activeScreen = screen
 
         let isLiveEditing = store.isLiveRailEditingMode
-        let isSculptingRails = isLiveEditing && !store.isRehearsingBreathingInSculptor
+        let isSculptingRails = isLiveEditing
+            && !store.isRehearsingBreathingInSculptor
+            && !store.isOnboardingGuideShowingAmbientRail
         let leftEnabled = isLiveEditing || store.pods.contains { $0.edge == .left && $0.isEnabled }
         let rightEnabled = isLiveEditing || store.pods.contains { $0.edge == .right && $0.isEnabled }
 

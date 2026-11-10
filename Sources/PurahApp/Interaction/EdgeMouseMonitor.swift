@@ -645,7 +645,8 @@ public final class EdgeMouseMonitor {
     }
 
     public func handleHardwareRawMotion(point: CGPoint? = nil, rawDeltaX: Double, now: Date = Date()) {
-        guard !isFrozen, !store.isRailsFrozen, (!store.isLiveRailEditingMode || store.isRehearsingBreathingInSculptor) else { return }
+        guard !isFrozen, !store.isRailsFrozen,
+              (!store.isLiveRailEditingMode || store.isRehearsingBreathingInSculptor || store.isOnboardingGuideShowingAmbientRail) else { return }
         guard store.edgeTriggerMode == .pushForce else { return }
         guard store.activeDrawerPodId == nil && store.activeDrawerItemId == nil else { return }
 
@@ -758,7 +759,8 @@ public final class EdgeMouseMonitor {
         now: Date = Date(),
         customVelocity: CGPoint? = nil
     ) {
-        guard !isFrozen, !store.isRailsFrozen, (!store.isLiveRailEditingMode || store.isRehearsingBreathingInSculptor) else { return }
+        guard !isFrozen, !store.isRailsFrozen,
+              (!store.isLiveRailEditingMode || store.isRehearsingBreathingInSculptor || store.isOnboardingGuideShowingAmbientRail) else { return }
         guard !isMenuTracking else { return }
 
         // A drag that ends outside this app's sight leaves `isDraggingFromDrawer` set, and the
@@ -1271,12 +1273,12 @@ public final class EdgeMouseMonitor {
             let subItemId = isSmartFoldSlot ? PurahPluginSubItem.moreItemsID(forPod: candidate.id) : (provider.subItemId(at: rawIdx, store: store) ?? candidate.id)
 
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
-                store.activateDrawer(podId: candidate.id, itemId: subItemId)
+                store.activateDrawer(podId: candidate.id, itemId: subItemId, openedByEdge: true)
                 store.triggerEdgePopHaptic(isInitialOpen: wasDocked)
             }
         } else {
             if store.activeDrawerPodId != candidate.id {
-                store.activateDrawer(podId: candidate.id)
+                store.activateDrawer(podId: candidate.id, openedByEdge: true)
                 store.triggerEdgePopHaptic(isInitialOpen: wasDocked)
             }
         }

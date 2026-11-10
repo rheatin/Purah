@@ -171,17 +171,17 @@ struct OnboardingFocusFrameTests {
             labelKey: "onboarding.callout.dragToStack"
         )
 
-        store.publishOnboardingCalloutTarget(first, owner: "dock", step: .mountPods)
+        store.publishOnboardingCalloutTarget(first, owner: "dock", step: .firstPod)
         #expect(store.onboardingCalloutTarget == first)
 
-        store.publishOnboardingCalloutTarget(second, owner: "rail", step: .mountPods)
+        store.publishOnboardingCalloutTarget(second, owner: "rail", step: .firstPod)
         #expect(store.onboardingCalloutTarget == second)
 
         // The dock's view disappearing after the handoff must not clear the rail.
-        store.publishOnboardingCalloutTarget(nil, owner: "dock", step: .mountPods)
+        store.publishOnboardingCalloutTarget(nil, owner: "dock", step: .firstPod)
         #expect(store.onboardingCalloutTarget == second)
 
-        store.publishOnboardingCalloutTarget(nil, owner: "rail", step: .mountPods)
+        store.publishOnboardingCalloutTarget(nil, owner: "rail", step: .firstPod)
         #expect(store.onboardingCalloutTarget == nil)
     }
 
@@ -197,7 +197,7 @@ struct OnboardingFocusFrameTests {
             screenRect: CGRect(x: 10, y: 10, width: 20, height: 20),
             labelKey: "onboarding.callout.clickHere"
         )
-        store.publishOnboardingCalloutTarget(target, owner: "dock", step: .mountPods)
+        store.publishOnboardingCalloutTarget(target, owner: "dock", step: .firstPod)
         #expect(store.onboardingCalloutTarget == target)
 
         store.selectOnboardingStep(.decomposeDemo)
@@ -205,15 +205,15 @@ struct OnboardingFocusFrameTests {
 
         // A view from the step just left can still deliver a late geometry
         // callback; it must not frame a control that is no longer on screen.
-        store.publishOnboardingCalloutTarget(target, owner: "dock", step: .mountPods)
+        store.publishOnboardingCalloutTarget(target, owner: "dock", step: .firstPod)
         #expect(store.onboardingCalloutTarget == nil)
 
-        store.selectOnboardingStep(.permissions)
+        store.selectOnboardingStep(.handAndPermissions)
         #expect(store.onboardingCalloutTarget == nil)
 
         // The permissions step's Next Step frame appears as soon as the step
         // opens, so that step is allowed to publish like any other.
-        store.publishOnboardingCalloutTarget(target, owner: "dock-next-step", step: .permissions)
+        store.publishOnboardingCalloutTarget(target, owner: "dock-next-step", step: .handAndPermissions)
         #expect(store.onboardingCalloutTarget == target)
     }
 }

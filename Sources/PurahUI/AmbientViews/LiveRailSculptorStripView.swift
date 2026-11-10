@@ -293,17 +293,12 @@ public struct LiveRailSculptorStripView: View {
         let pageCount = max(pages.count, 1)
         let currentPage = min(max(store.currentRailPage(for: edge), 0), pageCount - 1)
         let isExternalDropEdge = (store.externalDragTargetEdge == edge)
-        // Step 4 frames the pod that gets dragged (the second pod on the left
-        // rail); the arrow points up at the pod above it.
+        // Step 2 frames the pod that gets dragged (the second pod on the rail);
+        // the arrow points up at the pod above it.
         let onboardingStackSourceId: String? = {
             guard store.isOnboardingGuideActive,
-                  store.onboardingStep == .stackDemo,
-                  edge == .left else { return nil }
-            let ordered = layoutItems
-                .filter { $0.pod.isEnabled }
-                .sorted { $0.startY < $1.startY }
-            guard ordered.count >= 2 else { return nil }
-            return ordered[1].pod.id
+                  store.onboardingStep == .stack else { return nil }
+            return store.onboardingStackSourcePodId
         }()
 
         ZStack(alignment: .top) {
@@ -409,7 +404,7 @@ public struct LiveRailSculptorStripView: View {
                         .onboardingCalloutAnchor(
                             store: store,
                             owner: "sculptor-stack-\(item.pod.id)",
-                            step: .stackDemo,
+                            step: .stack,
                             isActive: onboardingStackSourceId == item.pod.id,
                             labelKey: "onboarding.callout.dragToStack",
                             accent: palette.podColor(for: item.pod.id, store: store),
@@ -528,7 +523,7 @@ public struct LiveRailSculptorStripView: View {
     }
 
     private var emptyRailPlaceholder: some View {
-        let isOnboardingMount = store.isOnboardingGuideActive && store.onboardingStep == .mountPods
+        let isOnboardingMount = store.isOnboardingGuideActive && store.onboardingStep == .firstPod
         return VStack(spacing: 8) {
             Image(systemName: isOnboardingMount ? "target" : "plus.rectangle.on.folder")
                 .font(.system(size: isOnboardingMount ? 24 : 20, weight: .semibold))
@@ -715,7 +710,7 @@ public struct LiveSculptMajorClusterBoxView: View {
         VStack(alignment: .leading, spacing: 2) {
             stackHeader(m)
 
-            if store.isOnboardingGuideActive && store.onboardingStep == .stackDemo && store.isCurrentOnboardingMissionCompleted {
+            if store.isOnboardingGuideActive && store.onboardingStep == .stack && store.isCurrentOnboardingMissionCompleted {
                 HStack(spacing: 3) {
                     Text("onboarding.stack.successBadge".localized)
                         .font(.system(size: 8, weight: .bold, design: .rounded))

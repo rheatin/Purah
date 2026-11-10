@@ -29,17 +29,9 @@ public struct AmbientRailStripView: View {
             let pages = store.paginatedPods(for: edge, totalHeight: Double(totalHeight))
             let pageCount = pages.count
             let currentPage = min(max(store.currentRailPage(for: edge), 0), max(pageCount - 1, 0))
-            let firstBreathingTargetId: String? = {
-                guard store.isOnboardingGuideActive,
-                      store.onboardingStep == .breathingDemo,
-                      case .railPods(let ids) = store.onboardingTarget else { return nil }
-                return layoutItems
-                    .filter { ids.contains($0.pod.id) }
-                    .min { $0.startY < $1.startY }?
-                    .pod.id
-            }()
-
-            if store.isLiveRailEditingMode && !store.isRehearsingBreathingInSculptor {
+            if store.isLiveRailEditingMode
+                && !store.isRehearsingBreathingInSculptor
+                && !store.isOnboardingGuideShowingAmbientRail {
                 LiveRailSculptorStripView(edge: edge, store: store, totalHeight: totalHeight)
             } else {
                 ZStack(alignment: edge == .left ? .topLeading : .topTrailing) {
@@ -157,14 +149,6 @@ public struct AmbientRailStripView: View {
                     }
                     .frame(width: geo.size.width, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
                     .opacity(isBreathing && store.activePod != nil && !isThisPodActive ? 0.65 : 1.0)
-                    .onboardingCalloutAnchor(
-                        store: store,
-                        owner: "ambient-pod-\(edge)-\(pod.id)",
-                        step: .breathingDemo,
-                        isActive: firstBreathingTargetId == pod.id,
-                        labelKey: "onboarding.callout.moveHere",
-                        accent: palette.podColor(for: pod.id, store: store)
-                    )
                     // Measured inside the same render transform as the pod:
                     // an anchor attached after `.offset` sees the unoffset slot
                     // (y = 0) and frames the top of the rail.
@@ -184,7 +168,7 @@ public struct AmbientRailStripView: View {
                         .onboardingCalloutAnchor(
                             store: store,
                             owner: "edge-band-\(edge)",
-                            step: .antiTouchCalibration,
+                            step: .edgeUse,
                             isActive: true,
                             labelKey: "onboarding.callout.moveHere",
                             accent: palette.primaryAccent,

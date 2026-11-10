@@ -154,7 +154,9 @@ struct LocalizationTests {
             // layout shortcut.
             // +2: the onboarding focus frame's Click here / Drag it here.
             // +1: "Hover here" for the two hover targets.
-            .traditionalChinese: 1015
+            // -11: the six-step taxonomy (breathing, gate drill, old mount and
+            // permission titles) retired with the five task steps.
+            .traditionalChinese: 1004
         ]
 
         for (language, expected) in pinnedCoverage {

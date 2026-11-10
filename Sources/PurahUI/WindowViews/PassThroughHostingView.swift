@@ -174,7 +174,9 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
     }
 
     private var isSculptStripMode: Bool {
-        store.isLiveRailEditingMode && !store.isRehearsingBreathingInSculptor
+        store.isLiveRailEditingMode
+            && !store.isRehearsingBreathingInSculptor
+            && !store.isOnboardingGuideShowingAmbientRail
     }
 
     public override func mouseMoved(with event: NSEvent) {

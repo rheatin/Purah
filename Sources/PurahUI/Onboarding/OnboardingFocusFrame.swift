@@ -212,6 +212,17 @@ public enum OnboardingFocusFrameGeometry {
     }
 }
 
+/// Who owns the one focus frame while the guide is running.
+///
+/// A completed step points at the control that advances it. The rule lives
+/// here, once, so every anchor asks the same question instead of each call
+/// site carrying its own copy.
+enum OnboardingCalloutPolicy {
+    static func mayPublish(owner: String, missionCompleted: Bool) -> Bool {
+        !missionCompleted || owner == "dock-next-step"
+    }
+}
+
 // MARK: - Focus frame + label
 
 /// The pill's measured size, shared by the app shell (window sizing) and the
@@ -436,7 +447,10 @@ private struct OnboardingCalloutAnchorModifier: ViewModifier {
         // here, once, rather than at every anchor: a call site that forgot the
         // rule would leave two frames (or a frame on a control that no longer
         // does anything).
-        guard !store.isCurrentOnboardingMissionCompleted || owner == "dock-next-step" else {
+        guard OnboardingCalloutPolicy.mayPublish(
+            owner: owner,
+            missionCompleted: store.isCurrentOnboardingMissionCompleted
+        ) else {
             store.publishOnboardingCalloutTarget(nil, owner: owner, step: step)
             return
         }
