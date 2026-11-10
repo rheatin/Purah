@@ -162,7 +162,7 @@ public struct AmbientRailStripView: View {
                         owner: "ambient-pod-\(edge)-\(pod.id)",
                         step: .breathingDemo,
                         isActive: firstBreathingTargetId == pod.id,
-                        labelKey: "onboarding.callout.clickHere",
+                        labelKey: "onboarding.callout.moveHere",
                         accent: palette.podColor(for: pod.id, store: store)
                     )
                     // Measured inside the same render transform as the pod:
@@ -186,7 +186,7 @@ public struct AmbientRailStripView: View {
                             owner: "edge-band-\(edge)",
                             step: .antiTouchCalibration,
                             isActive: true,
-                            labelKey: "onboarding.callout.clickHere",
+                            labelKey: "onboarding.callout.moveHere",
                             accent: palette.primaryAccent,
                             side: edge == .left ? .trailing : .leading
                         )

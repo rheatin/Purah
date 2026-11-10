@@ -416,6 +416,11 @@ private struct OnboardingCalloutAnchorModifier: ViewModifier {
             })
             .onChange(of: isActive) { _, _ in publish() }
             .onChange(of: labelKey) { _, _ in publish() }
+            // A mission can complete without moving anything on screen (the
+            // decompose hero is pressed, the last pod mounts). The old target
+            // must stop publishing and the nav row's Next Step must take over
+            // in that same render, so both react to the flag itself.
+            .onChange(of: store.isCurrentOnboardingMissionCompleted) { _, _ in publish() }
             .onDisappear {
                 store.publishOnboardingCalloutTarget(nil, owner: owner, step: step)
             }
@@ -427,6 +432,15 @@ private struct OnboardingCalloutAnchorModifier: ViewModifier {
     }
 
     private func publish() {
+        // A completed step points at the control that advances it. Enforced
+        // here, once, rather than at every anchor: a call site that forgot the
+        // rule would leave two frames (or a frame on a control that no longer
+        // does anything).
+        guard !store.isCurrentOnboardingMissionCompleted || owner == "dock-next-step" else {
+            store.publishOnboardingCalloutTarget(nil, owner: owner, step: step)
+            return
+        }
+
         guard isActive,
               globalRect.width > 0,
               globalRect.height > 0,

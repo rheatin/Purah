@@ -222,7 +222,7 @@ public final class PurahWorkspaceStore {
         owner: String,
         step: OnboardingGuideStep
     ) {
-        guard isOnboardingGuideActive, onboardingStep != .permissions else {
+        guard isOnboardingGuideActive else {
             onboardingCalloutTarget = nil
             onboardingCalloutOwner = nil
             return

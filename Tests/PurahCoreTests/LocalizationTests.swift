@@ -153,7 +153,8 @@ struct LocalizationTests {
             // -6: the page-demo step retired; +1: the mount step's recommended
             // layout shortcut.
             // +2: the onboarding focus frame's Click here / Drag it here.
-            .traditionalChinese: 1014
+            // +1: "Hover here" for the two hover targets.
+            .traditionalChinese: 1015
         ]
 
         for (language, expected) in pinnedCoverage {

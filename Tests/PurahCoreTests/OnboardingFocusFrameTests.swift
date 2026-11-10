@@ -185,7 +185,7 @@ struct OnboardingFocusFrameTests {
         #expect(store.onboardingCalloutTarget == nil)
     }
 
-    @Test("Step changes and the permissions step clear the callout")
+    @Test("Step changes clear the callout, and the permissions step can publish its own")
     func calloutClearedOutsideItsStep() {
         let suite = "focus_steps_\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -209,7 +209,11 @@ struct OnboardingFocusFrameTests {
         #expect(store.onboardingCalloutTarget == nil)
 
         store.selectOnboardingStep(.permissions)
-        store.publishOnboardingCalloutTarget(target, owner: "dock", step: .permissions)
         #expect(store.onboardingCalloutTarget == nil)
+
+        // The permissions step's Next Step frame appears as soon as the step
+        // opens, so that step is allowed to publish like any other.
+        store.publishOnboardingCalloutTarget(target, owner: "dock-next-step", step: .permissions)
+        #expect(store.onboardingCalloutTarget == target)
     }
 }

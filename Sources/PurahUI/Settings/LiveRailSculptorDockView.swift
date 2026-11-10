@@ -530,6 +530,17 @@ public struct LiveRailSculptorDockView: View {
                         .cornerRadius(6)
                     }
                     .buttonStyle(.tactile)
+                    // A completed step points at the control that advances it.
+                    // The one place that enforces this is the anchor modifier;
+                    // this owner is the only one allowed to publish then.
+                    .onboardingCalloutAnchor(
+                        store: store,
+                        owner: "dock-next-step",
+                        step: store.onboardingStep,
+                        isActive: store.isCurrentOnboardingMissionCompleted,
+                        labelKey: "onboarding.callout.clickHere",
+                        side: .leading
+                    )
                 } else {
                     Button {
                         store.triggerControlHaptic(.levelChange)
@@ -570,6 +581,14 @@ public struct LiveRailSculptorDockView: View {
                         .cornerRadius(6)
                     }
                     .buttonStyle(.tactile)
+                    .onboardingCalloutAnchor(
+                        store: store,
+                        owner: "dock-next-step",
+                        step: store.onboardingStep,
+                        isActive: store.isCurrentOnboardingMissionCompleted,
+                        labelKey: "onboarding.callout.clickHere",
+                        side: .leading
+                    )
                 }
             }
         }
