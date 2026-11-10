@@ -170,7 +170,7 @@ public struct SteppedRailContainerView: View {
             edge: edge,
             railWidth: CGFloat(store.railBarWidth),
             slotHeight: itemH,
-            drawerWidth: store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0, podId: pod.id),
+            drawerWidth: steppedCardWidth(for: subItem),
             isExpanded: isActive,
             isPinned: isPinned,
             accentColor: subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor,
@@ -204,6 +204,17 @@ public struct SteppedRailContainerView: View {
             notificationSound: context.notificationSound,
             playSound: context.playSound
         )
+    }
+
+    /// A stepped chip may declare a narrower card than the composite drawer.
+    /// The drawn card and its click-through frame must come from the same
+    /// number, or the extra width is either unclickable or claims desktop it
+    /// does not cover.
+    private func steppedCardWidth(for subItem: PurahPluginSubItem) -> CGFloat {
+        if let declared = store.capabilityProvider(for: pod.id)?.steppedDrawerWidth(store: store) {
+            return declared
+        }
+        return store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0, podId: pod.id)
     }
 
     @ViewBuilder
@@ -320,8 +331,12 @@ public struct SteppedRailContainerView: View {
         accessory: AnyView?,
         content: AnyView?
     ) -> some View {
-        let effectiveW = store.effectiveDrawerWidth(for: subItem.title, baseWidth: 280.0, podId: pod.id)
+        let effectiveW = steppedCardWidth(for: subItem)
         let rowH = PurahSteppedCardMetrics.rowHeight(cardHeight: cardH)
+        let hasBody = content != nil
+        let showsRowFill = subItem.showsRowFill
+            && subItem.gaugeStyle == .solid
+            && (subItem.gaugeRatio ?? 0) > 0
 
         return VStack(alignment: .leading, spacing: PurahSteppedCardMetrics.rowGap) {
             HStack(alignment: .center, spacing: 8) {
@@ -361,11 +376,42 @@ public struct SteppedRailContainerView: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        // A row-fill chip reads its row as a band of the pod's card: at the
+        // card's top edge when a body follows it, centred when the row is the
+        // whole card. Other chips keep the block-centred card they always had.
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity,
+            alignment: subItem.showsRowFill ? (hasBody ? .topLeading : .leading) : .leading
+        )
         .padding(.leading, edge == .left ? 12 : 18)
         .padding(.trailing, edge == .left ? 18 : 12)
         .padding(.vertical, PurahSteppedCardMetrics.verticalPadding)
         .frame(width: effectiveW, height: cardH, alignment: edge == .left ? .leading : .trailing)
+        .background {
+            if showsRowFill, let ratio = subItem.gaugeRatio {
+                GeometryReader { geo in
+                    let fillWidth = max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 0)
+                    PurahDrawerShape.edgeFlush(edge: edge, radius: 2)
+                    .fill(tintColor.opacity(subItem.state == .alerting ? 0.22 : 0.12))
+                    .frame(
+                        width: fillWidth,
+                        // A row with no body behind it *is* the card, so the
+                        // ratio band runs edge to edge instead of leaving a
+                        // dead strip below the row.
+                        height: hasBody
+                            ? rowH + PurahSteppedCardMetrics.verticalPadding * 2
+                            : cardH
+                    )
+                    .frame(
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: edge == .right ? .topTrailing : .topLeading
+                    )
+                }
+                .allowsHitTesting(false)
+            }
+        }
         .liquidDrawerBackground(shape: drawerShape, accentColor: tintColor)
         .contextMenu {
             let subCtx = makeSubItemContext(for: subItem, itemH: cardH, isActive: true, isPinned: isPinned)
@@ -401,13 +447,87 @@ public struct SteppedRailContainerView: View {
     /// The chip's single row. A chip has no header — this row *is* the card, and
     /// every dimension in it scales with the card so a 40pt chip and a 120pt
     /// chip read as the same row rather than a small one with a dead band.
+    @ViewBuilder
     private func steppedRow(
         subItem: PurahPluginSubItem,
         scale: CGFloat,
         rowH: CGFloat,
         tintColor: Color
     ) -> some View {
+        if subItem.showsRowFill, subItem.gaugeStyle == .solid, subItem.gaugeRatio != nil {
+            gaugeRow(subItem: subItem, rowH: rowH, tintColor: tintColor)
+        } else {
+            standardSteppedRow(
+                subItem: subItem,
+                scale: scale,
+                rowH: rowH,
+                tintColor: tintColor
+            )
+        }
+    }
+
+    /// A gauge chip's row is a row of the pod's own card: a dot, the metric's
+    /// name, its live value, and nothing else. The ratio is not drawn here —
+    /// it is the row's background, laid down by `hostedSteppedCard`, so a 30%
+    /// and a 90% row differ by the width of that band and not by a second
+    /// hairline gauge competing with the type.
+    private func gaugeRow(
+        subItem: PurahPluginSubItem,
+        rowH: CGFloat,
+        tintColor: Color
+    ) -> some View {
+        HStack(alignment: .center, spacing: 6) {
+            Circle()
+                .fill(tintColor)
+                .frame(width: 6, height: 6)
+
+            VStack(alignment: .leading, spacing: 1) {
+                // The five metric names are short by design; the name keeps
+                // its width and the value gives way, never the other way
+                // round (a "DI…" chip says nothing).
+                Text(subItem.title)
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                if let subtitle = subItem.subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 8.5, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.85))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .layoutPriority(2)
+
+            Spacer(minLength: 6)
+
+            if let value = subItem.gaugeValue {
+                Text(value)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundColor(tintColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
+            }
+        }
+        .frame(height: rowH)
+        .layoutPriority(1)
+    }
+
+    private func standardSteppedRow(
+        subItem: PurahPluginSubItem,
+        scale: CGFloat,
+        rowH: CGFloat,
+        tintColor: Color
+    ) -> some View {
         let iconSize = min(26.0 * scale, rowH)
+        let titleSize = 13 * scale
+        let subtitleSize = 11 * scale
+        let badgeSize = 8.5 * scale
 
         return HStack(spacing: 6 * scale) {
             RoundedRectangle(cornerRadius: 8 * scale, style: .continuous)
@@ -422,7 +542,7 @@ public struct SteppedRailContainerView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 4 * scale) {
                     Text(subItem.title)
-                        .font(.system(size: 13 * scale, weight: .semibold, design: .rounded))
+                        .font(.system(size: titleSize, weight: .semibold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -430,7 +550,11 @@ public struct SteppedRailContainerView: View {
 
                     if let badge = subItem.badge {
                         Text(badge)
-                            .font(.system(size: 8.5 * scale, weight: .heavy, design: .rounded))
+                            .font(.system(
+                                size: badgeSize,
+                                weight: .heavy,
+                                design: .rounded
+                            ))
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 4 * scale)
@@ -445,7 +569,7 @@ public struct SteppedRailContainerView: View {
                 if let subtitle = subItem.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(palette.fontMono)
-                        .font(.system(size: 11 * scale))
+                        .font(.system(size: subtitleSize))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -546,7 +670,14 @@ public struct SteppedRailContainerView: View {
     @ViewBuilder
     private func subItemIndicatorBar(subItem: PurahPluginSubItem, itemH: CGFloat, tintColor: Color) -> some View {
         let barW = CGFloat(store.railBarWidth)
-        let fill = subItem.gaugeStyle == .solid ? subItem.gaugeRatio : nil
+        let isGauge = subItem.gaugeStyle == .solid
+        let fill = isGauge ? subItem.gaugeRatio : nil
+        // A gauge needs a visible empty half: with the track painted in the
+        // same tint as the fill, 30% and 90% looked identical. An alerting chip
+        // keeps a full-tint track so the whole bar still reads as alarmed.
+        let trackColor = isGauge && subItem.state != .alerting
+            ? tintColor.opacity(0.20)
+            : baseFillColor(for: subItem.state, tintColor: tintColor)
         let alertGlowEnabled = subItem.state == .alerting
             && store.isAlertChannelEnabled(.railEffect, forPodId: pod.id)
             && store.resolvedAlertStyle(declared: plugin.alertStyle(store: store), podId: pod.id) != .off
@@ -558,7 +689,8 @@ public struct SteppedRailContainerView: View {
                 } ?? [],
                 barWidth: barW,
                 height: itemH,
-                trackColor: baseFillColor(for: subItem.state, tintColor: tintColor)
+                trackColor: trackColor,
+                minimumVisibleFill: isGauge ? 3 : 4
             )
             // The chip's glow follows its activity state, not the metric level,
             // so it stays on the bar rather than on the filled channel.
@@ -685,3 +817,4 @@ public struct SteppedRailContainerView: View {
         PurahDrawerShape.stepped(edge: edge)
     }
 }
+

@@ -33,9 +33,60 @@ public struct MusicDrawerView: View {
     }
 
     public var body: some View {
+        Group {
+            if hasKnownTrack {
+                playerBody
+            } else {
+                notPlayingView
+            }
+        }
+        .onAppear {
+            state.mount(store: store)
+        }
+    }
+
+    private var hasKnownTrack: Bool {
+        !store._musicTrack.title.isEmpty || !state.track.title.isEmpty
+    }
+
+    /// The drawer and the rail tell the same truth: no track means there is
+    /// nothing to pause, so the transport is replaced by a door to the player.
+    private var notPlayingView: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "music.note.list")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundColor(musicColor.opacity(0.85))
+
+            Text("music.notPlaying".localized)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary)
+
+            Button {
+                if let url = URL(string: "music://") {
+                    NSWorkspace.shared.open(url)
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("music.openPlayer".localized)
+                        .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 5)
+                .background(musicColor)
+                .cornerRadius(6)
+            }
+            .buttonStyle(.tactile)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var playerBody: some View {
         let isPlaying = state.isPlaying
 
-        TimelineView(.periodic(from: .now, by: (isPlaying && !reduceMotion) ? 0.5 : (isPlaying ? 1.0 : 60.0))) { _ in
+        return TimelineView(.periodic(from: .now, by: (isPlaying && !reduceMotion) ? 0.5 : (isPlaying ? 1.0 : 60.0))) { _ in
             let liveCurrentSec = state.track.calculatedCurrentTime
             let liveProgress = state.track.calculatedProgress
 
@@ -61,9 +112,6 @@ public struct MusicDrawerView: View {
                     )
                 )
             }
-        }
-        .onAppear {
-            state.mount(store: store)
         }
     }
 

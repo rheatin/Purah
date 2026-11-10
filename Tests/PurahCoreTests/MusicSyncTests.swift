@@ -45,6 +45,27 @@ struct MusicSyncTests {
         #expect(store._musicTrack.isPlaying != originalState)
     }
 
+    @Test("togglePlayPause without a bound store never fakes playback")
+    func testToggleWithoutStoreDoesNotSimulate() {
+        let suiteName = "test_music_no_store_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = MusicPluginState(
+            storage: ScopedPluginStorage(pluginId: "music", defaults: defaults)
+        )
+        // The no-track path is keyed on the title, so start from a blank one
+        // rather than the state's sample/demo fallback.
+        state.track = MusicTrackInfo(title: "", artist: "", isPlaying: false, durationSeconds: 0)
+        #expect(state.track.title.isEmpty)
+        #expect(state.track.isPlaying == false)
+
+        state.togglePlayPause()
+
+        #expect(state.track.isPlaying == false)
+        #expect(state.isPlaying == false)
+    }
+
     @Test("MusicTrackInfo supports local lyrics property and artwork caching")
     func testMusicTrackLyricsAndArtwork() {
         var track = MusicTrackInfo(

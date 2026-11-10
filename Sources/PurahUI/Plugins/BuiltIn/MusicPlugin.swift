@@ -18,17 +18,20 @@ public struct MusicRailBarContainerView: View {
 
     public var body: some View {
         let storeTrack = store._musicTrack
-        let isPlaying = storeTrack.isPlaying || state.isPlaying || (SystemAudioLiveMonitor.shared.currentLevel > 0.008)
         let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
+        let hasTrack = !liveTrack.title.isEmpty
+        // No track, no transport: a dormant amp is not a play button.
+        let isPlaying = hasTrack
+            && (storeTrack.isPlaying || state.isPlaying || (SystemAudioLiveMonitor.shared.currentLevel > 0.008))
 
         WaveMeterAmbientView(
             style: state.railStyle,
             subStyle: state.dynamicSubStyle,
             track: liveTrack,
             progress: liveTrack.calculatedProgress,
-            samples: liveTrack.waveformSamples,
+            samples: hasTrack ? liveTrack.waveformSamples : [],
             isPlaying: isPlaying,
-            isAnimated: state.isWaveformAnimationEnabled,
+            isAnimated: hasTrack && state.isWaveformAnimationEnabled,
             height: slotHeight,
             barWidth: railWidth
         )
