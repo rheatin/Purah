@@ -124,12 +124,18 @@ struct CalendarMergedOverviewTests {
 
     @Test("Regular chip activation keeps the chip-slot hit frame")
     func testRegularChipFrameStaysSlotSized() throws {
-        let (store, _, state) = makeStore()
+        let (store, plugin, _) = makeStore()
 
-        // `try #require` rather than `!`: if the fixture ever stops containing
-        // an upcoming event, this records a readable failure instead of
-        // trapping the whole test process.
-        let regularID = try #require(state.events.first { $0.endTime > Date() }).id
+        // Ask the plugin which chip it actually draws first, instead of
+        // guessing from the fixture's events: `onMount` syncs and the chip
+        // list can be built from the synced set, so an event id from our own
+        // fixture may not be on the rail at all — and an unknown id correctly
+        // falls back to the whole-pod frame, which is what made this test
+        // depend on the order the sync happened to finish in.
+        let regularID = try #require(plugin.subItemId(at: 0, store: store),
+                                     "The calendar pod must draw at least one chip")
+        #expect(!PurahPluginSubItem.isMoreItemsID(regularID),
+                "Slot 0 is a regular chip, not the +N overview")
         store.activateDrawer(podId: "calendar", itemId: regularID)
 
         let edge = store.pods.first(where: { $0.id == "calendar" })?.edge ?? .right
