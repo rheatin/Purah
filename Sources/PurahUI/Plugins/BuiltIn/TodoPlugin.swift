@@ -142,12 +142,18 @@ public struct TodoPlugin: PurahPodPlugin {
     }
 
     public var isDecomposed: Bool {
-        true
+        state.storage.string(forKey: "isDecomposed") != nil
+            ? state.storage.bool(forKey: "isDecomposed")
+            : false
     }
 
     public func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         if store.isInSharedMajorPod(podId: manifest.id) { return false }
-        return true
+        return isDecomposed
+    }
+
+    public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        state.storage.set(decomposed, forKey: "isDecomposed")
     }
 
     public var subItemCount: Int {

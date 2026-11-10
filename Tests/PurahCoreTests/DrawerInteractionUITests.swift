@@ -746,7 +746,11 @@ struct DrawerInteractionUITests {
     func testHardwareVitalsPhysicalCardHeight() {
         let store = PurahWorkspaceStore()
         let vitalsMinH = store.minimumDrawerHeight(for: "vitals")
-        #expect(vitalsMinH >= 300.0, "Hardware Vitals minimum drawer height must be at least 300pt to prevent scroll cutoff")
+        // Composite is the fresh-install mode: 140pt is the compact floor and
+        // the process list scrolls inside it. The expanded drawer still opens
+        // at 300pt so the full list is visible without scrolling.
+        #expect(vitalsMinH >= 140.0, "Hardware Vitals composite floor must leave room for the chart and list")
+        #expect(store.preferredDrawerHeight(for: "vitals") >= 300.0, "The expanded Vitals drawer must cover the process list")
     }
 
     @Test("Decomposed vitals sub-bar height guarantees at least 56pt per metric")

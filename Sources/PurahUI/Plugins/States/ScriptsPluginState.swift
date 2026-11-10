@@ -41,7 +41,7 @@ public final class ScriptsPluginState: Sendable {
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
         } else {
-            self.isDecomposed = true
+            self.isDecomposed = false
         }
         self.enabledActionIds = storage.codable(forKey: "enabledActionIds", as: [String].self) ?? []
         let savedSlotLimit = storage.int(forKey: "maxRailActions")
@@ -61,7 +61,7 @@ public final class ScriptsPluginState: Sendable {
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
         } else {
-            self.isDecomposed = true
+            self.isDecomposed = false
         }
         if let ids = storage.codable(forKey: "enabledActionIds", as: [String].self) {
             self.enabledActionIds = ids

@@ -17,20 +17,23 @@ struct CalendarOverflowStrategyTests {
         #expect(!CalendarOverflowStrategy.smartFold.subtitle.isEmpty)
     }
 
-    @Test("CalendarPluginState initializes with smartFold and persists strategy change")
+    @Test("CalendarPluginState initializes composite and persists strategy change")
     @MainActor
     func testCalendarPluginStateStrategyPersistence() {
         let storage = ScopedPluginStorage(pluginId: "calendar_test_\(UUID().uuidString)")
         let state = CalendarPluginState(storage: storage)
-        #expect(state.overflowStrategy == .smartFold)
+        #expect(state.overflowStrategy == .continuousStream)
+        #expect(state.isDecomposed == false)
         #expect(state.maxRailEvents == 4)
 
-        state.overflowStrategy = .continuousStream
+        state.overflowStrategy = .smartFold
+        state.isDecomposed = true
         state.maxRailEvents = 5
         state.save()
 
         let reloaded = CalendarPluginState(storage: storage)
-        #expect(reloaded.overflowStrategy == .continuousStream)
+        #expect(reloaded.overflowStrategy == .smartFold)
+        #expect(reloaded.isDecomposed == true)
         #expect(reloaded.maxRailEvents == 5)
     }
 
@@ -56,6 +59,7 @@ struct CalendarOverflowStrategyTests {
     func testCalendarPluginSmartFoldSteppedItems() {
         let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         state.overflowStrategy = .smartFold
+        state.isDecomposed = true
         state.maxRailEvents = 3
 
         let now = Date()
@@ -142,7 +146,7 @@ struct CalendarOverflowStrategyTests {
         let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         let store = PurahWorkspaceStore()
         let view = CalendarPluginSettingsView(state: state, store: store)
-        #expect(view.state.overflowStrategy == .smartFold)
+        #expect(view.state.overflowStrategy == .continuousStream)
     }
 
     @Test("SteppedRailContainerView height calculation guarantees height does not exceed totalHeight")
@@ -240,6 +244,7 @@ struct CalendarOverflowStrategyTests {
     func testCalendarEventStatusBadges() {
         let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_isolated_\(UUID().uuidString)"))
         state.overflowStrategy = .smartFold
+        state.isDecomposed = true
         state.maxRailEvents = 5
         state.alertLeadTime = .fifteenMinutes
 

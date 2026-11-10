@@ -116,6 +116,9 @@ struct ClipboardPluginTests {
         #expect(plugin.supportedDrawerModes.contains(.composite))
 
         plugin.onMount(store: store)
+        // This test covers the stepped presentation; a fresh install is
+        // composite now, so opt in explicitly.
+        plugin.state.isDecomposed = true
         #expect(plugin.isDecomposed(store: store) == true)
 
         let dummyPod = SlotPod(id: "clipboard", name: "Clipboard", systemIcon: "doc.on.clipboard.fill", edge: .left, range: .init(start: 0.1, length: 0.2), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30.0)
@@ -180,6 +183,7 @@ struct ClipboardPluginTests {
         let store = PurahWorkspaceStore()
         let plugin = ClipboardPlugin()
         plugin.onMount(store: store)
+        plugin.state.isDecomposed = true
 
         // Seed with test clipboard items
         let item1 = ClipboardItem(type: .color(hex: "#00E5A3", red: 0, green: 0.9, blue: 0.6, alpha: 1.0))

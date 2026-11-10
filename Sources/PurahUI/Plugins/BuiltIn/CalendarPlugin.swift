@@ -103,9 +103,11 @@ public struct CalendarPlugin: PurahPodPlugin {
         context.requestExpand()
     }
 
-    public var supportedDrawerModes: Set<PurahDrawerMode> {
-        state.isDecomposed ? [.composite, .stepped] : [.composite]
-    }
+    /// The capability is always declared — `isDecomposed` is the current mode,
+    /// not whether chips exist. Returning only `.composite` while composite
+    /// would hide the sculptor/settings toggle, trapping a fresh install in the
+    /// mode it started in.
+    public var supportedDrawerModes: Set<PurahDrawerMode> { [.composite, .stepped] }
 
     public var decomposedPolicy: PurahDecomposedPolicy {
         if !state.isDecomposed {

@@ -751,8 +751,9 @@ struct PluginArchitectureTests {
         let newTrack = MusicTrackInfo(title: "Song A", artist: "Artist B", isPlaying: false, durationSeconds: 200.0)
         musicState.update(from: newTrack)
         #expect(musicState.track.title == "Song A")
+        // No bound store means no player: toggling must not fake playback.
         musicState.togglePlayPause()
-        #expect(musicState.track.isPlaying == true)
+        #expect(musicState.track.isPlaying == false)
         musicState.seek(to: 0.5)
         #expect(musicState.track.playbackProgress == 0.5)
 
@@ -1537,8 +1538,8 @@ struct PluginArchitectureTests {
         let storage = ScopedPluginStorage(pluginId: "test_vitals_range_\(UUID().uuidString)")
         let state = VitalsPluginState(storage: storage)
 
-        // A fresh state lands on the ceiling.
-        #expect(state.maxRailMetrics == 4)
+        // A fresh state lands on the product default of three.
+        #expect(state.maxRailMetrics == 3)
 
         // Out-of-range writes are clamped in both directions.
         state.setMaxRailMetrics(9)
@@ -1555,6 +1556,27 @@ struct PluginArchitectureTests {
         #expect(VitalsPluginState(storage: legacyStorage).maxRailMetrics == 4)
     }
 
+    @Test("Fresh built-in states start composite; Vitals starts CPU/RAM/GPU on a three-chip rail")
+    func testFreshBuiltInCompositeDefaults() {
+        let vitals = VitalsPluginState(storage: ScopedPluginStorage(pluginId: "defaults_vitals_\(UUID().uuidString)"))
+        #expect(vitals.isDecomposed == false)
+        #expect(vitals.enabledMetrics == [.cpu, .ram, .gpu])
+        #expect(vitals.maxRailMetrics == 3)
+
+        let scripts = ScriptsPluginState(storage: ScopedPluginStorage(pluginId: "defaults_scripts_\(UUID().uuidString)"))
+        #expect(scripts.isDecomposed == false)
+
+        let clipboard = ClipboardPluginState(storage: ScopedPluginStorage(pluginId: "defaults_clipboard_\(UUID().uuidString)"))
+        #expect(clipboard.isDecomposed == false)
+
+        let calendar = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "defaults_calendar_\(UUID().uuidString)"))
+        #expect(calendar.isDecomposed == false)
+        #expect(calendar.overflowStrategy == .continuousStream)
+
+        let todo = TodoPlugin(state: TodoPluginState(storage: ScopedPluginStorage(pluginId: "defaults_todo_\(UUID().uuidString)")))
+        #expect(todo.isDecomposed == false)
+    }
+
     @Test("A full vitals rail can still admit one more metric")
     func testVitalsAdmissionIsNotSelfBlocking() {
         // Regression: `decomposedPolicy.maxRailItems` used to be
@@ -1565,6 +1587,7 @@ struct PluginArchitectureTests {
         // was raised.
         let storage = ScopedPluginStorage(pluginId: "test_vitals_admit_\(UUID().uuidString)")
         let state = VitalsPluginState(storage: storage)
+        state.isDecomposed = true
         state.setMaxRailMetrics(4)
         state.enabledMetrics = [.network, .ram]
         state.save()

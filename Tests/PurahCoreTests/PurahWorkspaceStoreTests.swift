@@ -98,6 +98,10 @@ struct PurahWorkspaceStoreTests {
         // to exceed 1.0 — so paging never enters the picture. Paging is what
         // happens once compression would fall below the ergonomic floor.
         store.isDynamicBreathingEnabled = false
+        // The default layout keeps three pods on the right rail, which fits at
+        // 681pt. Add Music back so this fixture still describes a rail that is
+        // genuinely too short for what it carries.
+        store.togglePodEnabled(id: "music")
         store.overriddenScreenHeight = 681.0
         store.autoLayoutAll()
 
@@ -526,6 +530,9 @@ struct PurahWorkspaceStoreTests {
 
         // Keep only 4 pods enabled (e.g. calendar, music, vitals, shelf)
         let keepIds: Set<String> = ["calendar", "music", "vitals", "shelf"]
+        for pod in store.pods where keepIds.contains(pod.id) && !pod.isEnabled {
+            store.togglePodEnabled(id: pod.id)
+        }
         for pod in store.pods {
             if !keepIds.contains(pod.id) && pod.isEnabled {
                 store.togglePodEnabled(id: pod.id)
@@ -652,21 +659,130 @@ struct PurahWorkspaceStoreTests {
         #expect(store.onboardingGateCurrentValue == 0)
     }
 
-    @Test("Onboarding Step 2 and Step 6 localized strings exist across EN, zh-Hans, zh-Hant")
+    @Test("Onboarding target follows the mission")
+    func onboardingTargetFollowsTheMission() throws {
+        let suiteName = "test_onboarding_target_\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        store.startInteractiveOnboarding(clearAllPods: true)
+
+        // 1. Nothing mounted: the guide walks the left rail to three first.
+        let firstLeft = try #require(store.pods.first(where: { !$0.isEnabled && $0.edge == .left }))
+        #expect(store.onboardingTarget == .dockButton(podId: firstLeft.id, edge: .left))
+        store.mountPod(id: firstLeft.id, to: .left)
+
+        // 2. One left pod is not enough; it points at the next left pod.
+        let secondLeft = try #require(store.pods.first(where: { !$0.isEnabled && $0.edge == .left }))
+        #expect(store.onboardingTarget == .dockButton(podId: secondLeft.id, edge: .left))
+        store.mountPod(id: secondLeft.id, to: .left)
+
+        let thirdLeft = try #require(store.pods.first(where: { !$0.isEnabled && $0.edge == .left }))
+        #expect(store.onboardingTarget == .dockButton(podId: thirdLeft.id, edge: .left))
+        store.mountPod(id: thirdLeft.id, to: .left)
+
+        // 3. The left rail is full, so the same idea flips to the right.
+        let firstRight = try #require(store.pods.first(where: { !$0.isEnabled && $0.edge == .right }))
+        #expect(store.onboardingTarget == .dockButton(podId: firstRight.id, edge: .right))
+        // A dockButton target is a chip in the dock, not a pod on the rail.
+        #expect(store.isOnboardingTargetPod(firstLeft.id) == false)
+
+        // 4. Three on each rail: every enabled pod is lit.
+        store.mountPod(id: firstRight.id, to: .right)
+        let secondRight = try #require(store.pods.first(where: { !$0.isEnabled && $0.edge == .right }))
+        store.mountPod(id: secondRight.id, to: .right)
+        let thirdRight = try #require(store.pods.first(where: { !$0.isEnabled && $0.edge == .right }))
+        store.mountPod(id: thirdRight.id, to: .right)
+        let enabledAfterMount = Set(store.pods.filter(\.isEnabled).map(\.id))
+        #expect(enabledAfterMount.count == 6)
+        #expect(store.onboardingTarget == .railPods(enabledAfterMount))
+
+        // 5. The decompose demo points at exactly one pod.
+        store.selectOnboardingStep(.decomposeDemo)
+        guard case .railPods(let decomposeTargets) = store.onboardingTarget else {
+            Issue.record("Expected a railPods target on the decompose step")
+            return
+        }
+        #expect(decomposeTargets.count == 1)
+
+        // 6. The anti-touch step points at the busier edge band.
+        store.selectOnboardingStep(.antiTouchCalibration)
+        guard case .railBand(let bandEdge, let bandPods) = store.onboardingTarget else {
+            Issue.record("Expected a railBand target on the anti-touch step")
+            return
+        }
+        let leftPods = Set(store.pods.filter { $0.edge == .left && $0.isEnabled }.map(\.id))
+        let rightPods = Set(store.pods.filter { $0.edge == .right && $0.isEnabled }.map(\.id))
+        let expectedEdge: MountEdge = rightPods.count > leftPods.count ? .right : .left
+        #expect(bandEdge == expectedEdge)
+        #expect(bandPods == (expectedEdge == .left ? leftPods : rightPods))
+
+        // 7. Permissions lights the panel, not the rail.
+        store.selectOnboardingStep(.permissions)
+        #expect(store.onboardingTarget == .guidePanel)
+        for pod in store.pods {
+            #expect(store.isOnboardingTargetPod(pod.id) == false)
+        }
+
+        // 8. Leaving the guide clears the spotlight.
+        store.finishOnboarding()
+        #expect(store.onboardingTarget == .none)
+    }
+
+    @Test("Onboarding decompose and edge localized strings exist across EN, zh-Hans, zh-Hant")
     func testOnboardingLocalizedStrings() {
         let requiredKeys = [
-            "onboarding.step2.arrowPrompt",
-            "onboarding.step2.heroButton.toChips",
-            "onboarding.step2.heroButton.toBar",
-            "onboarding.step6.gate.title",
-            "onboarding.step6.gate.idle",
-            "onboarding.step6.gate.dwelling",
-            "onboarding.step6.gate.pushing",
-            "onboarding.step6.gate.suppressedFling",
-            "onboarding.step6.gate.opened"
+            "onboarding.decompose.arrowPrompt",
+            "onboarding.decompose.heroButton.toChips",
+            "onboarding.decompose.heroButton.toBar",
+            "onboarding.edge.gate.title",
+            "onboarding.edge.gate.idle",
+            "onboarding.edge.gate.dwelling",
+            "onboarding.edge.gate.pushing",
+            "onboarding.edge.gate.suppressedFling",
+            "onboarding.edge.gate.opened"
         ]
         for key in requiredKeys {
             #expect(!key.localized.isEmpty && key.localized != key, "Missing localization for \(key)")
         }
+    }
+
+    @Test("Entering the breathing step mounts every pod without ending the guide")
+    func breathingStepEnablesEveryPod() {
+        let suiteName = "test_onboarding_breathing_\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        store.startInteractiveOnboarding(clearAllPods: true)
+        #expect(store.pods.allSatisfy { !$0.isEnabled })
+
+        store.selectOnboardingStep(.breathingDemo)
+
+        #expect(store.isOnboardingGuideActive == true)
+        #expect(store.isDynamicBreathingEnabled == true)
+        #expect(store.isRehearsingBreathingInSculptor == true)
+        #expect(store.pods.allSatisfy { $0.isEnabled })
+    }
+
+    @Test("Apply Recommended Layout mounts six pods and keeps the guide open")
+    func applyRecommendedLayoutKeepsGuideOpen() {
+        let suiteName = "test_onboarding_recommended_\(UUID().uuidString)"
+        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
+        store.startInteractiveOnboarding(clearAllPods: true)
+
+        store.applyRecommendedLayout()
+
+        let enabled = store.pods.filter(\.isEnabled)
+        #expect(enabled.count == 6)
+        #expect(enabled.filter { $0.edge == .left }.count == 3)
+        #expect(enabled.filter { $0.edge == .right }.count == 3)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+        #expect(store.isOnboardingGuideActive == true)
+        #expect(store.onboardingStep == .mountPods)
     }
 }

@@ -279,6 +279,7 @@ struct PluginPolishBatch2Tests {
         }
         let calState = calPlugin.state
         calState.overflowStrategy = .smartFold
+        calState.isDecomposed = true
         calState.maxRailEvents = 2
         store.registerCapabilityProvider(calPlugin)
         store.calendarOverflowStrategy = .smartFold

@@ -29,6 +29,15 @@ public struct AmbientRailStripView: View {
             let pages = store.paginatedPods(for: edge, totalHeight: Double(totalHeight))
             let pageCount = pages.count
             let currentPage = min(max(store.currentRailPage(for: edge), 0), max(pageCount - 1, 0))
+            let firstBreathingTargetId: String? = {
+                guard store.isOnboardingGuideActive,
+                      store.onboardingStep == .breathingDemo,
+                      case .railPods(let ids) = store.onboardingTarget else { return nil }
+                return layoutItems
+                    .filter { ids.contains($0.pod.id) }
+                    .min { $0.startY < $1.startY }?
+                    .pod.id
+            }()
 
             if store.isLiveRailEditingMode && !store.isRehearsingBreathingInSculptor {
                 LiveRailSculptorStripView(edge: edge, store: store, totalHeight: totalHeight)
@@ -148,11 +157,40 @@ public struct AmbientRailStripView: View {
                     }
                     .frame(width: geo.size.width, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
                     .opacity(isBreathing && store.activePod != nil && !isThisPodActive ? 0.65 : 1.0)
+                    .onboardingCalloutAnchor(
+                        store: store,
+                        owner: "ambient-pod-\(edge)-\(pod.id)",
+                        step: .breathingDemo,
+                        isActive: firstBreathingTargetId == pod.id,
+                        labelKey: "onboarding.callout.clickHere",
+                        accent: palette.podColor(for: pod.id, store: store)
+                    )
+                    // Measured inside the same render transform as the pod:
+                    // an anchor attached after `.offset` sees the unoffset slot
+                    // (y = 0) and frames the top of the rail.
                     .offset(y: startY)
                     .zIndex(shouldShowDrawer ? 120 : (isThisPodActive ? 100 : 1))
                     .animation(PurahMotionPolicy.railReflow, value: spanH)
                     .animation(PurahMotionPolicy.railReflow, value: startY)
                     .animation(.spring(response: 0.26, dampingFraction: 0.78), value: isThisPodActive)
+                }
+
+                if showsOnboardingEdgeBand {
+                    Rectangle()
+                        .fill(palette.primaryAccent.opacity(0.35))
+                        .overlay(Rectangle().stroke(palette.primaryAccent, lineWidth: 1))
+                        .frame(width: max(CGFloat(store.railBarWidth), 8), height: totalHeight)
+                        .allowsHitTesting(false)
+                        .onboardingCalloutAnchor(
+                            store: store,
+                            owner: "edge-band-\(edge)",
+                            step: .antiTouchCalibration,
+                            isActive: true,
+                            labelKey: "onboarding.callout.clickHere",
+                            accent: palette.primaryAccent,
+                            side: edge == .left ? .trailing : .leading
+                        )
+                        .zIndex(210)
                 }
             }
             .frame(width: geo.size.width, height: totalHeight, alignment: edge == .left ? .topLeading : .topTrailing)
@@ -175,6 +213,14 @@ public struct AmbientRailStripView: View {
         .onDisappear {
             store.activeDropdownScreenFrame = nil
         }
+    }
+
+    private var showsOnboardingEdgeBand: Bool {
+        guard store.isOnboardingGuideActive,
+              case .railBand(let bandEdge, _) = store.onboardingTarget else {
+            return false
+        }
+        return bandEdge == edge
     }
 
     private func updateDropdownScreenFrame() {

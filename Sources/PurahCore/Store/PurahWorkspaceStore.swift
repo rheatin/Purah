@@ -27,13 +27,27 @@ public enum DrawerWidthMode: String, Codable, CaseIterable, Sendable {
 public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifiable {
     case mountPods = 0          // Step 1: Empty Rails -> Mount Pods to Left & Right
     case decomposeDemo = 1      // Step 2: Decompose Mode -> Composite vs Stepped Chips
-    case stackDemo = 2          // Step 3: Stack Mode -> Merge Pods & Auto-Disable Decompose
-    case pageDemo = 3           // Step 4: Multi-Page Deck -> +Page & Top/Bottom Portals
-    case breathingDemo = 4      // Step 5: Dynamic Breathing -> Compact & In-Place Accordion
-    case antiTouchCalibration = 5 // Step 6: Anti-Accidental Touch -> Dwell vs Push Force & Sensitivity
-    case permissions = 6        // Step 7: Connect what Purah can see -> one panel, grant or skip
+    case breathingDemo = 2      // Step 3: Dynamic Breathing -> Compact & In-Place Accordion
+    case stackDemo = 3          // Step 4: Stack Mode -> Merge Pods & Auto-Disable Decompose
+    case antiTouchCalibration = 4 // Step 5: Anti-Accidental Touch -> Dwell vs Push Force & Sensitivity
+    case permissions = 5        // Step 6: Connect what Purah can see -> one panel, grant or skip
 
     public var id: Int { rawValue }
+}
+
+/// What the guide is pointing at right now. Every surface reads this — the
+/// dock, both rail strips, the coach bubbles — so there is never a second
+/// opinion about which control the person should touch.
+public enum OnboardingTarget: Equatable, Sendable {
+    case none
+    /// Step 1: this dock chip, and the one mount button to press.
+    case dockButton(podId: String, edge: MountEdge)
+    /// These pods stay lit; every other pod on the rail dims.
+    case railPods(Set<String>)
+    /// The physical edge band, with the pods living on it.
+    case railBand(MountEdge, pods: Set<String>)
+    /// The permissions panel in the guide dock is the only lit thing.
+    case guidePanel
 }
 
 @Observable
@@ -84,8 +98,6 @@ public final class PurahWorkspaceStore {
 
     public var onboardingDidToggleDecompose: Bool = false
     public var onboardingDidCreateStack: Bool = false
-    public var onboardingDidCreatePage: Bool = false
-    public var onboardingDidSwitchPage: Bool = false
     public var onboardingBreathingHoveredPods: Set<String> = []
     public var onboardingDidSwitchTriggerMode: Bool = false
     public var onboardingDidTriggerEdgeDrawer: Bool = false
@@ -106,13 +118,13 @@ public final class PurahWorkspaceStore {
     public var isCurrentOnboardingMissionCompleted: Bool {
         switch onboardingStep {
         case .mountPods:
-            return pods.contains { $0.edge == .left && $0.isEnabled } && pods.contains { $0.edge == .right && $0.isEnabled }
+            let leftCount = pods.filter { $0.edge == .left && $0.isEnabled }.count
+            let rightCount = pods.filter { $0.edge == .right && $0.isEnabled }.count
+            return leftCount >= 3 && rightCount >= 3
         case .decomposeDemo:
             return onboardingDidToggleDecompose
         case .stackDemo:
             return onboardingDidCreateStack || pods.contains { $0.isEnabled && isInSharedMajorPod(podId: $0.id) }
-        case .pageDemo:
-            return onboardingDidCreatePage && onboardingDidSwitchPage
         case .breathingDemo:
             return isDynamicBreathingEnabled && onboardingBreathingHoveredPods.count >= 2
         case .antiTouchCalibration:
@@ -122,6 +134,118 @@ public final class PurahWorkspaceStore {
             // choice, not to extract a grant.
             return true
         }
+    }
+
+    public var onboardingTarget: OnboardingTarget {
+        guard isOnboardingGuideActive else { return .none }
+
+        let enabledPods = pods.filter(\.isEnabled)
+        let enabledIds = Set(enabledPods.map(\.id))
+
+        switch onboardingStep {
+        case .mountPods:
+            let leftCount = pods.filter { $0.edge == .left && $0.isEnabled }.count
+            let rightCount = pods.filter { $0.edge == .right && $0.isEnabled }.count
+            if leftCount < 3, let unmounted = pods.first(where: { !$0.isEnabled && $0.edge == .left }) {
+                return .dockButton(podId: unmounted.id, edge: .left)
+            }
+            if leftCount < 3, let unmounted = pods.first(where: { !$0.isEnabled }) {
+                return .dockButton(podId: unmounted.id, edge: .left)
+            }
+            if rightCount < 3, let unmounted = pods.first(where: { !$0.isEnabled && $0.edge == .right }) {
+                return .dockButton(podId: unmounted.id, edge: .right)
+            }
+            if rightCount < 3, let unmounted = pods.first(where: { !$0.isEnabled }) {
+                return .dockButton(podId: unmounted.id, edge: .right)
+            }
+            return .railPods(enabledIds)
+        case .decomposeDemo:
+            if enabledIds.contains("vitals") {
+                return .railPods(["vitals"])
+            }
+            if let pod = enabledPods.first(where: { capabilityProvider(for: $0.id) != nil }) {
+                return .railPods([pod.id])
+            }
+            return .none
+        case .stackDemo:
+            let leftPods = enabledPods
+                .filter { $0.edge == .left }
+                .sorted { $0.range.start < $1.range.start }
+            let stackPods = leftPods.count >= 2
+                ? leftPods
+                : enabledPods
+                    .filter { $0.edge == .right }
+                    .sorted { $0.range.start < $1.range.start }
+            if stackPods.count >= 2 {
+                return .railPods([stackPods[0].id, stackPods[1].id])
+            }
+            return .railPods(Set(stackPods.map(\.id)))
+        case .breathingDemo:
+            let leftPods = enabledPods
+                .filter { $0.edge == .left }
+                .sorted { $0.range.start < $1.range.start }
+            let breathingPods = leftPods.count >= 2
+                ? leftPods
+                : enabledPods
+                    .filter { $0.edge == .right }
+                    .sorted { $0.range.start < $1.range.start }
+            return .railPods(Set(breathingPods.prefix(2).map(\.id)))
+        case .antiTouchCalibration:
+            let leftCount = enabledPods.filter { $0.edge == .left }.count
+            let rightCount = enabledPods.filter { $0.edge == .right }.count
+            let edge: MountEdge = rightCount > leftCount ? .right : .left
+            let edgePods = Set(enabledPods.filter { $0.edge == edge }.map(\.id))
+            return .railBand(edge, pods: edgePods)
+        case .permissions:
+            return .guidePanel
+        }
+    }
+
+    /// Whether a pod is part of what the guide is lighting right now.
+    public func isOnboardingTargetPod(_ podId: String) -> Bool {
+        switch onboardingTarget {
+        case .none, .guidePanel:
+            return false
+        case .dockButton(let targetPodId, _):
+            return targetPodId == podId
+        case .railPods(let ids):
+            return ids.contains(podId)
+        case .railBand(_, let pods):
+            return pods.contains(podId)
+        }
+    }
+
+    /// Publish the control the focus frame should surround. The owner token
+    /// prevents last-render clearing from erasing the next step's target.
+    public func publishOnboardingCalloutTarget(
+        _ target: OnboardingCalloutTarget?,
+        owner: String,
+        step: OnboardingGuideStep
+    ) {
+        guard isOnboardingGuideActive, onboardingStep != .permissions else {
+            onboardingCalloutTarget = nil
+            onboardingCalloutOwner = nil
+            return
+        }
+        // A view from a step that has already been left can still deliver one
+        // last geometry callback while it tears down. Its owner token differs
+        // from the new step's, so the user check below would let it win the
+        // "last writer" race and frame a control that is no longer on screen.
+        guard step == onboardingStep else { return }
+        if let target {
+            guard onboardingCalloutOwner != owner || onboardingCalloutTarget != target else { return }
+            onboardingCalloutOwner = owner
+            onboardingCalloutTarget = target
+        } else {
+            guard onboardingCalloutOwner == owner else { return }
+            onboardingCalloutOwner = nil
+            onboardingCalloutTarget = nil
+        }
+    }
+
+    public func clearOnboardingCalloutTarget() {
+        onboardingCalloutOwner = nil
+        onboardingCalloutTarget = nil
     }
 
     public var hasCompletedOnboarding: Bool {
@@ -161,6 +285,11 @@ public final class PurahWorkspaceStore {
     /// An open in-drawer dropdown can extend past its drawer card. While it
     /// does, that transient panel is part of the interactive hit region too.
     public var activeDropdownScreenFrame: CGRect? = nil
+    /// The single control the onboarding focus frame is pointing at. Exactly
+    /// one publisher owns this at a time; the app shell draws the frame in a
+    /// separate click-through window so a rail edge cannot clip it.
+    public var onboardingCalloutTarget: OnboardingCalloutTarget? = nil
+    @ObservationIgnored private var onboardingCalloutOwner: String? = nil
 
     @ObservationIgnored
     public var onDismissPreviewPanel: (@MainActor () -> Void)? = nil
@@ -331,17 +460,12 @@ public final class PurahWorkspaceStore {
         edge == .left ? leftRailPage : rightRailPage
     }
 
-    @ObservationIgnored private var isSettingPodPage: Bool = false
-
     public func setRailPage(_ page: Int, for edge: MountEdge) {
         let clamped = max(page, 0)
         if edge == .left {
             leftRailPage = clamped
         } else {
             rightRailPage = clamped
-        }
-        if isOnboardingGuideActive && !isSettingPodPage {
-            onboardingDidSwitchPage = true
         }
         DiagnosticLogger.shared.info("Store", "Rail page switched: edge=\(edge), page=\(clamped)")
         invalidateLayoutCache()
@@ -352,16 +476,11 @@ public final class PurahWorkspaceStore {
         let clamped = max(0, pageIndex)
         let edge = pods[idx].edge
         pods[idx].pageIndex = clamped
-        if isOnboardingGuideActive && clamped >= 1 {
-            onboardingDidCreatePage = true
-        }
         let screenH = max(Double(availableScreenHeight(for: edge)), 600.0)
         let minPt = Double(minimumDrawerHeight(for: id))
         pods[idx].range.length = max(minPt / screenH, 0.10)
         normalizePageRanges(for: edge)
-        isSettingPodPage = true
         setRailPage(clamped, for: edge)
-        isSettingPodPage = false
         invalidateLayoutCache()
         savePersistentState()
         onWindowsRebuildNeeded?()
@@ -1994,7 +2113,10 @@ public final class PurahWorkspaceStore {
         get {
             _ = _pluginStorageRevision
             let storage = ScopedPluginStorage(pluginId: "calendar", defaults: userDefaults)
-            return storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold
+            // Fresh installs are composite. The state mirrors this rule; the
+            // store must answer the same way or the sculptor's one-tap toggle
+            // would have to be pressed twice to turn chips on.
+            return storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .continuousStream
         }
         set {
             _pluginStorageRevision &+= 1
@@ -3215,7 +3337,7 @@ public final class PurahWorkspaceStore {
             if userDefaults.object(forKey: "purah.vitals.isDecomposed") != nil {
                 return userDefaults.bool(forKey: "purah.vitals.isDecomposed")
             }
-            return true
+            return false
         }
         set {
             _pluginStorageRevision &+= 1
@@ -3234,7 +3356,7 @@ public final class PurahWorkspaceStore {
                 let parsed = arr.compactMap { VitalsMetricType(rawValue: $0) }
                 if !parsed.isEmpty { return parsed }
             }
-            return [.cpu, .ram, .power, .disk]
+            return [.cpu, .ram, .gpu]
         }
         set {
             _pluginStorageRevision &+= 1
@@ -3276,7 +3398,7 @@ public final class PurahWorkspaceStore {
             if userDefaults.object(forKey: "purah.scripts.isDecomposed") != nil {
                 return userDefaults.bool(forKey: "purah.scripts.isDecomposed")
             }
-            return true
+            return false
         }
         set {
             _pluginStorageRevision &+= 1
@@ -4030,7 +4152,7 @@ public final class PurahWorkspaceStore {
             saveUserLayoutSnapshotIfNeeded()
             isUsingTemporaryDemoSandbox = true
             isDynamicBreathingEnabled = true
-            let leftDemoIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
+            let leftDemoIds = Self.defaultPods().map(\.id)
             setRailPage(0, for: .left)
             for id in leftDemoIds {
                 mountPod(id: id, to: .left)
@@ -4058,13 +4180,12 @@ public final class PurahWorkspaceStore {
 
     public func startInteractiveOnboarding(clearAllPods: Bool = true) {
         cancelOnboardingRehearsal()
+        clearOnboardingCalloutTarget()
         userPodsSnapshotBeforeRehearsal = nil
         userDynamicFlagBeforeRehearsal = nil
         isUsingTemporaryDemoSandbox = false
         onboardingDidToggleDecompose = false
         onboardingDidCreateStack = false
-        onboardingDidCreatePage = false
-        onboardingDidSwitchPage = false
         onboardingBreathingHoveredPods.removeAll()
         onboardingDidSwitchTriggerMode = false
         onboardingDidTriggerEdgeDrawer = false
@@ -4091,6 +4212,7 @@ public final class PurahWorkspaceStore {
 
     public func selectOnboardingStep(_ step: OnboardingGuideStep) {
         cancelOnboardingRehearsal()
+        clearOnboardingCalloutTarget()
         onboardingStep = step
         switch step {
         case .mountPods:
@@ -4109,6 +4231,16 @@ public final class PurahWorkspaceStore {
             }
             normalizePageRanges(for: .left)
             normalizePageRanges(for: .right)
+        case .breathingDemo:
+            onboardingBreathingHoveredPods.removeAll()
+            isDynamicBreathingEnabled = true
+            for pod in pods where !pod.isEnabled {
+                let defaultEdge = pod.defaultEdge ?? pod.edge
+                mountPod(id: pod.id, to: defaultEdge)
+            }
+            normalizePageRanges(for: .left)
+            normalizePageRanges(for: .right)
+            isRehearsingBreathingInSculptor = true
         case .stackDemo:
             isRehearsingBreathingInSculptor = false
             let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
@@ -4118,26 +4250,6 @@ public final class PurahWorkspaceStore {
                 mountPod(id: "shelf", to: .left)
                 normalizePageRanges(for: .left)
             }
-        case .pageDemo:
-            isRehearsingBreathingInSculptor = false
-            let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
-            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
-            if leftPods.count < 2 && rightPods.count < 2 {
-                mountPod(id: "calendar", to: .right)
-                mountPod(id: "scripts", to: .right)
-                normalizePageRanges(for: .right)
-            }
-        case .breathingDemo:
-            onboardingBreathingHoveredPods.removeAll()
-            let leftPods = pods.filter { $0.edge == .left && $0.isEnabled }
-            let rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
-            if leftPods.isEmpty && rightPods.isEmpty {
-                mountPod(id: "vitals", to: .left)
-                mountPod(id: "scripts", to: .right)
-                normalizePageRanges(for: .left)
-                normalizePageRanges(for: .right)
-            }
-                isRehearsingBreathingInSculptor = true
         case .antiTouchCalibration:
             dismissActiveDrawer()
             if edgeTriggerSensitivity == .custom || edgeTriggerSensitivity == .agile {
@@ -4237,9 +4349,9 @@ public final class PurahWorkspaceStore {
 
     public func finishOnboarding(useRecommendedLayout: Bool = false) {
         cancelOnboardingRehearsal()
+        clearOnboardingCalloutTarget()
         if useRecommendedLayout || !pods.contains(where: \.isEnabled) {
-            pods = PurahWorkspaceStore.defaultPods()
-            autoLayoutAll()
+            applyRecommendedLayout()
         }
         hasCompletedOnboarding = true
         isOnboardingGuideActive = false
@@ -4249,11 +4361,24 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    /// Restores the six recommended pods without ending the guide. The mount
+    /// step offers this as a shortcut; finishing with the recommended layout
+    /// goes through the same helper so the two can never drift.
+    public func applyRecommendedLayout() {
+        pods = Self.defaultPods()
+        autoLayoutAll()
+        savePersistentState()
+        invalidateLayoutCache()
+        onWindowsRebuildNeeded?()
+    }
+
     public func rehearseMountSamplePods() {
         mountPod(id: "vitals", to: .left)
         mountPod(id: "shelf", to: .left)
+        mountPod(id: "terminal", to: .left)
         mountPod(id: "calendar", to: .right)
         mountPod(id: "scripts", to: .right)
+        mountPod(id: "todo", to: .right)
         normalizePageRanges(for: .left)
         normalizePageRanges(for: .right)
         _ = triggerControlHaptic(.alignment)
@@ -4323,43 +4448,10 @@ public final class PurahWorkspaceStore {
         }
     }
 
-    public func rehearsePaginationFlip() {
-        saveUserLayoutSnapshotIfNeeded()
-        isRehearsingBreathingInSculptor = false
-        var rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
-        if rightPods.count < 2 {
-            mountPod(id: "calendar", to: .right)
-            mountPod(id: "scripts", to: .right)
-            normalizePageRanges(for: .right)
-            rightPods = pods.filter { $0.edge == .right && $0.isEnabled }
-        }
-        if let last = rightPods.last {
-            setPodPage(id: last.id, pageIndex: 1)
-        }
-        isRightTopPortalRevealed = true
-        isRightBottomPortalRevealed = true
-        setRailPage(1, for: .right)
-        onboardingDidCreatePage = true
-        onboardingDidSwitchPage = true
-        _ = triggerControlHaptic(.levelChange)
-        invalidateLayoutCache()
-        onWindowsRebuildNeeded?()
-
-        onboardingRehearsalTask?.cancel()
-        onboardingRehearsalTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                self.setRailPage(0, for: .right)
-                self.restoreUserLayoutSnapshotIfNeeded()
-            }
-        }
-    }
-
     public func rehearseDynamicBreathing() {
         saveUserLayoutSnapshotIfNeeded()
         isUsingTemporaryDemoSandbox = true
-        let leftDemoIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
+        let leftDemoIds = Self.defaultPods().map(\.id)
         setRailPage(0, for: .left)
         for id in leftDemoIds {
             mountPod(id: id, to: .left)
@@ -4406,15 +4498,15 @@ public final class PurahWorkspaceStore {
 
     public static func defaultPods() -> [SlotPod] {
         [
-            SlotPod(id: "calendar", name: "Calendar Timeline", systemIcon: "calendar", edge: .right, range: .init(start: 0.15, length: 0.35), ambientStyle: .progressTimeline, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.15, defaultColorHex: "#FF5A60"),
-            SlotPod(id: "todo", name: "Todo Checklist", systemIcon: "checklist", edge: .right, range: .init(start: 0.52, length: 0.25), ambientStyle: .segmentGauge, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.15, defaultColorHex: "#FF9E0A"),
-            SlotPod(id: "music", name: "Music Waveform", systemIcon: "waveform", edge: .right, range: .init(start: 0.79, length: 0.14), ambientStyle: .waveLevelMeter, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.12, defaultColorHex: "#FF2D55"),
-            SlotPod(id: "ai", name: "AI Assistant", systemIcon: "sparkles", edge: .right, range: .init(start: 0.85, length: 0.26), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 38, minLength: 0.20, isEnabled: true, drawerWidth: 420, defaultColorHex: "#A855F7"),
-            SlotPod(id: "vitals", name: "Hardware Vitals", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.08, length: 0.22), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 35, minLength: 0.18, defaultColorHex: "#00E5A3"),
-            SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.32, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16, defaultColorHex: "#2ED573"),
+            SlotPod(id: "calendar", name: "Calendar Timeline", systemIcon: "calendar", edge: .right, range: .init(start: 0.12, length: 0.34), ambientStyle: .progressTimeline, preferredZone: .goldenAction, ergonomicWeight: 40, minLength: 0.15, defaultColorHex: "#FF5A60"),
+            SlotPod(id: "todo", name: "Todo Checklist", systemIcon: "checklist", edge: .right, range: .init(start: 0.48, length: 0.22), ambientStyle: .segmentGauge, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.15, defaultColorHex: "#FF9E0A"),
+            SlotPod(id: "music", name: "Music Waveform", systemIcon: "waveform", edge: .right, range: .init(start: 0.79, length: 0.14), ambientStyle: .waveLevelMeter, preferredZone: .quickFlick, ergonomicWeight: 25, minLength: 0.12, isEnabled: false, defaultColorHex: "#FF2D55"),
+            SlotPod(id: "ai", name: "AI Assistant", systemIcon: "sparkles", edge: .right, range: .init(start: 0.72, length: 0.16), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 38, minLength: 0.20, isEnabled: true, drawerWidth: 420, defaultColorHex: "#A855F7"),
+            SlotPod(id: "vitals", name: "Hardware Vitals", systemIcon: "waveform.path.ecg", edge: .left, range: .init(start: 0.10, length: 0.22), ambientStyle: .progressTimeline, preferredZone: .glance, ergonomicWeight: 35, minLength: 0.18, defaultColorHex: "#00E5A3"),
+            SlotPod(id: "shelf", name: "Temporary Shelf", systemIcon: "tray.fill", edge: .left, range: .init(start: 0.34, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 35, minLength: 0.16, defaultColorHex: "#2ED573"),
             SlotPod(id: "notes", name: "Quick Notes", systemIcon: "note.text", edge: .left, range: .init(start: 0.54, length: 0.14), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 30, minLength: 0.12, isEnabled: false, defaultColorHex: "#FFD166"),
-            SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.54, length: 0.20), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 30, minLength: 0.16, isEnabled: true, defaultColorHex: "#6C5CE7"),
-            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.76, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 25, minLength: 0.14, isEnabled: true, drawerWidth: 520, defaultColorHex: "#00F5D4"),
+            SlotPod(id: "scripts", name: "Script Runway", systemIcon: "terminal.fill", edge: .left, range: .init(start: 0.54, length: 0.20), ambientStyle: .ghostDot, preferredZone: .quickFlick, ergonomicWeight: 30, minLength: 0.16, isEnabled: false, defaultColorHex: "#6C5CE7"),
+            SlotPod(id: "terminal", name: "Terminal", systemIcon: "apple.terminal.fill", edge: .left, range: .init(start: 0.56, length: 0.20), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 25, minLength: 0.14, isEnabled: true, drawerWidth: 520, defaultColorHex: "#00F5D4"),
             SlotPod(id: "clipboard", name: "Clipboard", systemIcon: "doc.on.clipboard.fill", edge: .left, range: .init(start: 0.88, length: 0.08), ambientStyle: .ghostDot, preferredZone: .goldenAction, ergonomicWeight: 20, minLength: 0.08, isEnabled: false, drawerWidth: 260, defaultColorHex: "#FF9F0A")
         ]
     }

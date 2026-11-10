@@ -25,6 +25,7 @@ struct DecomposedHeightFloorTests {
     func testTodoDecomposedExceedsComposite() {
         let plugin = TodoPlugin(state: makeState((0..<6).map { todo("t\($0)") }))
         let store = PurahWorkspaceStore()
+        plugin.setDecomposed(true, store: store)
 
         // 6 on-rail chips × 48 + 5 × 2.5 spacing = 300.5 > composite 130.
         let floor = plugin.minimumDrawerHeight(store: store)
@@ -63,6 +64,7 @@ struct DecomposedHeightFloorTests {
         let storage = ScopedPluginStorage(pluginId: "calendar_test_\(UUID().uuidString)")
         let state = CalendarPluginState(storage: storage)
         state.overflowStrategy = .smartFold
+        state.isDecomposed = true
 
         let now = Date()
         state.events = (0..<4).map { i in

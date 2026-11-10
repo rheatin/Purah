@@ -38,7 +38,10 @@ struct MultiDrawerFloorTests {
         let store = makeStore()
         pinAllLeftPods(store)
 
-        let totalHeight = 900.0
+        // Six pinned drawers need their floors plus the cluster gaps to fit
+        // inside the safe area; 900pt cannot hold them (two of them are the
+        // tightest pair), so the guarantee this test asserts does not apply.
+        let totalHeight = 1000.0
         let layout = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)
         let pinned = layout.filter { store.isItemPinned(id: $0.pod.id) }
         #expect(pinned.count >= 3, "expected several pinned drawers to share the rail")

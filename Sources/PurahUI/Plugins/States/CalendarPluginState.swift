@@ -88,10 +88,11 @@ public final class CalendarPluginState: Sendable {
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
         } else {
-            // Legacy migration: continuousStream meant the composite mode.
-            self.isDecomposed = (storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold) != .continuousStream
+            // Legacy migration: continuousStream meant the composite mode. An
+            // absent strategy now means composite too.
+            self.isDecomposed = (storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .continuousStream) != .continuousStream
         }
-        self.overflowStrategy = storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .smartFold
+        self.overflowStrategy = storage.codable(forKey: "overflowStrategy", as: CalendarOverflowStrategy.self) ?? .continuousStream
         let savedMax = storage.int(forKey: "maxRailEvents")
         self.maxRailEvents = (savedMax > 0) ? savedMax : 4
         self.isUsingRealCalendar = false

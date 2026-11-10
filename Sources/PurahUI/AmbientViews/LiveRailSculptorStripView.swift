@@ -3,10 +3,18 @@ import SwiftUI
 import AppKit
 import PurahCore
 
-public enum OnboardingStackRole: Sendable {
-    case none
-    case target
-    case source
+extension View {
+    @ViewBuilder
+    func conditionalGesture<G: Gesture>(
+        if condition: Bool,
+        _ gesture: @escaping () -> G
+    ) -> some View {
+        if condition {
+            self.gesture(gesture())
+        } else {
+            self
+        }
+    }
 }
 
 public struct SculptRailCluster: Identifiable {
@@ -285,6 +293,18 @@ public struct LiveRailSculptorStripView: View {
         let pageCount = max(pages.count, 1)
         let currentPage = min(max(store.currentRailPage(for: edge), 0), pageCount - 1)
         let isExternalDropEdge = (store.externalDragTargetEdge == edge)
+        // Step 4 frames the pod that gets dragged (the second pod on the left
+        // rail); the arrow points up at the pod above it.
+        let onboardingStackSourceId: String? = {
+            guard store.isOnboardingGuideActive,
+                  store.onboardingStep == .stackDemo,
+                  edge == .left else { return nil }
+            let ordered = layoutItems
+                .filter { $0.pod.isEnabled }
+                .sorted { $0.startY < $1.startY }
+            guard ordered.count >= 2 else { return nil }
+            return ordered[1].pod.id
+        }()
 
         ZStack(alignment: .top) {
             // Frosted glass sculpting strip background
@@ -301,7 +321,7 @@ public struct LiveRailSculptorStripView: View {
             .frame(width: 210, height: totalHeight)
 
             // Section A: Prominent Multi-Page Deck Header
-            let deckHeaderH: CGFloat = (store.isOnboardingGuideActive && store.onboardingStep == .pageDemo) ? 78 : 58
+            let deckHeaderH: CGFloat = 58
             pageDeckHeader(pages: pages, currentPage: currentPage)
                 .frame(width: 200, height: deckHeaderH)
                 .offset(y: 8)
@@ -359,14 +379,6 @@ public struct LiveRailSculptorStripView: View {
                     } else if let item = cluster.items.first {
                         let isHighlighted = (hoveredStackTargetPodId == item.pod.id || store.externalDragTargetPodId == item.pod.id)
                         let isDraggingThis = (draggingPodId == item.pod.id)
-                        let isOnboardingStackDemo = (store.isOnboardingGuideActive && store.onboardingStep == .stackDemo && edge == .left)
-                        let isStackIncomplete = !store.isCurrentOnboardingMissionCompleted
-                        let stackRole: OnboardingStackRole = {
-                            guard isOnboardingStackDemo && isStackIncomplete && clusters.count >= 2 else { return .none }
-                            if cluster.id == clusters[0].id { return .target }
-                            if cluster.id == clusters[1].id { return .source }
-                            return .none
-                        }()
                         LiveSculptPodCapsuleView(
                             item: item,
                             edge: edge,
@@ -375,7 +387,6 @@ public struct LiveRailSculptorStripView: View {
                             store: store,
                             isStackTargetHighlighted: isHighlighted,
                             isDraggingThis: isDraggingThis,
-                            onboardingStackRole: stackRole,
                             onDragMoveChanged: { translationY, _ in
                                 handlePodDragChanged(
                                     item: item,
@@ -395,6 +406,19 @@ public struct LiveRailSculptorStripView: View {
                             }
                         )
                         .frame(width: 198, height: max(CGFloat(item.spanH), 22))
+                        .onboardingCalloutAnchor(
+                            store: store,
+                            owner: "sculptor-stack-\(item.pod.id)",
+                            step: .stackDemo,
+                            isActive: onboardingStackSourceId == item.pod.id,
+                            labelKey: "onboarding.callout.dragToStack",
+                            accent: palette.podColor(for: item.pod.id, store: store),
+                            side: .above,
+                            arrow: .up
+                        )
+                        // The anchor must ride the same render transform as the
+                        // card: a background attached after `.offset` measures
+                        // the unoffset layout slot, which is always y = 0.
                         .offset(y: CGFloat(item.startY))
                         .zIndex(isDraggingThis ? 200 : (isHighlighted ? 120 : 10))
                     }
@@ -409,7 +433,6 @@ public struct LiveRailSculptorStripView: View {
     private func pageDeckHeader(pages: [[SlotPod]], currentPage: Int) -> some View {
         let totalPages = max(pages.count, 1)
         let canSplitNewPage = currentPage < pages.count && pages[currentPage].count > 1
-        let isOnboardingPage = (store.isOnboardingGuideActive && store.onboardingStep == .pageDemo)
 
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
@@ -425,7 +448,6 @@ public struct LiveRailSculptorStripView: View {
                     ForEach(0..<totalPages, id: \.self) { pIdx in
                         let isSelected = (pIdx == currentPage)
                         let pagePods = pIdx < pages.count ? pages[pIdx] : []
-                        let isPagePillHighlighted = isOnboardingPage && store.onboardingDidCreatePage && !store.onboardingDidSwitchPage
                         Button {
                             withAnimation(PurahMotionPolicy.surface) {
                                 store.setRailPage(pIdx, for: edge)
@@ -449,20 +471,19 @@ public struct LiveRailSculptorStripView: View {
                             .padding(.vertical, 3.5)
                             .background(
                                 Capsule()
-                                    .fill(isSelected ? palette.primaryAccent : (isPagePillHighlighted ? Color.orange.opacity(0.3) : Color.white.opacity(0.12)))
+                                    .fill(isSelected ? palette.primaryAccent : Color.white.opacity(0.12))
                             )
                             .overlay(
                                 Capsule()
                                     .stroke(
-                                        isPagePillHighlighted ? Color.orange : palette.primaryAccent.opacity(isSelected ? 1.0 : 0.4),
-                                        lineWidth: isPagePillHighlighted ? 1.8 : 0.8
+                                        palette.primaryAccent.opacity(isSelected ? 1.0 : 0.4),
+                                        lineWidth: 0.8
                                     )
                             )
                         }
                         .buttonStyle(.tactile)
                     }
 
-                    let isCreatePageHighlighted = isOnboardingPage && !store.onboardingDidCreatePage
                     Button {
                         guard currentPage < pages.count,
                               pages[currentPage].count > 1,
@@ -474,42 +495,25 @@ public struct LiveRailSculptorStripView: View {
                     } label: {
                         Text("sculptor.addPage".localized)
                             .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                            .foregroundColor((canSplitNewPage || isCreatePageHighlighted) ? (isCreatePageHighlighted ? .black : palette.primaryAccent) : .secondary)
+                            .foregroundColor(canSplitNewPage ? palette.primaryAccent : .secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3.5)
                             .background(
                                 Capsule()
-                                    .fill(isCreatePageHighlighted ? Color.orange : palette.primaryAccent.opacity(canSplitNewPage ? 0.16 : 0.06))
+                                    .fill(palette.primaryAccent.opacity(canSplitNewPage ? 0.16 : 0.06))
                             )
                             .overlay(
                                 Capsule()
-                                    .stroke(isCreatePageHighlighted ? Color.orange : palette.primaryAccent.opacity(canSplitNewPage ? 0.55 : 0.2), lineWidth: isCreatePageHighlighted ? 1.8 : 0.8)
+                                    .stroke(palette.primaryAccent.opacity(canSplitNewPage ? 0.55 : 0.2), lineWidth: 0.8)
                             )
                     }
                     .buttonStyle(.tactile)
-                    .disabled(!canSplitNewPage && !isCreatePageHighlighted)
+                    .disabled(!canSplitNewPage)
                     .help("help.moveBottomToNewPage".localized)
                     .accessibilityLabel("help.moveBottomToNewPage".localized)
                 }
             }
 
-            if isOnboardingPage {
-                if !store.onboardingDidCreatePage {
-                    Text("onboarding.step4.createPageHint".localized)
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.orange))
-                } else if !store.onboardingDidSwitchPage {
-                    Text("onboarding.step4.switchPageHint".localized)
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(palette.primaryAccent))
-                }
-            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -531,7 +535,7 @@ public struct LiveRailSculptorStripView: View {
                 .foregroundColor(palette.primaryAccent)
 
             if isOnboardingMount {
-                Text("onboarding.step1.railHint".localized)
+                Text("onboarding.mount.railHint".localized)
                     .font(.system(size: 10.5, weight: .bold, design: .rounded))
                     .foregroundColor(palette.primaryAccent)
                     .multilineTextAlignment(.center)
@@ -713,8 +717,11 @@ public struct LiveSculptMajorClusterBoxView: View {
 
             if store.isOnboardingGuideActive && store.onboardingStep == .stackDemo && store.isCurrentOnboardingMissionCompleted {
                 HStack(spacing: 3) {
-                    Text("onboarding.step3.successBadge".localized)
+                    Text("onboarding.stack.successBadge".localized)
                         .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .foregroundColor(.black)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2.5)
@@ -1234,7 +1241,6 @@ public struct LiveSculptPodCapsuleView: View {
     public let store: PurahWorkspaceStore
     public let isStackTargetHighlighted: Bool
     public let isDraggingThis: Bool
-    public let onboardingStackRole: OnboardingStackRole
     public let onDragMoveChanged: (CGFloat, Double) -> Void
     public let onDragMoveEnded: (CGFloat, Double) -> Void
 
@@ -1246,7 +1252,6 @@ public struct LiveSculptPodCapsuleView: View {
     @State private var lastResizeHapticStep: Int = 0
     @State private var isResizeHovered: Bool = false
     @State private var isPulseOn: Bool = false
-    @State private var arrowBounce: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var pod: SlotPod {
@@ -1269,7 +1274,6 @@ public struct LiveSculptPodCapsuleView: View {
         store: PurahWorkspaceStore,
         isStackTargetHighlighted: Bool = false,
         isDraggingThis: Bool = false,
-        onboardingStackRole: OnboardingStackRole = .none,
         onDragMoveChanged: @escaping (CGFloat, Double) -> Void = { _, _ in },
         onDragMoveEnded: @escaping (CGFloat, Double) -> Void = { _, _ in }
     ) {
@@ -1280,7 +1284,6 @@ public struct LiveSculptPodCapsuleView: View {
         self.store = store
         self.isStackTargetHighlighted = isStackTargetHighlighted
         self.isDraggingThis = isDraggingThis
-        self.onboardingStackRole = onboardingStackRole
         self.onDragMoveChanged = onDragMoveChanged
         self.onDragMoveEnded = onDragMoveEnded
     }
@@ -1297,11 +1300,10 @@ public struct LiveSculptPodCapsuleView: View {
         .scaleEffect(activelyDragging ? 1.03 : 1.0)
         .offset(y: activelyDragging ? dragVisualOffsetY : 0)
         .onAppear {
-            let shouldPulse = isStackTargetHighlighted || onboardingStackRole == .target
+            let shouldPulse = isStackTargetHighlighted
             guard PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) else {
                 // Static emphasis instead of a forever-pulsing outline.
                 isPulseOn = shouldPulse
-                arrowBounce = false
                 return
             }
             if shouldPulse {
@@ -1309,16 +1311,13 @@ public struct LiveSculptPodCapsuleView: View {
                     isPulseOn = true
                 }
             }
-            withAnimation(.easeInOut(duration: 0.65).repeatForever(autoreverses: true)) {
-                arrowBounce = true
-            }
         }
         .onChange(of: isStackTargetHighlighted) { _, highlighted in
             guard PurahMotionPolicy.allowsAmbientAnimation(reduceMotion: reduceMotion) else {
-                isPulseOn = highlighted || onboardingStackRole == .target
+                isPulseOn = highlighted
                 return
             }
-            if highlighted || onboardingStackRole == .target {
+            if highlighted {
                 withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
                     isPulseOn = true
                 }
@@ -1333,7 +1332,12 @@ public struct LiveSculptPodCapsuleView: View {
     }
 
     private func capsuleCard(spanH: CGFloat, safeTotalH: Double) -> some View {
-        let isTargetPulsing = isStackTargetHighlighted || onboardingStackRole == .target
+        let isTargetPulsing = isStackTargetHighlighted
+        // The decompose step's hero button owns taps inside this capsule; the
+        // parent move gesture would swallow them as a drag.
+        let blocksMoveGesture = store.isOnboardingGuideActive
+            && store.onboardingStep == .decomposeDemo
+            && store.isOnboardingTargetPod(pod.id)
 
         return VStack(alignment: .leading, spacing: 0) {
             // Entire upper body is draggable for moving & stacking (excludes bottom 12pt resize grip bar)
@@ -1356,7 +1360,9 @@ public struct LiveSculptPodCapsuleView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .contentShape(Rectangle())
-            .gesture(podMoveGesture(safeTotalH: safeTotalH))
+            .conditionalGesture(if: !blocksMoveGesture) {
+                podMoveGesture(safeTotalH: safeTotalH)
+            }
 
             podResizeGrip(safeTotalH: safeTotalH)
         }
@@ -1621,7 +1627,7 @@ public struct LiveSculptPodCapsuleView: View {
                         store.triggerControlHaptic(.levelChange)
                     }
                 } label: {
-                    Text(isDecomp ? "onboarding.step2.capsuleButton.bar".localized : "onboarding.step2.capsuleButton.chips".localized)
+                    Text(isDecomp ? "onboarding.decompose.capsuleButton.bar".localized : "onboarding.decompose.capsuleButton.chips".localized)
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .foregroundColor(isDecomp ? palette.primaryAccent : .secondary)
                         .padding(.horizontal, 5)
@@ -1646,7 +1652,11 @@ public struct LiveSculptPodCapsuleView: View {
     private var podDecomposeSection: some View {
         let isDecomposable = PluginRegistry.shared.plugin(for: pod.id)?
             .supportedDrawerModes.contains(.stepped) ?? false
-        let isOnboardingStep2Decomp = (store.isOnboardingGuideActive && store.onboardingStep == .decomposeDemo && isDecomposable && !isSharedStacked)
+        let isOnboardingStep2Decomp = (store.isOnboardingGuideActive
+            && store.onboardingStep == .decomposeDemo
+            && isDecomposable
+            && !isSharedStacked
+            && store.isOnboardingTargetPod(pod.id))
 
         if isOnboardingStep2Decomp {
             onboardingDecomposeCallout
@@ -1659,32 +1669,7 @@ public struct LiveSculptPodCapsuleView: View {
     private var onboardingDecomposeCallout: some View {
         let isDecomp = store.isPodDecomposed(pod.id)
 
-        VStack(spacing: 5) {
-            // Animated Bouncing Arrow Badge Callout
-            HStack(spacing: 4) {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 9.5, weight: .bold))
-                Text("onboarding.step2.arrowPrompt".localized)
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
-                    .lineLimit(1)
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 9.5, weight: .bold))
-            }
-            .foregroundColor(Color.slateInk)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3.5)
-            .background(
-                Capsule()
-                    .fill(isDecomp ? Color.cyan : Color.yellow)
-            )
-            .overlay(
-                Capsule()
-                    .stroke(Color.white, lineWidth: arrowBounce ? 1.8 : 0.8)
-            )
-            .shadow(color: (isDecomp ? Color.cyan : Color.yellow).opacity(arrowBounce ? 0.9 : 0.4), radius: arrowBounce ? 8 : 3)
-            .offset(y: arrowBounce ? 3 : -3)
-            .padding(.top, 4)
-
+        VStack(spacing: 6) {
             // Full-width Glowing Hero Toggle Button
             Button {
                 withAnimation(PurahMotionPolicy.surface) {
@@ -1695,7 +1680,7 @@ public struct LiveSculptPodCapsuleView: View {
                 HStack(spacing: 6) {
                     Image(systemName: isDecomp ? "rectangle.grid.1x2.fill" : "rectangle.portrait.fill")
                         .font(.system(size: 11, weight: .bold))
-                    Text(isDecomp ? "onboarding.step2.heroButton.toBar".localized : "onboarding.step2.heroButton.toChips".localized)
+                    Text(isDecomp ? "onboarding.decompose.heroButton.toBar".localized : "onboarding.decompose.heroButton.toChips".localized)
                         .font(.system(size: 10, weight: .heavy, design: .rounded))
                         .lineLimit(1)
                 }
@@ -1706,14 +1691,19 @@ public struct LiveSculptPodCapsuleView: View {
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(isDecomp ? Color.green : Color.yellow)
                 )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .stroke(Color.white, lineWidth: arrowBounce ? 2.2 : 1.0)
-                )
-                .shadow(color: (isDecomp ? Color.green : Color.yellow).opacity(arrowBounce ? 0.9 : 0.4), radius: arrowBounce ? 10 : 4)
-                .scaleEffect(arrowBounce ? 1.04 : 0.98)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.tactile)
+            .onboardingCalloutAnchor(
+                store: store,
+                owner: "sculptor-hero-\(pod.id)",
+                step: .decomposeDemo,
+                isActive: store.isOnboardingGuideActive
+                    && store.onboardingStep == .decomposeDemo
+                    && store.isOnboardingTargetPod(pod.id),
+                labelKey: "onboarding.callout.clickHere",
+                accent: podColor
+            )
             .padding(.horizontal, 10)
 
             if isDecomp {
@@ -1891,30 +1881,6 @@ public struct LiveSculptPodCapsuleView: View {
                 .padding(.vertical, 3.5)
                 .background(Capsule().fill(Color.orange))
                 .shadow(color: Color.black.opacity(0.45), radius: 5)
-        } else if onboardingStackRole == .target {
-            Text("onboarding.step3.targetBadge".localized)
-                .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                .foregroundColor(.black)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.orange))
-                .shadow(color: Color.black.opacity(0.45), radius: 5)
-        } else if onboardingStackRole == .source {
-            Text("onboarding.step3.sourceBadge".localized)
-                .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(palette.primaryAccent))
-                .shadow(color: Color.black.opacity(0.45), radius: 5)
-        } else if store.isOnboardingGuideActive && store.onboardingStep == .decomposeDemo && (pod.id == "vitals" || pod.id == "scripts") {
-            Text("onboarding.step2.capsuleCallout".localized)
-                .font(.system(size: 8, weight: .bold, design: .rounded))
-                .foregroundColor(.black)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2.5)
-                .background(Capsule().fill(palette.primaryAccent))
-                .shadow(color: Color.black.opacity(0.35), radius: 4)
         }
     }
 }

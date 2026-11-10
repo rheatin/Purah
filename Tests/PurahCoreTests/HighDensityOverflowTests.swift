@@ -560,6 +560,10 @@ struct HighDensityOverflowTests {
             let isolated = UserDefaults(suiteName: suiteName)!
             let store = PurahWorkspaceStore(userDefaults: isolated)
             store.isDynamicBreathingEnabled = breathing
+            // This test is about a deliberately shortened decomposed pod: its
+            // chip floor is what keeps the 72pt length from inflating. Pin the
+            // mode so the check does not depend on the fresh-install default.
+            store._isVitalsDecomposed = true
             // The expected span below ("~72pt") is `0.08 × 900`, and the
             // resolved layout is asked for a 900pt rail — but the floor each
             // pod is clamped against is derived from the host screen. Pin it
@@ -629,6 +633,7 @@ struct HighDensityOverflowTests {
         let suiteName = "test_unstack_progressive_split_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.togglePodEnabled(id: "music")
         store.resetMajorGroups(for: .right)
 
         // Stack 3 pods ("calendar", "todo", "music") on the right rail into one shared Major Group
@@ -684,6 +689,7 @@ struct HighDensityOverflowTests {
         let suiteName = "test_subpod_height_stack_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.togglePodEnabled(id: "music")
         // The store sizes its rail against the machine's screen, so a CI runner
         // with no real display (400pt, clamped to 600) laid this out on a
         // different rail than the 900pt one the arithmetic below describes.
@@ -835,6 +841,7 @@ struct HighDensityOverflowTests {
         let suiteName = "test_water_droplet_detach_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.togglePodEnabled(id: "music")
         // Same reason as `testIndividualSubPodHeightInStackAndResize`: the
         // rail height must come from the test, not from the display.
         store.overriddenScreenHeight = 900
@@ -934,6 +941,7 @@ struct HighDensityOverflowTests {
         let suiteName = "test_standalone_vs_stacked_music_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.togglePodEnabled(id: "music")
         store.resetMajorGroups(for: .right)
 
         let totalHeight = 900.0
@@ -1080,6 +1088,9 @@ struct HighDensityOverflowTests {
         if let clipboardPlugin = PluginRegistry.shared.plugin(for: "clipboard") as? ClipboardPlugin {
             clipboardPlugin.state.isDecomposed = true
         }
+        if let todoPlugin = PluginRegistry.shared.plugin(for: "todo") as? TodoPlugin {
+            todoPlugin.setDecomposed(true, store: store)
+        }
 
         // Seed data for decomposable pods
         store._calendarEvents = [CalendarEventItem(title: "Design Review", startTime: Date(), endTime: Date().addingTimeInterval(3600))]
@@ -1087,6 +1098,9 @@ struct HighDensityOverflowTests {
         store._vitalsEnabledMetrics = [.cpu, .ram]
         store._aiRolePresets = [AIRolePreset(id: "coder", title: "Coder", systemIcon: "terminal", systemPrompt: "code", isEnabled: true)]
         store.calendarOverflowStrategy = .smartFold
+        if let calendarPlugin = PluginRegistry.shared.plugin(for: "calendar") as? CalendarPlugin {
+            calendarPlugin.state.isDecomposed = true
+        }
         store._isVitalsDecomposed = true
         store._isScriptsDecomposed = true
         store._isAIDecomposed = true

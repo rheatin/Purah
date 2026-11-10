@@ -131,14 +131,20 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
 
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if !isDecomposed(store: store) {
-            return 300.0
+            // Match HardwareVitalsPlugin's composite floor. The fallback used
+            // to sit at the preferred 300pt because composite was never a
+            // default; a fresh install is composite now, and a 300pt rail bar
+            // would make the pod impossible to shorten to its drawer.
+            return 140.0
         }
         let count = max(store._vitalsEnabledMetrics.count, 1)
         return CGFloat(count) * 56.0 + CGFloat(count - 1) * 2.5
     }
 
     func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
-        max(minimumDrawerHeight(store: store), 260.0)
+        // HardwareVitalsPlugin opens its expanded drawer at 300pt so the
+        // process list is readable; the fallback must not undercut it.
+        max(minimumDrawerHeight(store: store), 300.0)
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {

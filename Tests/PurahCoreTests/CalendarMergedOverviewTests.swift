@@ -18,6 +18,7 @@ struct CalendarMergedOverviewTests {
         let storage = ScopedPluginStorage(pluginId: "calendar_test_\(UUID().uuidString)")
         let state = CalendarPluginState(storage: storage)
         state.overflowStrategy = .smartFold
+        state.isDecomposed = true
         state.maxRailEvents = 4
 
         let now = Date()

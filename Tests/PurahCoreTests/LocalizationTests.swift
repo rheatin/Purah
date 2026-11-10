@@ -147,7 +147,13 @@ struct LocalizationTests {
             // +285: the table is finished. Every English key now has a
             // Traditional Chinese row, so the pin equals the English table and
             // the only way to fail it is to delete translations.
-            .traditionalChinese: 1011
+            // +1: the step-7 caption for a thin build.
+            // +4: the spotlight coach bubbles; -1: the retired dock drag hint.
+            // +2: the Music drawer's empty-transport state and its button.
+            // -6: the page-demo step retired; +1: the mount step's recommended
+            // layout shortcut.
+            // +2: the onboarding focus frame's Click here / Drag it here.
+            .traditionalChinese: 1014
         ]
 
         for (language, expected) in pinnedCoverage {

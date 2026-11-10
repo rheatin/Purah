@@ -84,7 +84,7 @@ public final class ClipboardPluginState: Sendable {
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
         } else {
-            self.isDecomposed = true // Default decomposed principle
+            self.isDecomposed = false
         }
         let savedMax = storage.int(forKey: "maxRailItems")
         self.maxRailItems = (savedMax > 0) ? savedMax : 4

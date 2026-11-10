@@ -79,22 +79,12 @@ public final class MusicPluginState: Sendable {
     }
 
     public func togglePlayPause(store: PurahWorkspaceStore? = nil) {
-        let targetStore = store ?? boundStore
-        if let targetStore {
-            SystemMusicSyncService.shared.togglePlayPause(store: targetStore)
-            self.track = targetStore._musicTrack
-            self.isPlaying = targetStore._musicTrack.isPlaying
-        } else {
-            let frozenTime = track.calculatedCurrentTime
-            let nowPlaying = !track.isPlaying
-            let totalSec = max(track.durationSeconds, 1.0)
-            track.currentPositionSeconds = frozenTime
-            track.playbackProgress = min(max(frozenTime / totalSec, 0.0), 1.0)
-            track.isPlaying = nowPlaying
-            track.playbackRate = nowPlaying ? 1.0 : 0.0
-            track.lastUpdated = Date()
-            self.isPlaying = nowPlaying
-        }
+        // Playback is the system's, never ours. With no store there is no
+        // player to ask, and a locally flipped flag would be fiction.
+        guard let targetStore = store ?? boundStore else { return }
+        SystemMusicSyncService.shared.togglePlayPause(store: targetStore)
+        self.track = targetStore._musicTrack
+        self.isPlaying = targetStore._musicTrack.isPlaying
     }
 
     public func nextTrack(store: PurahWorkspaceStore? = nil) {

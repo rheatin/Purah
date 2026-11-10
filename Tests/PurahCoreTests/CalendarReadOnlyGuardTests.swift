@@ -45,7 +45,9 @@ struct CalendarReadOnlyGuardTests {
         )
         store._calendarEvents = [event]
 
-        let plugin = CalendarPlugin(state: CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_readonly_\(UUID().uuidString)")))
+        let state = CalendarPluginState(storage: ScopedPluginStorage(pluginId: "cal_readonly_\(UUID().uuidString)"))
+        state.isDecomposed = true
+        let plugin = CalendarPlugin(state: state)
         let items = plugin.steppedItems(context: makeContext(store: store))
 
         #expect(store._calendarEvents.map(\.id) == [event.id], "reading the calendar must not erase it")
