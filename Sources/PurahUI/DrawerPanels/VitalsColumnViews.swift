@@ -392,6 +392,7 @@ struct VitalsMetricColumnBand: View {
                     .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                     .foregroundColor(Color.primary.opacity(0.85))
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 if !headerDetail.isEmpty {
                     Text(headerDetail)
                         .font(.system(size: 7.5, design: .monospaced))
@@ -403,7 +404,11 @@ struct VitalsMetricColumnBand: View {
                     .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(tint)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    // The reading is the fact; the subtitle gives way first.
+                    // At the 300pt stepped width this keeps `136 / 245 GB`
+                    // whole and squeezes the detail instead of the number.
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(2)
             }
 
             if !displayedBuckets.isEmpty || !collapsesWhenEmpty {
@@ -472,6 +477,86 @@ struct VitalsMetricColumnBand: View {
 
 // MARK: - Focused single-metric band (expanded chip card)
 
+/// The three strings a focused band prints. The header carries the metric's
+/// real magnitude; the footer keeps the time context and the range. A fact is
+/// printed once: when the footer would repeat the header's reading, it is
+/// dropped instead of being said twice.
+struct VitalsFocusedBandCopy: Equatable, Sendable {
+    let reading: String
+    let footerLeading: String
+    let footerTrailing: String
+
+    static func make(
+        metric: VitalsMetricType,
+        metrics: HardwareVitalsInfo,
+        nowLabel: String,
+        rangeFooter: String
+    ) -> VitalsFocusedBandCopy {
+        let reading = reading(for: metric, metrics: metrics)
+        let live = liveFact(for: metric, metrics: metrics)
+        let leading = live.map { $0 == reading ? nowLabel : "\(nowLabel) · \($0)" } ?? nowLabel
+        return VitalsFocusedBandCopy(
+            reading: reading,
+            footerLeading: leading,
+            footerTrailing: rangeFooter
+        )
+    }
+
+    /// The number the drawer is for: the ratio is already the chip's value and
+    /// the row-fill bar, so CPU/GPU keep the percentage (there is no other
+    /// magnitude) while the gauge metrics print the quantity behind it.
+    static func reading(for metric: VitalsMetricType, metrics: HardwareVitalsInfo) -> String {
+        switch metric {
+        case .cpu:
+            return "\(Int(metrics.cpuUsage * 100))%"
+        case .gpu:
+            return "\(Int(metrics.gpuUsage * 100))%"
+        case .ram:
+            return String(format: "%.1f / %.0f GB", metrics.memoryUsedGB, metrics.memoryTotalGB)
+        case .power:
+            return String(format: "%.1f W", systemWatts(metrics))
+        case .network:
+            return formatRate(metrics.networkDownSpeed + metrics.networkUpSpeed)
+        case .disk:
+            let used = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
+            return String(format: "%.0f / %.0f GB", used, metrics.diskTotalGB)
+        }
+    }
+
+    /// What the footer adds beside the time label. RAM and disk answer with
+    /// the same used/total string as the header, so the equality rule above
+    /// removes it; GPU's memory total is a second fact and stays.
+    static func liveFact(for metric: VitalsMetricType, metrics: HardwareVitalsInfo) -> String? {
+        switch metric {
+        case .gpu:
+            return String(format: "%.0f M", metrics.gpuMemoryInUseMB)
+        case .ram:
+            return String(format: "%.1f / %.0f GB", metrics.memoryUsedGB, metrics.memoryTotalGB)
+        case .disk:
+            let used = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
+            return String(format: "%.0f / %.0f GB", used, metrics.diskTotalGB)
+        case .cpu, .power, .network:
+            return nil
+        }
+    }
+
+    private static func systemWatts(_ metrics: HardwareVitalsInfo) -> Double {
+        if metrics.powerSystemWatts > 0 { return metrics.powerSystemWatts }
+        if metrics.powerSource == "AC Power" { return 0 }
+        return max(-metrics.batteryChargeWatts, 0)
+    }
+
+    private static func formatRate(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond >= 1_048_576.0 {
+            return String(format: "%.1fM/s", bytesPerSecond / 1_048_576.0)
+        }
+        if bytesPerSecond >= 1024.0 {
+            return String(format: "%.0fK/s", bytesPerSecond / 1024.0)
+        }
+        return String(format: "%.0fB/s", bytesPerSecond)
+    }
+}
+
 /// The composite drawer's band, focused on one metric. The stepped chip card
 /// used to own a second chart implementation; this keeps one presentation so a
 /// chip and the drawer tell the same story.
@@ -486,12 +571,21 @@ struct VitalsFocusedColumnBand: View {
     private var scope: VitalsTimeScope { state.scope(for: metric) }
 
     var body: some View {
+        let copy = VitalsFocusedBandCopy.make(
+            metric: metric,
+            metrics: metrics,
+            nowLabel: "vitals.range.now".localized,
+            rangeFooter: VitalsColumnFormatting.rangeFooter(
+                scope: scope,
+                available: vitals.availableSpan(for: metric)
+            )
+        )
         VitalsMetricColumnBand(
             metric: metric,
             title: title,
             detail: detailWithRange,
             rangeLabel: VitalsColumnFormatting.duration(scope.durationSeconds),
-            liveValue: liveValue,
+            liveValue: copy.reading,
             tint: VitalsColorResolver.color(
                 for: metric,
                 vitals: metrics,
@@ -502,12 +596,9 @@ struct VitalsFocusedColumnBand: View {
             domain: domain,
             scope: scope,
             thresholds: thresholds,
-            nowLabel: "vitals.range.now".localized,
-            liveFooter: liveFooter,
-            rangeFooter: VitalsColumnFormatting.rangeFooter(
-                scope: scope,
-                available: vitals.availableSpan(for: metric)
-            ),
+            nowLabel: copy.footerLeading,
+            liveFooter: nil,
+            rangeFooter: copy.footerTrailing,
             valueFormatter: valueFormatter,
             plotMinHeight: max(min(24, availableHeight - 38), 12),
             plotMaxHeight: nil,
@@ -559,31 +650,6 @@ struct VitalsFocusedColumnBand: View {
         return detail.isEmpty ? range : "\(detail) · \(range)"
     }
 
-    private var liveValue: String {
-        switch metric {
-        case .cpu: return "\(Int(metrics.cpuUsage * 100))%"
-        case .gpu: return "\(Int(metrics.gpuUsage * 100))%"
-        case .ram: return "\(Int(metrics.memoryUsage * 100))%"
-        case .power: return "\(metrics.batteryLevel)%"
-        case .network: return rate(metrics.networkDownSpeed + metrics.networkUpSpeed)
-        case .disk: return "\(Int((diskUsedRatio * 100).rounded()))%"
-        }
-    }
-
-    private var liveFooter: String? {
-        switch metric {
-        case .ram:
-            return String(format: "%.1f / %.0f GB", metrics.memoryUsedGB, metrics.memoryTotalGB)
-        case .gpu:
-            return String(format: "%.0f M", metrics.gpuMemoryInUseMB)
-        case .disk:
-            let used = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
-            return String(format: "%.0f / %.0f GB", used, metrics.diskTotalGB)
-        case .cpu, .power, .network:
-            return nil
-        }
-    }
-
     private var buckets: [VitalsBucket] {
         vitals.columns(for: metric, scope: scope)
     }
@@ -605,12 +671,6 @@ struct VitalsFocusedColumnBand: View {
         case .cpu, .gpu, .ram, .power, .disk:
             return { "\(Int(($0 * 100).rounded()))%" }
         }
-    }
-
-    private var diskUsedRatio: Double {
-        metrics.diskTotalGB > 0
-            ? max(metrics.diskTotalGB - metrics.diskFreeGB, 0) / metrics.diskTotalGB
-            : 0
     }
 
     private func compactGB(_ value: Double) -> String {
