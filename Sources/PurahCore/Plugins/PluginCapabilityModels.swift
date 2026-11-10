@@ -59,6 +59,15 @@ public struct PurahPluginSubItem: Identifiable, Sendable {
     public var state: RailItemActivityState
     public var gaugeRatio: Double?
     public var gaugeStyle: RailGaugeStyle
+    /// The number a gauge chip prints at its trailing edge. A ratio alone is
+    /// not a reading: 55% of a disk and 2 KB/s of network are both "the
+    /// metric", but only one of them can be computed from the ratio. Optional
+    /// so a plugin that has nothing better to say still gets the percentage.
+    public var gaugeValue: String?
+    /// Opt in to the row-fill presentation: hairline rows inside the pod's
+    /// card, with the ratio drawn as the row's background. A gauge chip that
+    /// does not ask for it keeps its icon-block row.
+    public var showsRowFill: Bool
     public var tintColorHex: String?
     public var isPinned: Bool
 
@@ -71,6 +80,8 @@ public struct PurahPluginSubItem: Identifiable, Sendable {
         state: RailItemActivityState = .normal,
         gaugeRatio: Double? = nil,
         gaugeStyle: RailGaugeStyle = .none,
+        gaugeValue: String? = nil,
+        showsRowFill: Bool = false,
         tintColorHex: String? = nil,
         isPinned: Bool = false
     ) {
@@ -82,6 +93,8 @@ public struct PurahPluginSubItem: Identifiable, Sendable {
         self.state = state
         self.gaugeRatio = gaugeRatio
         self.gaugeStyle = gaugeStyle
+        self.gaugeValue = gaugeValue
+        self.showsRowFill = showsRowFill
         self.tintColorHex = tintColorHex
         self.isPinned = isPinned
     }

@@ -242,20 +242,64 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem] {
         let metrics = state.metrics
         return state.enabledMetrics.map { metric in
-            let color = VitalsColorResolver.statusColor(for: metric, vitals: metrics, thresholds: state.thresholds, palette: context.palette)
+            // One reading, one colour: the chip asks the same resolver the
+            // drawer's bands use, so the Disk chip and the Disk band cannot
+            // disagree. Identity hue while healthy, alarm hue above a
+            // threshold.
+            let color = VitalsColorResolver.color(
+                for: metric,
+                vitals: metrics,
+                thresholds: state.thresholds,
+                palette: context.palette
+            )
             let isAlerting = state.isAlerting(for: metric)
             return PurahPluginSubItem(
                 id: "vitals-\(metric.rawValue)",
-                title: metric.shortName,
+                title: Self.chipTitle(for: metric),
                 subtitle: Self.subtitleText(for: metric, metrics: metrics),
                 systemIcon: metric.systemIcon,
-                badge: Self.badgeText(for: metric, metrics: metrics),
+                // No badge: a state that matters is the row's colour, and a
+                // free-space pill beside a used/total line is the same
+                // sentence twice.
+                badge: nil,
                 state: isAlerting ? .alerting : .normal,
                 gaugeRatio: state.ratio(for: metric),
                 gaugeStyle: .solid,
+                gaugeValue: Self.chipValueText(for: metric, metrics: metrics),
+                showsRowFill: true,
                 tintColorHex: color.toHex(),
                 isPinned: context.isItemPinned("vitals-\(metric.rawValue)")
             )
+        }
+    }
+
+    /// The row's trailing number. Most metrics are the ratio itself; the
+    /// network is a rate, so it prints bytes per second rather than a share.
+    static func chipValueText(for metric: VitalsMetricType, metrics: HardwareVitalsInfo) -> String {
+        switch metric {
+        case .cpu: return "\(Int(metrics.cpuUsage * 100))%"
+        case .gpu: return "\(Int(metrics.gpuUsage * 100))%"
+        case .ram: return "\(Int(metrics.memoryUsage * 100))%"
+        case .disk:
+            let used = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
+            let ratio = metrics.diskTotalGB > 0 ? used / metrics.diskTotalGB : 0
+            return "\(Int((ratio * 100).rounded()))%"
+        case .network: return rateText(metrics.networkDownSpeed)
+        case .power: return "\(metrics.batteryLevel)%"
+        }
+    }
+
+    /// The chip's name, not the rail's abbreviation: four letters at the
+    /// chip's 10.5pt fit, so the name can keep its fixed width and never
+    /// truncate to "DI…".
+    static func chipTitle(for metric: VitalsMetricType) -> String {
+        switch metric {
+        case .cpu: return "CPU"
+        case .gpu: return "GPU"
+        case .ram: return "RAM"
+        case .power: return "Battery"
+        case .network: return "Net"
+        case .disk: return "Disk"
         }
     }
 
@@ -267,7 +311,13 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
             return String(format: "vitals.cpuUsrSys".localized,
                           Int(metrics.cpuUserUsage * 100), Int(metrics.cpuSystemUsage * 100))
         case .gpu:
-            return metrics.thermalStateLabel
+            // The thermal state is the badge when it is worth saying; this
+            // line is the split the gauge cannot show.
+            return String(
+                format: "Rend %d%% · Tiler %d%%",
+                Int(metrics.gpuRendererUsage * 100),
+                Int(metrics.gpuTilerUsage * 100)
+            )
         case .ram:
             return String(format: "%.1f / %.0f GB", metrics.memoryUsedGB, metrics.memoryTotalGB)
         case .power:
@@ -293,58 +343,24 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         return String(format: "%.0fB/s", bytesPerSecond)
     }
 
-    /// The live reading that used to sit in the card's own header row. It is
-    /// read from the observed metrics inside `steppedItems`, so the host
-    /// header refreshes with the rail bar instead of holding a stale snapshot.
-    static func badgeText(for metric: VitalsMetricType, metrics: HardwareVitalsInfo) -> String? {
-        switch metric {
-        case .cpu:
-            return "\(Int(metrics.cpuUsage * 100))%"
-        case .gpu:
-            return "\(Int(metrics.gpuUsage * 100))%"
-        case .ram:
-            return "\(Int(metrics.memoryUsage * 100))%"
-        case .power:
-            return "\(metrics.batteryLevel)%"
-        case .network:
-            let speed = metrics.networkDownSpeed + metrics.networkUpSpeed
-            if speed >= 1_048_576.0 {
-                return String(format: "%.1fM/s", speed / 1_048_576.0)
-            }
-            return String(format: "%.0fK/s", speed / 1024.0)
-        case .disk:
-            return String(format: "vitals.diskFreeG".localized, Int(metrics.diskFreeGB))
-        }
-    }
+    /// The focused column band needs its header, plot and footer; below that
+    /// the row's badge is the whole story and a squeezed band would overlap
+    /// its own footer.
+    public func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat { 58.0 }
 
-    /// The compact graph needs ~40pt; below that the row's badge is the whole
-    /// story and a squeezed graph would overlap its own footer.
-    public func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat { 40.0 }
-
-    /// The mini chart that rides the chip's row. A tall chip shows the full
-    /// graph in its body instead — two charts of the same reading is noise.
-    public func makeSteppedRowAccessory(subItemId: String, context: PurahPluginContext) -> AnyView? {
-        let metricKey = subItemId.replacingOccurrences(of: "vitals-", with: "")
-        guard let metric = VitalsMetricType(rawValue: metricKey) else { return nil }
-        let bodyH = PurahSteppedCardMetrics.bodyHeight(cardHeight: context.slotHeight)
-        guard bodyH < steppedDrawerMinimumBodyHeight(subItemId: subItemId) else { return nil }
-        let color = VitalsColorResolver.statusColor(
-            for: metric, vitals: state.metrics, thresholds: state.thresholds, palette: context.palette
-        )
-        return AnyView(
-            VitalsRowSparkline(metric: metric, color: color, palette: context.palette)
-        )
-    }
+    /// One focused band needs the title/detail/value header, a 60-column plot
+    /// and the range footer. At 300pt the content is ~270pt after the host's
+    /// card insets, which fits all three without letting the header truncate.
+    public func steppedDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 300.0 }
 
     public func makeSteppedDrawerContent(subItemId: String, context: PurahPluginContext) -> AnyView? {
         let metricKey = subItemId.replacingOccurrences(of: "vitals-", with: "")
         guard let metric = VitalsMetricType(rawValue: metricKey) else { return nil }
         return AnyView(
-            VitalsFocusedDrawerView(
+            VitalsFocusedColumnBand(
                 metric: metric,
                 availableHeight: context.slotHeight,
-                showsHeader: false,
-                store: context.store
+                state: state
             )
         )
     }

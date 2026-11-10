@@ -470,6 +470,174 @@ struct VitalsMetricColumnBand: View {
     }
 }
 
+// MARK: - Focused single-metric band (expanded chip card)
+
+/// The composite drawer's band, focused on one metric. The stepped chip card
+/// used to own a second chart implementation; this keeps one presentation so a
+/// chip and the drawer tell the same story.
+struct VitalsFocusedColumnBand: View {
+    let metric: VitalsMetricType
+    let availableHeight: CGFloat
+    let state: VitalsPluginState
+
+    private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
+    private var metrics: HardwareVitalsInfo { vitals.metrics }
+    private var thresholds: VitalsColorThresholds { state.thresholds }
+    private var scope: VitalsTimeScope { state.scope(for: metric) }
+
+    var body: some View {
+        VitalsMetricColumnBand(
+            metric: metric,
+            title: title,
+            detail: detailWithRange,
+            rangeLabel: VitalsColumnFormatting.duration(scope.durationSeconds),
+            liveValue: liveValue,
+            tint: VitalsColorResolver.color(
+                for: metric,
+                vitals: metrics,
+                thresholds: thresholds
+            ),
+            columnTint: VitalsColorResolver.identityColor(for: metric),
+            buckets: buckets,
+            domain: domain,
+            scope: scope,
+            thresholds: thresholds,
+            nowLabel: "vitals.range.now".localized,
+            liveFooter: liveFooter,
+            rangeFooter: VitalsColumnFormatting.rangeFooter(
+                scope: scope,
+                available: vitals.availableSpan(for: metric)
+            ),
+            valueFormatter: valueFormatter,
+            plotMinHeight: max(min(24, availableHeight - 38), 12),
+            plotMaxHeight: nil,
+            extra: nil,
+            onCycle: { cycleScope() },
+            collapsesWhenEmpty: true
+        )
+    }
+
+    private var title: String {
+        switch metric {
+        case .cpu: return "CPU"
+        case .gpu: return "GPU"
+        case .ram: return "RAM"
+        case .power: return "POWER"
+        case .network: return "NETWORK"
+        case .disk: return "DISK"
+        }
+    }
+
+    private var detail: String {
+        switch metric {
+        case .cpu:
+            let cores = metrics.performanceCoreCount + metrics.efficiencyCoreCount
+            guard cores > 0 else { return metrics.chipModelName }
+            return String(
+                format: "vitals.compute.cpuDetail".localized,
+                metrics.chipModelName,
+                metrics.performanceCoreCount,
+                metrics.efficiencyCoreCount
+            )
+        case .gpu:
+            return metrics.gpuCoreCount > 0
+                ? String(format: "vitals.compute.gpuDetail".localized, metrics.chipModelName, metrics.gpuCoreCount)
+                : metrics.chipModelName
+        case .ram:
+            return String(format: "vitals.compute.ramDetail".localized, compactGB(metrics.memoryTotalGB))
+        case .power:
+            return metrics.powerSource
+        case .network:
+            return "↓ \(rate(metrics.networkDownSpeed)) · ↑ \(rate(metrics.networkUpSpeed))"
+        case .disk:
+            return String(format: "vitals.disk.bootDisk".localized, compactGB(metrics.diskTotalGB))
+        }
+    }
+
+    private var detailWithRange: String {
+        let range = VitalsColumnFormatting.duration(scope.durationSeconds)
+        return detail.isEmpty ? range : "\(detail) · \(range)"
+    }
+
+    private var liveValue: String {
+        switch metric {
+        case .cpu: return "\(Int(metrics.cpuUsage * 100))%"
+        case .gpu: return "\(Int(metrics.gpuUsage * 100))%"
+        case .ram: return "\(Int(metrics.memoryUsage * 100))%"
+        case .power: return "\(metrics.batteryLevel)%"
+        case .network: return rate(metrics.networkDownSpeed + metrics.networkUpSpeed)
+        case .disk: return "\(Int((diskUsedRatio * 100).rounded()))%"
+        }
+    }
+
+    private var liveFooter: String? {
+        switch metric {
+        case .ram:
+            return String(format: "%.1f / %.0f GB", metrics.memoryUsedGB, metrics.memoryTotalGB)
+        case .gpu:
+            return String(format: "%.0f M", metrics.gpuMemoryInUseMB)
+        case .disk:
+            let used = max(metrics.diskTotalGB - metrics.diskFreeGB, 0)
+            return String(format: "%.0f / %.0f GB", used, metrics.diskTotalGB)
+        case .cpu, .power, .network:
+            return nil
+        }
+    }
+
+    private var buckets: [VitalsBucket] {
+        vitals.columns(for: metric, scope: scope)
+    }
+
+    private var domain: VitalsColumnDomain {
+        switch metric {
+        case .network:
+            let maximum = buckets.map(\.mean).max() ?? 0
+            return .log(lower: 1_024, upper: VitalsThroughputDomain.ceiling(for: maximum))
+        case .cpu, .gpu, .ram, .power, .disk:
+            return .percentage
+        }
+    }
+
+    private var valueFormatter: (Double) -> String {
+        switch metric {
+        case .network:
+            return { rate($0) }
+        case .cpu, .gpu, .ram, .power, .disk:
+            return { "\(Int(($0 * 100).rounded()))%" }
+        }
+    }
+
+    private var diskUsedRatio: Double {
+        metrics.diskTotalGB > 0
+            ? max(metrics.diskTotalGB - metrics.diskFreeGB, 0) / metrics.diskTotalGB
+            : 0
+    }
+
+    private func compactGB(_ value: Double) -> String {
+        let tenths = (value * 10).rounded() / 10
+        return tenths == tenths.rounded()
+            ? String(format: "%.0f", tenths)
+            : String(format: "%.1f", tenths)
+    }
+
+    private func rate(_ bytesPerSecond: Double) -> String {
+        if bytesPerSecond >= 1_048_576.0 {
+            return String(format: "%.1fM/s", bytesPerSecond / 1_048_576.0)
+        }
+        if bytesPerSecond >= 1024.0 {
+            return String(format: "%.0fK/s", bytesPerSecond / 1024.0)
+        }
+        return String(format: "%.0fB/s", bytesPerSecond)
+    }
+
+    private func cycleScope() {
+        let all = VitalsTimeScope.allCases
+        guard let index = all.firstIndex(of: scope) else { return }
+        state.setScope(all[(index + 1) % all.count], for: metric)
+        SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
+    }
+}
+
 // MARK: - Two-row throughput band
 
 struct VitalsThroughputBandRow {

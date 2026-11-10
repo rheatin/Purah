@@ -575,7 +575,11 @@ public struct HardwareVitalsDrawerView: View {
         powerColor: Color,
         netColor: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // The tabs are sized by the body they actually get, not by the tier's
+        // estimate: a card that is co-planar with its pod can be shorter than
+        // the drawer content it was asked to draw. Measuring here is what
+        // keeps "no band leaves a void" true at every pod height.
+        GeometryReader { proxy in
             // The four dashboard tabs live in the card header now, so the
             // body starts with content.
             PurahScrollableBody {
@@ -584,7 +588,7 @@ public struct HardwareVitalsDrawerView: View {
                     case .overview:
                         overviewTabContent(
                             metrics: metrics,
-                            availableHeight: height,
+                            availableHeight: proxy.size.height,
                             showsDeepTelemetry: showsDeepTelemetry,
                             cpuColor: cpuColor,
                             gpuColor: gpuColor,
@@ -596,7 +600,7 @@ public struct HardwareVitalsDrawerView: View {
                     case .compute:
                         computeTabContent(
                             metrics: metrics,
-                            availableHeight: height,
+                            availableHeight: proxy.size.height,
                             cpuColor: cpuColor,
                             gpuColor: gpuColor,
                             ramColor: ramColor
@@ -604,19 +608,20 @@ public struct HardwareVitalsDrawerView: View {
                     case .io:
                         ioTabContent(
                             metrics: metrics,
-                            availableHeight: height,
+                            availableHeight: proxy.size.height,
                             diskColor: diskColor,
                             netColor: netColor
                         )
                     case .power:
                         powerTabContent(
                             metrics: metrics,
-                            availableHeight: height,
+                            availableHeight: proxy.size.height,
                             powerColor: powerColor
                         )
                     case .processes:
                         processesTabContent(
                             metrics: metrics,
+                            availableHeight: proxy.size.height,
                             cpuColor: cpuColor,
                             ramColor: ramColor,
                             netColor: netColor,
@@ -765,13 +770,41 @@ public struct HardwareVitalsDrawerView: View {
         powerColor: Color,
         netColor: Color
     ) -> some View {
-        let sheetHeight = max(availableHeight - 4, 168)
-        // The fixed bands are the network band, the two immersive rows and the
-        // hairlines between them; the two cell rows share everything left, so
-        // the sheet ends exactly at the card's bottom edge at every height.
-        let fixedHeight: CGFloat = 54
-            + (showsDeepTelemetry ? 23 + 64 + 4 * 0.6 : 2 * 0.6)
-        let rowHeight = max((sheetHeight - fixedHeight) / 2, 44)
+        // A tall drawer gives every band a share of the surplus; a short one
+        // keeps the sheet at its natural height and lets the host scroll it,
+        // so a 60pt body never squeezes the cells on top of each other.
+        // Everything on this sheet — the tiles, the network band and the two
+        // immersive rows — grows together. The tiles and the network carry
+        // plots and stop at twice their natural height; the two immersive rows
+        // are lists and take whatever is left, so the sheet ends exactly at
+        // the card's bottom edge at every drawer height.
+        var bands: [VitalsBandBudget.Band] = [
+            .chart(natural: Self.overviewCellNaturalHeight),
+            .chart(natural: Self.overviewCellNaturalHeight),
+            .fixed(Self.overviewHairlineHeight),
+            .chart(natural: Self.overviewNetworkNaturalHeight)
+        ]
+        if showsDeepTelemetry {
+            // Without a process sample (the Procs tab has not been opened in
+            // this session) the TOP band is one header line; it must not claim
+            // the sheet's spare height for rows that will not be drawn.
+            let topRows = min(metrics.topProcesses.count, 3)
+            let topNatural = Self.overviewTopProcessesNaturalHeight
+                - CGFloat(3 - topRows) * Self.overviewTopProcessRowHeight
+            bands += [
+                .fixed(Self.overviewHairlineHeight),
+                .list(natural: Self.overviewDeepRowNaturalHeight),
+                .fixed(Self.overviewHairlineHeight),
+                topRows > 0
+                    ? .list(natural: topNatural)
+                    : .fixed(topNatural)
+            ]
+        }
+        let sheetHeight = VitalsBandBudget.drawingHeight(
+            available: availableHeight - 4,
+            bands: bands
+        )
+        let heights = VitalsBandBudget.allocate(available: sheetHeight, bands: bands)
         let cpuBuckets = columnBuckets(.cpu, scope: .realTime30s, maximumColumns: 30)
         let gpuBuckets = columnBuckets(.gpu, scope: .realTime30s, maximumColumns: 30)
         let ramBuckets = columnBuckets(.ram, scope: .realTime30s, maximumColumns: 30)
@@ -815,9 +848,10 @@ public struct HardwareVitalsDrawerView: View {
                     )
                 )
             }
-            .frame(height: rowHeight)
+            .frame(height: heights[0])
 
             overviewHairline
+                .frame(height: heights[2])
 
             HStack(spacing: 0) {
                 overviewCell(
@@ -855,22 +889,34 @@ public struct HardwareVitalsDrawerView: View {
                     )
                 )
             }
-            .frame(height: rowHeight)
+            .frame(height: heights[1])
 
             overviewHairline
 
             overviewNetworkBand(metrics: metrics)
+                .frame(height: heights[3])
 
             if showsDeepTelemetry {
                 overviewHairline
+                    .frame(height: heights[4])
                 overviewDeepTelemetryRow(metrics: metrics)
+                    .frame(height: heights[5])
                 overviewHairline
+                    .frame(height: heights[6])
                 overviewTopProcessesRow(metrics: metrics)
+                    .frame(height: heights[7], alignment: .topLeading)
             }
         }
         .padding(.horizontal, 2)
         .frame(height: sheetHeight, alignment: .top)
     }
+
+    private static let overviewCellNaturalHeight: CGFloat = 62
+    private static let overviewNetworkNaturalHeight: CGFloat = 54
+    private static let overviewDeepRowNaturalHeight: CGFloat = 21
+    private static let overviewTopProcessesNaturalHeight: CGFloat = 66
+    private static let overviewTopProcessRowHeight: CGFloat = 14
+    private static let overviewHairlineHeight: CGFloat = 0.6
 
     func overviewCell(
         title: String,
@@ -1080,7 +1126,7 @@ public struct HardwareVitalsDrawerView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .frame(height: 54)
+        .frame(maxHeight: .infinity)
     }
 
     private func overviewNetworkRow(
@@ -1175,7 +1221,7 @@ public struct HardwareVitalsDrawerView: View {
     }
 
     private func overviewTopProcessesRow(metrics: HardwareVitalsInfo) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("TOP")
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
@@ -1190,6 +1236,7 @@ public struct HardwareVitalsDrawerView: View {
                 }
                 .buttonStyle(.plain)
             }
+            Spacer(minLength: 3)
 
             ForEach(metrics.topProcesses.prefix(3)) { proc in
                 HStack(spacing: 6) {
@@ -1217,6 +1264,7 @@ public struct HardwareVitalsDrawerView: View {
                 .onTapGesture {
                     withAnimation { state.dashboardTab = .processes }
                 }
+                Spacer(minLength: 3)
             }
         }
         .padding(.horizontal, 10)
@@ -1277,7 +1325,10 @@ public struct HardwareVitalsDrawerView: View {
                     .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 4))
             }
         }
-        .frame(height: 8)
+        // The level bar is this band's instrument: it thickens as the drawer
+        // grows, but never further than the state ribbon below it — the two
+        // bars share one band and must stay the same thickness.
+        .frame(minHeight: 8, maxHeight: 40)
     }
 
     private func vitalsLegend(_ items: [(String, String, Color)]) -> some View {
@@ -1380,6 +1431,21 @@ public struct HardwareVitalsDrawerView: View {
         let cpuScope = state.scope(for: .cpu)
         let gpuScope = state.scope(for: .gpu)
         let ramScope = state.scope(for: .ram)
+        // Three identical bands share one budget: the CPU's core grid makes
+        // its natural band taller, but each band's share of the surplus is the
+        // same, and a plot stops at twice its natural height.
+        let bands: [VitalsBandBudget.Band] = [
+            .chart(natural: Self.cpuBandNaturalHeight),
+            .fixed(Self.computeHairlineHeight),
+            .chart(natural: Self.gpuBandNaturalHeight),
+            .fixed(Self.computeHairlineHeight),
+            .chart(natural: Self.ramBandNaturalHeight)
+        ]
+        let drawingHeight = VitalsBandBudget.drawingHeight(
+            available: availableHeight - 4,
+            bands: bands
+        )
+        let bandHeights = VitalsBandBudget.allocate(available: drawingHeight, bands: bands)
 
         VStack(spacing: 0) {
             VitalsMetricColumnBand(
@@ -1399,7 +1465,7 @@ public struct HardwareVitalsDrawerView: View {
                 rangeFooter: rangeFooter(.cpu, scope: cpuScope),
                 valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
                 plotMinHeight: 20,
-                plotMaxHeight: 34,
+                plotMaxHeight: nil,
                 extra: AnyView(
                     VStack(alignment: .leading, spacing: 5) {
                         vitalsCoreGrid(
@@ -1429,9 +1495,11 @@ public struct HardwareVitalsDrawerView: View {
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
+            .frame(height: bandHeights[0], alignment: .topLeading)
 
             vitalsHairline
+                .frame(height: bandHeights[1])
 
             VitalsMetricColumnBand(
                 metric: .gpu,
@@ -1450,7 +1518,7 @@ public struct HardwareVitalsDrawerView: View {
                 rangeFooter: rangeFooter(.gpu, scope: gpuScope),
                 valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
                 plotMinHeight: 30,
-                plotMaxHeight: 44,
+                plotMaxHeight: nil,
                 extra: AnyView(
                     vitalsLegend([
                         ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
@@ -1463,9 +1531,11 @@ public struct HardwareVitalsDrawerView: View {
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
+            .frame(height: bandHeights[2], alignment: .topLeading)
 
             vitalsHairline
+                .frame(height: bandHeights[3])
 
             VitalsMetricColumnBand(
                 metric: .ram,
@@ -1515,11 +1585,20 @@ public struct HardwareVitalsDrawerView: View {
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
+            .frame(height: bandHeights[4], alignment: .topLeading)
         }
         .padding(.horizontal, 2)
-        .frame(height: max(availableHeight - 4, 306), alignment: .top)
+        .frame(height: drawingHeight, alignment: .top)
     }
+
+    /// Natural heights of the three Compute bands at rest: header, plot and
+    /// the band's own extra (the CPU core grid, the GPU/RAM legends) plus the
+    /// 12pt of vertical padding. They are inputs to the budget, not floors.
+    private static let cpuBandNaturalHeight: CGFloat = 142
+    private static let gpuBandNaturalHeight: CGFloat = 89
+    private static let ramBandNaturalHeight: CGFloat = 103
+    private static let computeHairlineHeight: CGFloat = 0.6
 
     // MARK: - Per-Core Heat Grid
 
@@ -1661,6 +1740,19 @@ public struct HardwareVitalsDrawerView: View {
         let netDomain = throughputDomain([downBuckets, upBuckets])
         let diskDomain = throughputDomain([readBuckets, writeBuckets])
         let rateFormatter: (Double) -> String = { formatSpeed($0) }
+        // Both IO bands are charts and share one budget; each row inside them
+        // already gives its strip the flexible half, so the extra height lands
+        // on the plots rather than on the band's padding.
+        let bands: [VitalsBandBudget.Band] = [
+            .chart(natural: Self.networkBandNaturalHeight),
+            .fixed(Self.ioHairlineHeight),
+            .chart(natural: Self.diskBandNaturalHeight)
+        ]
+        let drawingHeight = VitalsBandBudget.drawingHeight(
+            available: availableHeight - 4,
+            bands: bands
+        )
+        let bandHeights = VitalsBandBudget.allocate(available: drawingHeight, bands: bands)
 
         VStack(spacing: 0) {
             VitalsThroughputBand(
@@ -1700,9 +1792,11 @@ public struct HardwareVitalsDrawerView: View {
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
+            .frame(height: bandHeights[0], alignment: .topLeading)
 
             vitalsHairline
+                .frame(height: bandHeights[1])
 
             VitalsThroughputBand(
                 metric: .disk,
@@ -1756,11 +1850,18 @@ public struct HardwareVitalsDrawerView: View {
             )
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity)
+            .frame(height: bandHeights[2], alignment: .topLeading)
         }
         .padding(.horizontal, 2)
-        .frame(height: max(availableHeight - 4, 240), alignment: .top)
+        .frame(height: drawingHeight, alignment: .top)
     }
+
+    /// Natural heights of the two throughput bands: header, two rows at their
+    /// 20pt minimum, the footer, and the disk's composition legend.
+    private static let networkBandNaturalHeight: CGFloat = 110
+    private static let diskBandNaturalHeight: CGFloat = 136
+    private static let ioHairlineHeight: CGFloat = 0.6
 
     // MARK: - Tab: Power
 
@@ -1791,21 +1892,60 @@ public struct HardwareVitalsDrawerView: View {
     ) -> some View {
         let state = batteryState(metrics)
         let capacity = capacityWh(metrics)
-        // The flow strip needs the dead space that the removed battery trace
-        // left behind, but only once the sheet is tall enough to have any.
-        // At the 250 pt floor the bands already fill the card.
-        let flowExpands = availableHeight >= 280
+        let showsFlow = showsPowerFlow(metrics)
+        // The battery bar and the flow band grow with the drawer; CAPACITY and
+        // the health grid are pinned to the bottom. A fixed band keeps its
+        // natural height (weight 0), so every spare point lands on the two
+        // bands that can use it.
+        var bands: [VitalsBandBudget.Band] = [
+            .chart(natural: Self.batteryBandNaturalHeight)
+        ]
+        if showsFlow {
+            bands.append(.fixed(Self.powerHairlineHeight))
+            // The flow band is the tab's list: three columns and a caption can
+            // use any height the battery chart cannot take, so it absorbs the
+            // remainder instead of leaving it at the bottom of the card.
+            bands.append(.list(natural: Self.powerFlowNaturalHeight))
+        }
+        if capacity != nil {
+            bands.append(.fixed(Self.powerHairlineHeight))
+            bands.append(.fixed(Self.capacityBandNaturalHeight))
+        }
+        bands.append(.fixed(Self.powerHairlineHeight))
+        bands.append(.fixed(Self.powerDetailNaturalHeight))
+        let drawingHeight = VitalsBandBudget.drawingHeight(
+            available: availableHeight - 4,
+            bands: bands
+        )
+        let heights = VitalsBandBudget.allocate(available: drawingHeight, bands: bands)
+        var cursor = 0
+        let batteryHeight = heights[cursor]
+        cursor += 1
+        var flowHeight: CGFloat = 0
+        if showsFlow {
+            cursor += 1
+            flowHeight = heights[cursor]
+            cursor += 1
+        }
+        var capacityHeight: CGFloat = 0
+        if capacity != nil {
+            cursor += 1
+            capacityHeight = heights[cursor]
+            cursor += 1
+        }
+        let detailHeight = heights[cursor + 1]
 
         return VStack(spacing: 0) {
             batteryBand(metrics: metrics, state: state, powerColor: powerColor)
+                .frame(height: batteryHeight)
 
-            if showsPowerFlow(metrics) {
+            if showsFlow {
                 vitalsHairline
                 powerFlowBand(
                     metrics: metrics,
-                    powerColor: powerColor,
-                    expands: flowExpands
+                    powerColor: powerColor
                 )
+                .frame(height: flowHeight)
             }
 
             if let capacity {
@@ -1816,6 +1956,7 @@ public struct HardwareVitalsDrawerView: View {
                     designWh: capacity.design,
                     powerColor: powerColor
                 )
+                .frame(height: capacityHeight)
             }
 
             vitalsHairline
@@ -1823,12 +1964,16 @@ public struct HardwareVitalsDrawerView: View {
             vitalsDetailCells(powerDetailCells(metrics))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .frame(height: detailHeight)
         }
-        // The bands decide the content height. `minHeight` only lets a tall
-        // card's spare room go to the flow strip; at a short card the content
-        // is taller than the viewport and the scroll body owns the overflow.
-        .frame(minHeight: max(availableHeight - 4, 0), alignment: .top)
+        .frame(height: drawingHeight, alignment: .top)
     }
+
+    private static let batteryBandNaturalHeight: CGFloat = 79
+    private static let powerFlowNaturalHeight: CGFloat = 93
+    private static let capacityBandNaturalHeight: CGFloat = 52
+    private static let powerDetailNaturalHeight: CGFloat = 30
+    private static let powerHairlineHeight: CGFloat = 0.6
 
     private func batteryBand(
         metrics: HardwareVitalsInfo,
@@ -1861,7 +2006,10 @@ public struct HardwareVitalsDrawerView: View {
                 hoveredIndex: $hoveredBatteryCell,
                 previewHoveredIndex: batteryHoverPreview
             )
-                .frame(height: 8)
+                // The ribbon is this band's plot: when the drawer grows, the
+                // spare points go into the state strip instead of into the
+                // gap between the CAPACITY legend and the detail grid.
+                .frame(minHeight: 8, maxHeight: 40)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     cycleScope(.power)
@@ -1883,7 +2031,7 @@ public struct HardwareVitalsDrawerView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func showsPowerFlow(_ metrics: HardwareVitalsInfo) -> Bool {
@@ -1894,8 +2042,7 @@ public struct HardwareVitalsDrawerView: View {
 
     private func powerFlowBand(
         metrics: HardwareVitalsInfo,
-        powerColor: Color,
-        expands: Bool
+        powerColor: Color
     ) -> some View {
         let onAC = metrics.powerSource == "AC Power"
         let systemWatts: Double = {
@@ -1922,9 +2069,7 @@ public struct HardwareVitalsDrawerView: View {
             )
             if !segments.isEmpty {
                 vitalsCompositionBar(segments: segments)
-            }
-            if expands {
-                Spacer(minLength: 0)
+                    .frame(minHeight: 7, maxHeight: 18)
             }
             HStack(alignment: .top, spacing: 10) {
                 powerFlowColumn(
@@ -1948,6 +2093,7 @@ public struct HardwareVitalsDrawerView: View {
                     tint: VitalsColorResolver.warningYellow
                 )
             }
+            .frame(maxHeight: .infinity, alignment: .center)
             Group {
                 if onAC, systemWatts > 0 {
                     Text(String(
@@ -1964,17 +2110,10 @@ public struct HardwareVitalsDrawerView: View {
             .foregroundColor(.secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            if expands {
-                Spacer(minLength: 0)
-            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .frame(
-            maxWidth: .infinity,
-            maxHeight: expands ? .infinity : nil,
-            alignment: .topLeading
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private func powerFlowColumn(
@@ -2171,6 +2310,7 @@ public struct HardwareVitalsDrawerView: View {
     @ViewBuilder
     private func processesTabContent(
         metrics: HardwareVitalsInfo,
+        availableHeight: CGFloat,
         cpuColor: Color,
         ramColor: Color,
         netColor: Color,
@@ -2178,11 +2318,20 @@ public struct HardwareVitalsDrawerView: View {
         powerColor: Color
     ) -> some View {
         let metric = state.processSortMetric
+        // The list is sized by the drawer, not the other way round: as many
+        // rows as the height really holds, never fewer than twelve, and never
+        // more processes than exist.
+        let rowsThatFit = VitalsProcessListBudget.rowsThatFit(available: availableHeight)
+        let rowCount = VitalsProcessListBudget.visibleRowCount(
+            available: availableHeight,
+            total: metrics.topProcesses.count
+        )
         let visibleRows = ProcessInspectorRanking.ranked(
             metrics.topProcesses,
             by: metric,
-            limit: 12
+            limit: rowCount
         )
+        let needsScroll = visibleRows.count > rowsThatFit
 
         // The bar is a relative ranking inside the visible list; the number
         // carries the absolute truth. A zero value stays a zero-width bar.
@@ -2219,113 +2368,37 @@ public struct HardwareVitalsDrawerView: View {
                 .fixedSize(horizontal: true, vertical: false)
             }
 
-            ForEach(visibleRows) { proc in
-                let alarmColor = processAlarmColor(proc, metric: metric)
-                let statusColor = alarmColor ?? processBaseColor(
-                    metric: metric,
-                    cpuColor: cpuColor,
-                    ramColor: ramColor,
-                    netColor: netColor,
-                    diskColor: diskColor,
-                    powerColor: powerColor
-                )
-                let split = processBarSplit(for: proc, metric: metric)
-                let splitColors = processBarSplitColors(
-                    metric: metric,
-                    netColor: netColor,
-                    diskColor: diskColor
-                )
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 4.5, height: 4.5)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            Text(proc.name)
-                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                                .lineLimit(1)
-                            Text("pid \(proc.id)")
-                                .font(.system(size: 7.5, design: .monospaced))
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: true, vertical: false)
+            if needsScroll {
+                PurahScrollableBody {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(visibleRows) { proc in
+                            processRow(
+                                proc,
+                                metric: metric,
+                                scale: scale,
+                                cpuColor: cpuColor,
+                                ramColor: ramColor,
+                                netColor: netColor,
+                                diskColor: diskColor,
+                                powerColor: powerColor
+                            )
                         }
-
-                        GeometryReader { g in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.primary.opacity(0.06))
-                                if let split, let splitColors, alarmColor == nil {
-                                    let widths = ProcessBarSplitter.widths(
-                                        first: split.first,
-                                        second: split.second,
-                                        scale: scale,
-                                        trackWidth: g.size.width
-                                    )
-                                    HStack(spacing: 0) {
-                                        Rectangle()
-                                            .fill(splitColors.0)
-                                            .frame(
-                                                width: CGFloat(widths.first),
-                                                height: g.size.height
-                                            )
-                                        Rectangle()
-                                            .fill(splitColors.1)
-                                            .frame(
-                                                width: CGFloat(widths.second),
-                                                height: g.size.height
-                                            )
-                                    }
-                                    .frame(width: CGFloat(widths.total), height: g.size.height, alignment: .leading)
-                                    .clipShape(Capsule())
-                                } else {
-                                    let width = ProcessBarSplitter.width(
-                                        value: metric.value(for: proc),
-                                        scale: scale,
-                                        trackWidth: g.size.width
-                                    )
-                                    Capsule()
-                                        .fill(statusColor)
-                                        .frame(width: CGFloat(width))
-                                }
-                            }
-                        }
-                        .frame(height: 2.5)
-                    }
-
-                    Spacer()
-
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(primaryProcessValue(for: proc, metric: metric))
-                            .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                        Text(secondaryProcessValue(for: proc, metric: metric))
-                            .font(.system(size: 7.5, design: .monospaced))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    }
-
-                    if proc.id != 1 {
-                        Button {
-                            vitals.killProcess(pid: proc.id)
-                        } label: {
-                            Text("vitals.kill".localized)
-                                .font(.system(size: 7.5, weight: .semibold))
-                                .padding(.horizontal, 4.5)
-                                .padding(.vertical, 1.5)
-                                .background(palette.dangerAccent.opacity(0.12))
-                                .foregroundColor(palette.dangerAccent)
-                                .cornerRadius(4)
-                        }
-                        .buttonStyle(.tactile)
                     }
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3.5)
-                .background(Color.primary.opacity(0.025))
-                .cornerRadius(6)
+                .frame(height: CGFloat(rowsThatFit) * VitalsProcessListBudget.rowPitch)
+            } else {
+                ForEach(visibleRows) { proc in
+                    processRow(
+                        proc,
+                        metric: metric,
+                        scale: scale,
+                        cpuColor: cpuColor,
+                        ramColor: ramColor,
+                        netColor: netColor,
+                        diskColor: diskColor,
+                        powerColor: powerColor
+                    )
+                }
             }
         }
         .onAppear {
@@ -2334,6 +2407,124 @@ public struct HardwareVitalsDrawerView: View {
         .onDisappear {
             vitals.setProcessesTabVisible(false)
         }
+    }
+
+    private func processRow(
+        _ proc: ProcessInfoItem,
+        metric: ProcessSortMetric,
+        scale: Double,
+        cpuColor: Color,
+        ramColor: Color,
+        netColor: Color,
+        diskColor: Color,
+        powerColor: Color
+    ) -> some View {
+        let alarmColor = processAlarmColor(proc, metric: metric)
+        let statusColor = alarmColor ?? processBaseColor(
+            metric: metric,
+            cpuColor: cpuColor,
+            ramColor: ramColor,
+            netColor: netColor,
+            diskColor: diskColor,
+            powerColor: powerColor
+        )
+        let split = processBarSplit(for: proc, metric: metric)
+        let splitColors = processBarSplitColors(
+            metric: metric,
+            netColor: netColor,
+            diskColor: diskColor
+        )
+        return HStack(spacing: 6) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 4.5, height: 4.5)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(proc.name)
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .lineLimit(1)
+                    Text("pid \(proc.id)")
+                        .font(.system(size: 7.5, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.primary.opacity(0.06))
+                        if let split, let splitColors, alarmColor == nil {
+                            let widths = ProcessBarSplitter.widths(
+                                first: split.first,
+                                second: split.second,
+                                scale: scale,
+                                trackWidth: g.size.width
+                            )
+                            HStack(spacing: 0) {
+                                Rectangle()
+                                    .fill(splitColors.0)
+                                    .frame(
+                                        width: CGFloat(widths.first),
+                                        height: g.size.height
+                                    )
+                                Rectangle()
+                                    .fill(splitColors.1)
+                                    .frame(
+                                        width: CGFloat(widths.second),
+                                        height: g.size.height
+                                    )
+                            }
+                            .frame(width: CGFloat(widths.total), height: g.size.height, alignment: .leading)
+                            .clipShape(Capsule())
+                        } else {
+                            let width = ProcessBarSplitter.width(
+                                value: metric.value(for: proc),
+                                scale: scale,
+                                trackWidth: g.size.width
+                            )
+                            Capsule()
+                                .fill(statusColor)
+                                .frame(width: CGFloat(width))
+                        }
+                    }
+                }
+                .frame(height: 2.5)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(primaryProcessValue(for: proc, metric: metric))
+                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(secondaryProcessValue(for: proc, metric: metric))
+                    .font(.system(size: 7.5, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+
+            if proc.id != 1 {
+                Button {
+                    vitals.killProcess(pid: proc.id)
+                } label: {
+                    Text("vitals.kill".localized)
+                        .font(.system(size: 7.5, weight: .semibold))
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 1.5)
+                        .background(palette.dangerAccent.opacity(0.12))
+                        .foregroundColor(palette.dangerAccent)
+                        .cornerRadius(4)
+                }
+                .buttonStyle(.tactile)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3.5)
+        .background(Color.primary.opacity(0.025))
+        .cornerRadius(6)
     }
 
     private func processAlarmColor(
@@ -3823,52 +4014,6 @@ public struct VitalsTimeSeriesGraphView: View {
 /// end dot as the drawer graph, no grid and no axis, with the time range in
 /// the corner. It takes whatever width the row's text leaves, so it never
 /// leaves a dead gap between the reading and the line.
-public struct VitalsRowSparkline: View {
-    public let metric: VitalsMetricType
-    public let color: Color
-    public let palette: ThemePalette
-    public let height: CGFloat
-
-    /// Tapping cycles the window, so a 12h trend is one click away from a chip
-    /// that has no room for a scope picker.
-    @State private var scope: VitalsTimeScope = .realTime30s
-
-    public init(metric: VitalsMetricType, color: Color, palette: ThemePalette, height: CGFloat = 28.0) {
-        self.metric = metric
-        self.color = color
-        self.palette = palette
-        self.height = height
-    }
-
-    public var body: some View {
-        VStack(alignment: .trailing, spacing: 0) {
-            VitalsTimeSeriesGraphView(
-                points: HardwareVitalsService.shared.history(for: metric, scope: scope),
-                color: color,
-                palette: palette,
-                height: max(height - 9.0, 12.0),
-                scope: scope,
-                showsGrid: false
-            )
-            Text(scope.rawValue)
-                .font(.system(size: 8, weight: .semibold, design: .monospaced))
-                .foregroundColor(.secondary)
-        }
-        .frame(minWidth: 60, maxWidth: .infinity, alignment: .trailing)
-        .frame(height: height)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            let all = VitalsTimeScope.allCases
-            guard let index = all.firstIndex(of: scope) else { return }
-            scope = all[(index + 1) % all.count]
-            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-        }
-        .help("vitals.scope.cycleHint".localized)
-        .accessibilityLabel("vitals.scope.cycleHint".localized)
-        .accessibilityAddTraits(.isButton)
-    }
-}
-
 // MARK: - Dual Time-Series Historical Graph (e.g. Download & Upload)
 public struct VitalsDualTimeSeriesGraphView: View {
     public let downPoints: [VitalsHistoryPoint]

@@ -35,6 +35,57 @@ public enum VitalsColorResolver: Sendable {
         }
     }
 
+    public enum StatusLevel: Sendable, Equatable {
+        case normal
+        case warning
+        case danger
+    }
+
+    /// Which alarm band a metric sits in right now. One source for the ink
+    /// colour and for callers that need to know whether a reading is healthy
+    /// without comparing constructed `Color`s.
+    public static func statusLevel(
+        for metric: VitalsMetricType,
+        vitals: HardwareVitalsInfo,
+        thresholds: VitalsColorThresholds
+    ) -> StatusLevel {
+        switch metric {
+        case .cpu:
+            let u = vitals.cpuUsage
+            if u > thresholds.cpuDanger { return .danger }
+            if u > thresholds.cpuWarning { return .warning }
+            return .normal
+        case .gpu:
+            let u = vitals.gpuUsage
+            if u > thresholds.gpuDanger { return .danger }
+            if u > thresholds.gpuWarning { return .warning }
+            return .normal
+        case .ram:
+            let u = vitals.memoryUsage
+            if u > thresholds.ramDanger { return .danger }
+            if u > thresholds.ramWarning { return .warning }
+            return .normal
+        case .power:
+            if vitals.isCharging { return .normal }
+            let b = Double(vitals.batteryLevel) / 100.0
+            if b <= thresholds.batteryLow / 2.0 { return .danger }
+            if b <= thresholds.batteryLow { return .warning }
+            return .normal
+        case .network:
+            let totalMB = (vitals.networkDownSpeed + vitals.networkUpSpeed) / 1_048_576.0
+            if totalMB > thresholds.networkDangerMB { return .danger }
+            if totalMB > thresholds.networkWarningMB { return .warning }
+            return .normal
+        case .disk:
+            let total = vitals.diskTotalGB
+            let free = vitals.diskFreeGB
+            let usedRatio = total > 0 ? (total - free) / total : 0.5
+            if usedRatio > thresholds.diskDanger { return .danger }
+            if usedRatio > thresholds.diskWarning { return .warning }
+            return .normal
+        }
+    }
+
     /// The drawer's ink: identity hue while healthy, alarm hue above a
     /// threshold. The rail bar and stepped chips read `statusColor(for:)`
     /// instead so their healthy state stays the single green they always had.
@@ -44,44 +95,10 @@ public enum VitalsColorResolver: Sendable {
         thresholds: VitalsColorThresholds,
         palette: ThemePalette = ThemePalette.palette(for: .native)
     ) -> Color {
-        let identity = identityColor(for: metric)
-        let yellow = warningYellow
-        let red = dangerRed
-
-        switch metric {
-        case .cpu:
-            let u = vitals.cpuUsage
-            if u > thresholds.cpuDanger { return red }
-            if u > thresholds.cpuWarning { return yellow }
-            return identity
-        case .gpu:
-            let u = vitals.gpuUsage
-            if u > thresholds.gpuDanger { return red }
-            if u > thresholds.gpuWarning { return yellow }
-            return identity
-        case .ram:
-            let u = vitals.memoryUsage
-            if u > thresholds.ramDanger { return red }
-            if u > thresholds.ramWarning { return yellow }
-            return identity
-        case .power:
-            if vitals.isCharging { return identity }
-            let b = Double(vitals.batteryLevel) / 100.0
-            if b <= thresholds.batteryLow / 2.0 { return red }
-            if b <= thresholds.batteryLow { return yellow }
-            return identity
-        case .network:
-            let totalMB = (vitals.networkDownSpeed + vitals.networkUpSpeed) / 1_048_576.0
-            if totalMB > thresholds.networkDangerMB { return red }
-            if totalMB > thresholds.networkWarningMB { return yellow }
-            return identity
-        case .disk:
-            let total = vitals.diskTotalGB
-            let free = vitals.diskFreeGB
-            let usedRatio = total > 0 ? (total - free) / total : 0.5
-            if usedRatio > thresholds.diskDanger { return red }
-            if usedRatio > thresholds.diskWarning { return yellow }
-            return identity
+        switch statusLevel(for: metric, vitals: vitals, thresholds: thresholds) {
+        case .danger: return dangerRed
+        case .warning: return warningYellow
+        case .normal: return identityColor(for: metric)
         }
     }
 
@@ -93,44 +110,10 @@ public enum VitalsColorResolver: Sendable {
         thresholds: VitalsColorThresholds,
         palette: ThemePalette = ThemePalette.palette(for: .native)
     ) -> Color {
-        let green = healthyGreen
-        let yellow = warningYellow
-        let red = dangerRed
-
-        switch metric {
-        case .cpu:
-            let u = vitals.cpuUsage
-            if u > thresholds.cpuDanger { return red }
-            if u > thresholds.cpuWarning { return yellow }
-            return green
-        case .gpu:
-            let u = vitals.gpuUsage
-            if u > thresholds.gpuDanger { return red }
-            if u > thresholds.gpuWarning { return yellow }
-            return green
-        case .ram:
-            let u = vitals.memoryUsage
-            if u > thresholds.ramDanger { return red }
-            if u > thresholds.ramWarning { return yellow }
-            return green
-        case .power:
-            if vitals.isCharging { return green }
-            let b = Double(vitals.batteryLevel) / 100.0
-            if b <= thresholds.batteryLow / 2.0 { return red }
-            if b <= thresholds.batteryLow { return yellow }
-            return green
-        case .network:
-            let totalMB = (vitals.networkDownSpeed + vitals.networkUpSpeed) / 1_048_576.0
-            if totalMB > thresholds.networkDangerMB { return red }
-            if totalMB > thresholds.networkWarningMB { return yellow }
-            return green
-        case .disk:
-            let total = vitals.diskTotalGB
-            let free = vitals.diskFreeGB
-            let usedRatio = total > 0 ? (total - free) / total : 0.5
-            if usedRatio > thresholds.diskDanger { return red }
-            if usedRatio > thresholds.diskWarning { return yellow }
-            return green
+        switch statusLevel(for: metric, vitals: vitals, thresholds: thresholds) {
+        case .danger: return dangerRed
+        case .warning: return warningYellow
+        case .normal: return healthyGreen
         }
     }
 

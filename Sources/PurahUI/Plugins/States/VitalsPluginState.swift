@@ -120,12 +120,12 @@ public final class VitalsPluginState: Sendable {
         if resolvedStorage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = resolvedStorage.bool(forKey: "isDecomposed")
         } else {
-            self.isDecomposed = true
+            self.isDecomposed = false
         }
         let savedMetrics = resolvedStorage.codable(
             forKey: "enabledMetrics",
             as: [VitalsMetricType].self
-        ) ?? [.cpu, .ram, .power, .disk]
+        ) ?? [.cpu, .ram, .gpu]
         self.enabledMetrics = savedMetrics
         let storedHeader = resolvedStorage.string(forKey: "headerMetric")
         let resolvedHeader = Self.resolveHeaderMetric(stored: storedHeader, enabledMetrics: savedMetrics)
@@ -139,14 +139,14 @@ public final class VitalsPluginState: Sendable {
         if storedProcessSort != resolvedProcessSort.rawValue {
             resolvedStorage.set(resolvedProcessSort.rawValue, forKey: "processSortMetric")
         }
-        // Missing means "never configured" → the default of four. A stored value
+        // Missing means "never configured" → the default of three. A stored value
         // is clamped into the current range, because a settings file written
         // while the slider went up to 6 must not keep the rail at 6 now that
         // the ceiling is 4.
         let savedSlotLimit = resolvedStorage.int(forKey: "maxRailMetrics")
         let clampedLimit = savedSlotLimit > 0
             ? min(max(savedSlotLimit, Self.railMetricRange.lowerBound), Self.railMetricRange.upperBound)
-            : Self.railMetricRange.upperBound
+            : 3
         self.maxRailMetrics = clampedLimit
         // Write the clamped value back when the stored one was out of range, so
         // disk and memory agree. Leaving 6 on disk while the app behaves as if
@@ -204,7 +204,7 @@ public final class VitalsPluginState: Sendable {
         if storage.string(forKey: "isDecomposed") != nil {
             self.isDecomposed = storage.bool(forKey: "isDecomposed")
         } else {
-            self.isDecomposed = true
+            self.isDecomposed = false
         }
         if let metrics = storage.codable(forKey: "enabledMetrics", as: [VitalsMetricType].self) {
             self.enabledMetrics = metrics
