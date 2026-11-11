@@ -911,7 +911,7 @@ struct VitalsStateRibbon: View {
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(Color.primary.opacity(0.06))
-                HStack(spacing: 1) {
+                HStack(spacing: 2) {
                     ForEach(Array(cells.enumerated()), id: \.element.id) { index, cell in
                         Rectangle()
                             .fill(Self.color(for: cell.state))

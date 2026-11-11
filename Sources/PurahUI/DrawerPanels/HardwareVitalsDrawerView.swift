@@ -1325,10 +1325,9 @@ public struct HardwareVitalsDrawerView: View {
                     .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 4))
             }
         }
-        // The level bar is this band's instrument: it thickens as the drawer
-        // grows, but never further than the state ribbon below it — the two
-        // bars share one band and must stay the same thickness.
-        .frame(minHeight: 8, maxHeight: 40)
+        // The level bar and the state ribbon below it share one band and must
+        // stay the same thickness.
+        .frame(height: 16)
     }
 
     private func vitalsLegend(_ items: [(String, String, Color)]) -> some View {
@@ -1353,7 +1352,10 @@ public struct HardwareVitalsDrawerView: View {
         }
     }
 
-    private func vitalsCompositionBar(segments: [(Double, Color)]) -> some View {
+    private func vitalsCompositionBar(
+        segments: [(Double, Color)],
+        height: CGFloat = 7
+    ) -> some View {
         GeometryReader { geo in
             let total = max(segments.reduce(0) { $0 + $1.0 }, 0.0001)
             HStack(spacing: 1.5) {
@@ -1365,7 +1367,7 @@ public struct HardwareVitalsDrawerView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 2))
         }
-        .frame(height: 7)
+        .frame(height: height)
     }
 
     private var vitalsHairline: some View {
@@ -2006,10 +2008,7 @@ public struct HardwareVitalsDrawerView: View {
                 hoveredIndex: $hoveredBatteryCell,
                 previewHoveredIndex: batteryHoverPreview
             )
-                // The ribbon is this band's plot: when the drawer grows, the
-                // spare points go into the state strip instead of into the
-                // gap between the CAPACITY legend and the detail grid.
-                .frame(minHeight: 8, maxHeight: 40)
+                .frame(height: 16)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     cycleScope(.power)
@@ -2068,8 +2067,7 @@ public struct HardwareVitalsDrawerView: View {
                 tint: powerColor
             )
             if !segments.isEmpty {
-                vitalsCompositionBar(segments: segments)
-                    .frame(minHeight: 7, maxHeight: 18)
+                vitalsCompositionBar(segments: segments, height: 16)
             }
             HStack(alignment: .top, spacing: 10) {
                 powerFlowColumn(
@@ -2188,7 +2186,7 @@ public struct HardwareVitalsDrawerView: View {
                 value: "\(formatWh(maxWh)) Wh",
                 tint: powerColor
             )
-            vitalsCompositionBar(segments: segments)
+            vitalsCompositionBar(segments: segments, height: 16)
             vitalsLegend([
                 ("vitals.power.maxLabel".localized, "\(formatWh(maxWh)) Wh", powerColor),
                 ("vitals.power.designLabel".localized, "\(formatWh(designWh)) Wh", Color.primary.opacity(0.35)),
