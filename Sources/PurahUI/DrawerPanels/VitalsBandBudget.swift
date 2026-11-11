@@ -117,6 +117,37 @@ public enum VitalsBandBudget {
     }
 }
 
+/// Splits a tab into the part that draws its instruments and the part that
+/// lists processes.
+///
+/// The instrument zone never grows past its growth cap (and never shrinks
+/// below what its bands need to draw once), so a taller drawer cannot stretch
+/// a chart, a bar or a ribbon. Every point above that zone belongs to the
+/// process list, which is the one band that can use any height.
+public enum VitalsTabLayout {
+    public struct Split: Equatable, Sendable {
+        public let content: CGFloat
+        public let list: CGFloat
+
+        public init(content: CGFloat, list: CGFloat) {
+            self.content = content
+            self.list = list
+        }
+    }
+
+    public static func split(
+        available: CGFloat,
+        naturalContent: CGFloat,
+        growthCap: CGFloat
+    ) -> Split {
+        let available = max(available, 0)
+        let natural = max(naturalContent, 0)
+        let cap = max(natural, growthCap)
+        let content = max(natural, min(available, cap))
+        return Split(content: content, list: max(available - content, 0))
+    }
+}
+
 /// How many process rows fit in the Process Inspector at its real row height.
 public enum VitalsProcessListBudget {
     /// One row is a name line (11.5), a 2.5pt bar, 2pt of spacing and 7pt of

@@ -134,3 +134,50 @@ struct VitalsProcessListBudgetTests {
         #expect(fit < shown, "the view scrolls the overflow instead of clipping it")
     }
 }
+
+@Suite("Vitals Tab Layout")
+struct VitalsTabLayoutTests {
+    @Test("A short drawer keeps the instruments legible and shows no list")
+    func shortDrawerKeepsNaturalContent() {
+        let split = VitalsTabLayout.split(
+            available: 100,
+            naturalContent: 300,
+            growthCap: 220
+        )
+        #expect(split.content == 300)
+        #expect(split.list == 0)
+    }
+
+    @Test("A tall drawer stops the instruments at the growth cap and gives the rest to the list")
+    func tallDrawerFillsWithTheList() {
+        let split = VitalsTabLayout.split(
+            available: 800,
+            naturalContent: 200,
+            growthCap: 220
+        )
+        #expect(split.content == 220)
+        #expect(split.list == 580)
+    }
+
+    @Test("A capped list never makes the instruments shorter than they draw")
+    func naturalContentAboveTheCapWins() {
+        let split = VitalsTabLayout.split(
+            available: 800,
+            naturalContent: 334,
+            growthCap: 220
+        )
+        #expect(split.content == 334)
+        #expect(split.list == 466)
+    }
+
+    @Test("Exactly natural gives the whole drawer to the instruments")
+    func exactlyNatural() {
+        let split = VitalsTabLayout.split(
+            available: 200,
+            naturalContent: 200,
+            growthCap: 220
+        )
+        #expect(split.content == 200)
+        #expect(split.list == 0)
+    }
+}
