@@ -31,8 +31,16 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "PurahSMC",
+            path: "Sources/PurahSMC",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .linkedFramework("IOKit")
+            ]
+        ),
+        .target(
             name: "PurahCore",
-            dependencies: [],
+            dependencies: ["PurahSMC"],
             resources: [
                 .process("Resources")
             ],

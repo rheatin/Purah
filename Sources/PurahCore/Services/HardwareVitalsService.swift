@@ -419,6 +419,20 @@ public struct HardwareVitalsInfo: Sendable {
     public var batteryMaxCapacityMAh: Double
     public var batteryDesignCapacityMAh: Double
 
+    // Thermal & cooling (best effort; `nil` when the hardware hides it).
+    public var cpuTemperatureCelsius: Double?
+    public var gpuTemperatureCelsius: Double?
+    public var fanRPM: Int?
+
+    // Wi-Fi link and reachability.
+    public var wifiSSID: String
+    public var wifiRSSI: Int
+    public var wifiTransmitRateMbps: Double
+    public var wifiLatencyMs: Double?
+    public var wifiPacketLossPercent: Double?
+
+    public var systemUptimeSeconds: Double
+
     public init(
         cpuUsage: Double = 0.15,
         gpuUsage: Double = 0.05,
@@ -478,7 +492,16 @@ public struct HardwareVitalsInfo: Sendable {
         powerSystemAmps: Double = 0.0,
         powerAdapterWatts: Double = 0.0,
         batteryMaxCapacityMAh: Double = 0.0,
-        batteryDesignCapacityMAh: Double = 0.0
+        batteryDesignCapacityMAh: Double = 0.0,
+        cpuTemperatureCelsius: Double? = nil,
+        gpuTemperatureCelsius: Double? = nil,
+        fanRPM: Int? = nil,
+        wifiSSID: String = "",
+        wifiRSSI: Int = 0,
+        wifiTransmitRateMbps: Double = 0.0,
+        wifiLatencyMs: Double? = nil,
+        wifiPacketLossPercent: Double? = nil,
+        systemUptimeSeconds: Double = 0.0
     ) {
         self.cpuUsage = cpuUsage
         self.gpuUsage = gpuUsage
@@ -539,6 +562,15 @@ public struct HardwareVitalsInfo: Sendable {
         self.powerAdapterWatts = powerAdapterWatts
         self.batteryMaxCapacityMAh = batteryMaxCapacityMAh
         self.batteryDesignCapacityMAh = batteryDesignCapacityMAh
+        self.cpuTemperatureCelsius = cpuTemperatureCelsius
+        self.gpuTemperatureCelsius = gpuTemperatureCelsius
+        self.fanRPM = fanRPM
+        self.wifiSSID = wifiSSID
+        self.wifiRSSI = wifiRSSI
+        self.wifiTransmitRateMbps = wifiTransmitRateMbps
+        self.wifiLatencyMs = wifiLatencyMs
+        self.wifiPacketLossPercent = wifiPacketLossPercent
+        self.systemUptimeSeconds = systemUptimeSeconds
     }
 }
 
@@ -622,8 +654,13 @@ public final class HardwareVitalsService {
     public private(set) var samplingInterval: TimeInterval = 1.0
     public var isDrawerVisible: Bool = false {
         didSet {
-            guard isDrawerVisible, !oldValue else { return }
-            refreshMetrics(includeProcesses: false)
+            guard isDrawerVisible != oldValue else { return }
+            if isDrawerVisible {
+                wifiService.start()
+                refreshMetrics(includeProcesses: false)
+            } else {
+                wifiService.stop()
+            }
         }
     }
 
@@ -634,6 +671,9 @@ public final class HardwareVitalsService {
 
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
+    @ObservationIgnored private let wifiService = VitalsWiFiService.shared
+    @ObservationIgnored private var thermalCache:
+        (date: Date, cpu: Double?, gpu: Double?, fanRPM: Int?)?
     @ObservationIgnored private let hostPort: mach_port_t = mach_host_self()
     @ObservationIgnored private var saveThrottleCounter = 0
     @ObservationIgnored private let processNetworkSampler: ProcessNetworkSampler
@@ -1122,6 +1162,7 @@ public final class HardwareVitalsService {
     public func stopMonitoring() {
         monitorTask?.cancel()
         monitorTask = nil
+        wifiService.stop()
         processSamplingTask?.cancel()
         processSamplingTask = nil
         processSamplingGeneration += 1
@@ -1190,6 +1231,16 @@ public final class HardwareVitalsService {
             )
         let net = readNetworkThroughputDetailed()
         let thermal = readThermalStateLabel()
+        let sensors: (cpu: Double?, gpu: Double?, fanRPM: Int?) = {
+            if let cached = thermalCache,
+               Date().timeIntervalSince(cached.date) < 5 {
+                return (cached.cpu, cached.gpu, cached.fanRPM)
+            }
+            let readings = HardwareSMCReader.thermalReadings()
+            thermalCache = (Date(), readings.cpu, readings.gpu, readings.fanRPM)
+            return readings
+        }()
+        wifiService.refreshLink()
 
         metrics = HardwareVitalsInfo(
             cpuUsage: cpuBreakdown.totalUsage,
@@ -1250,7 +1301,16 @@ public final class HardwareVitalsService {
             powerSystemAmps: battery.systemAmps,
             powerAdapterWatts: battery.adapterWatts,
             batteryMaxCapacityMAh: battery.maxCapacityMAh,
-            batteryDesignCapacityMAh: battery.designCapacityMAh
+            batteryDesignCapacityMAh: battery.designCapacityMAh,
+            cpuTemperatureCelsius: sensors.cpu,
+            gpuTemperatureCelsius: sensors.gpu,
+            fanRPM: sensors.fanRPM,
+            wifiSSID: wifiService.info.ssid,
+            wifiRSSI: wifiService.info.rssi,
+            wifiTransmitRateMbps: wifiService.info.transmitRateMbps,
+            wifiLatencyMs: wifiService.info.latencyMs,
+            wifiPacketLossPercent: wifiService.info.packetLossPercent,
+            systemUptimeSeconds: ProcessInfo.processInfo.systemUptime
         )
 
         let now = Date()

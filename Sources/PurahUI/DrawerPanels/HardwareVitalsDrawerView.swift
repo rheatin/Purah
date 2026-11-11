@@ -794,7 +794,9 @@ public struct HardwareVitalsDrawerView: View {
             .fixed(Self.overviewHairlineHeight),
             .fixed(Self.overviewCellNaturalHeight),
             .fixed(Self.overviewHairlineHeight),
-            .fixed(Self.overviewNetworkNaturalHeight)
+            .fixed(Self.overviewNetworkNaturalHeight),
+            .fixed(Self.overviewHairlineHeight),
+            .fixed(Self.overviewSystemInfoHeight)
         ]
         if showsDeepTelemetry {
             bands += [
@@ -901,11 +903,17 @@ public struct HardwareVitalsDrawerView: View {
             overviewNetworkBand(metrics: metrics)
                 .frame(height: heights[4])
 
+            overviewHairline
+                .frame(height: heights[5])
+
+            overviewSystemInfoRow(metrics: metrics)
+                .frame(height: heights[6], alignment: .topLeading)
+
             if showsDeepTelemetry {
                 overviewHairline
-                    .frame(height: heights[5])
+                    .frame(height: heights[7])
                 overviewDeepTelemetryRow(metrics: metrics)
-                    .frame(height: heights[6])
+                    .frame(height: heights[8])
             }
         }
         .padding(.horizontal, 2)
@@ -932,6 +940,7 @@ public struct HardwareVitalsDrawerView: View {
     private static let overviewNetworkNaturalHeight: CGFloat = 54
     private static let overviewDeepRowNaturalHeight: CGFloat = 21
     private static let overviewHairlineHeight: CGFloat = 0.6
+    private static let overviewSystemInfoHeight: CGFloat = 38
     private static let overviewContentGrowthCap: CGFloat = 200
     /// A list header plus at least one row; below this, the drawer is simply
     /// too short to show a process list and the instruments own the height.
@@ -1210,6 +1219,65 @@ public struct HardwareVitalsDrawerView: View {
         )
     }
 
+    /// Two compact lines of machine facts: the chip and OS, then memory,
+    /// storage, uptime and the three load averages. They sit in the fixed
+    /// instrument zone; the process list below is what grows.
+    private func overviewSystemInfoRow(metrics: HardwareVitalsInfo) -> some View {
+        let cores = metrics.performanceCoreCount + metrics.efficiencyCoreCount
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let os = "macOS \(version.majorVersion).\(version.minorVersion)"
+        let uptime = String(
+            format: "vitals.overview.uptime".localized,
+            uptimeLabel(metrics.systemUptimeSeconds)
+        )
+        let load = String(
+            format: "vitals.overview.load".localized,
+            metrics.loadAverage1m,
+            metrics.loadAverage5m,
+            metrics.loadAverage15m
+        )
+
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Text(metrics.chipModelName)
+                Text("·")
+                if cores > 0 {
+                    Text(String(format: "vitals.overview.cores".localized, cores))
+                    Text("·")
+                }
+                Text(os)
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 5) {
+                Text("\(compactGB(metrics.memoryTotalGB)) GB RAM")
+                Text("·")
+                Text("\(compactGB(metrics.diskTotalGB)) GB SSD")
+                Text("·")
+                Text(uptime)
+                Text("·")
+                Text(load)
+                Spacer(minLength: 0)
+            }
+        }
+        .font(.system(size: 8, design: .monospaced))
+        .foregroundColor(.secondary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func uptimeLabel(_ seconds: Double) -> String {
+        let total = Int(max(seconds, 0))
+        let days = total / 86_400
+        let hours = (total % 86_400) / 3_600
+        let minutes = (total % 3_600) / 60
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        return "\(minutes)m"
+    }
+
     private func overviewDeepTelemetryRow(metrics: HardwareVitalsInfo) -> some View {
         return HStack(spacing: 8) {
             overviewBreakdownPair(label: "USER", value: "\(Int(metrics.cpuUserUsage * 100))%")
@@ -1263,7 +1331,7 @@ public struct HardwareVitalsDrawerView: View {
         detail: String = "",
         value: String = "",
         tint: Color,
-        valueSize: CGFloat = 14
+        valueSize: CGFloat = 20
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(title)
@@ -1285,20 +1353,6 @@ public struct HardwareVitalsDrawerView: View {
                     .minimumScaleFactor(0.7)
             }
         }
-    }
-
-    private func vitalsRail(ratio: Double, tint: Color) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.08))
-                Capsule()
-                    .fill(tint)
-                    .frame(width: max(geo.size.width * CGFloat(min(max(ratio, 0), 1)), 4))
-            }
-        }
-        // The level bar and the state ribbon below it share one band and must
-        // stay the same thickness.
-        .frame(height: 16)
     }
 
     private func vitalsLegend(_ items: [(String, String, Color)]) -> some View {
@@ -1414,7 +1468,9 @@ public struct HardwareVitalsDrawerView: View {
             .fixed(Self.computeHairlineHeight),
             .fixed(Self.gpuBandNaturalHeight),
             .fixed(Self.computeHairlineHeight),
-            .fixed(Self.ramBandNaturalHeight)
+            .fixed(Self.ramBandNaturalHeight),
+            .fixed(Self.computeHairlineHeight),
+            .fixed(Self.thermalBandNaturalHeight)
         ]
         let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
         let split = VitalsTabLayout.split(
@@ -1564,6 +1620,16 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .frame(height: bandHeights[4], alignment: .topLeading)
+
+            vitalsHairline
+                .frame(height: bandHeights[5])
+
+            computeThermalBand(
+                metrics: metrics,
+                cpuColor: cpuColor,
+                gpuColor: gpuColor
+            )
+            .frame(height: bandHeights[6], alignment: .topLeading)
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -1588,11 +1654,83 @@ public struct HardwareVitalsDrawerView: View {
     /// Natural heights of the three Compute bands at rest: header, plot and
     /// the band's own extra (the CPU core grid, the GPU/RAM legends) plus the
     /// 12pt of vertical padding. They are inputs to the budget, not floors.
-    private static let cpuBandNaturalHeight: CGFloat = 142
-    private static let gpuBandNaturalHeight: CGFloat = 89
-    private static let ramBandNaturalHeight: CGFloat = 103
+    private static let cpuBandNaturalHeight: CGFloat = 154
+    private static let gpuBandNaturalHeight: CGFloat = 101
+    private static let ramBandNaturalHeight: CGFloat = 115
     private static let computeHairlineHeight: CGFloat = 0.6
+    private static let thermalBandNaturalHeight: CGFloat = 48
     private static let computeContentGrowthCap: CGFloat = 220
+
+    private func computeThermalBand(
+        metrics: HardwareVitalsInfo,
+        cpuColor: Color,
+        gpuColor: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("vitals.thermal.title".localized)
+                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                .foregroundColor(.secondary)
+                .lineLimit(1)
+
+            HStack(spacing: 14) {
+                thermalCell(
+                    icon: "cpu",
+                    label: "CPU",
+                    reading: temperatureText(metrics.cpuTemperatureCelsius),
+                    tint: thermalTint(metrics.cpuTemperatureCelsius, fallback: cpuColor)
+                )
+                thermalCell(
+                    icon: "display",
+                    label: "GPU",
+                    reading: temperatureText(metrics.gpuTemperatureCelsius),
+                    tint: thermalTint(metrics.gpuTemperatureCelsius, fallback: gpuColor)
+                )
+                thermalCell(
+                    icon: "fan.fill",
+                    label: "vitals.thermal.fan".localized,
+                    reading: metrics.fanRPM.map { "\($0) RPM" }
+                        ?? "vitals.thermal.fanless".localized,
+                    tint: Color.secondary
+                )
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func thermalCell(
+        icon: String,
+        label: String,
+        reading: String,
+        tint: Color
+    ) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+            Text(label)
+                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary)
+            Text(reading)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundColor(tint)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private func temperatureText(_ value: Double?) -> String {
+        guard let value, value > 0 else { return "—" }
+        return "\(Int(value.rounded()))°C"
+    }
+
+    private func thermalTint(_ value: Double?, fallback: Color) -> Color {
+        guard let value, value > 0 else { return .secondary }
+        if value >= 80 { return palette.dangerAccent }
+        if value >= 65 { return VitalsColorResolver.warningYellow }
+        return fallback
+    }
 
     // MARK: - Per-Core Heat Grid
 
@@ -1742,6 +1880,8 @@ public struct HardwareVitalsDrawerView: View {
         let bands: [VitalsBandBudget.Band] = [
             .fixed(Self.networkBandNaturalHeight),
             .fixed(Self.ioHairlineHeight),
+            .fixed(Self.wifiBandNaturalHeight),
+            .fixed(Self.ioHairlineHeight),
             .fixed(Self.diskBandNaturalHeight)
         ]
         let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
@@ -1796,6 +1936,12 @@ public struct HardwareVitalsDrawerView: View {
             vitalsHairline
                 .frame(height: bandHeights[1])
 
+            wifiBand(metrics: metrics, netColor: netColor)
+                .frame(height: bandHeights[2], alignment: .topLeading)
+
+            vitalsHairline
+                .frame(height: bandHeights[3])
+
             VitalsThroughputBand(
                 metric: .disk,
                 title: "DISK",
@@ -1849,7 +1995,7 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .frame(height: bandHeights[2], alignment: .topLeading)
+            .frame(height: bandHeights[4], alignment: .topLeading)
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -1873,10 +2019,84 @@ public struct HardwareVitalsDrawerView: View {
 
     /// Natural heights of the two throughput bands: header, two rows at their
     /// 20pt minimum, the footer, and the disk's composition legend.
-    private static let networkBandNaturalHeight: CGFloat = 110
-    private static let diskBandNaturalHeight: CGFloat = 136
+    private static let networkBandNaturalHeight: CGFloat = 122
+    private static let diskBandNaturalHeight: CGFloat = 148
     private static let ioHairlineHeight: CGFloat = 0.6
+    private static let wifiBandNaturalHeight: CGFloat = 58
     private static let ioContentGrowthCap: CGFloat = 200
+
+    private func wifiBand(
+        metrics: HardwareVitalsInfo,
+        netColor: Color
+    ) -> some View {
+        // `ssid()` returns nil without Location permission even while the
+        // link is associated, so association is judged by the link facts the
+        // OS does expose (RSSI / tx rate).
+        let associated = metrics.wifiRSSI < 0 || metrics.wifiTransmitRateMbps > 0
+        let signalPercent = associated && metrics.wifiRSSI < 0
+            ? min(max(2 * (metrics.wifiRSSI + 100), 0), 100)
+            : 0
+        let networkName = !metrics.wifiSSID.isEmpty
+            ? metrics.wifiSSID
+            : (associated ? "Wi-Fi" : "vitals.wifi.notConnected".localized)
+        let latency = metrics.wifiLatencyMs.map { value in
+            value < 10
+                ? String(format: "%.1f ms", value)
+                : "\(Int(value.rounded())) ms"
+        } ?? "—"
+        let loss = metrics.wifiPacketLossPercent
+            .map { String(format: "%.1f%%", $0) } ?? "—"
+        let speed = metrics.wifiTransmitRateMbps > 0
+            ? "\(Int(metrics.wifiTransmitRateMbps.rounded())) Mbps"
+            : "—"
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "wifi")
+                    .font(.system(size: 9))
+                    .foregroundColor(associated ? netColor : .secondary)
+                Text(networkName)
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                wifiSignalBars(percent: signalPercent, tint: netColor)
+                Text("\(signalPercent)%")
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundColor(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                wifiStat(label: "vitals.wifi.speed".localized, value: speed)
+                wifiStat(label: "vitals.wifi.latency".localized, value: latency)
+                wifiStat(label: "vitals.wifi.loss".localized, value: loss)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func wifiSignalBars(percent: Int, tint: Color) -> some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(0..<4, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(percent > index * 25 ? tint : Color.primary.opacity(0.16))
+                    .frame(width: 3, height: CGFloat(4 + index * 2))
+            }
+        }
+    }
+
+    private func wifiStat(label: String, value: String) -> some View {
+        HStack(spacing: 3) {
+            Text(label)
+                .font(.system(size: 8.5))
+                .foregroundColor(.secondary)
+            Text(value)
+                .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
+                .foregroundColor(Color.primary.opacity(0.8))
+        }
+    }
 
     // MARK: - Tab: Power
 
@@ -2010,9 +2230,9 @@ public struct HardwareVitalsDrawerView: View {
         }
     }
 
-    private static let batteryBandNaturalHeight: CGFloat = 79
-    private static let powerFlowNaturalHeight: CGFloat = 93
-    private static let capacityBandNaturalHeight: CGFloat = 52
+    private static let batteryBandNaturalHeight: CGFloat = 96
+    private static let powerFlowNaturalHeight: CGFloat = 103
+    private static let capacityBandNaturalHeight: CGFloat = 62
     private static let powerDetailNaturalHeight: CGFloat = 30
     private static let powerHairlineHeight: CGFloat = 0.6
     private static let powerContentGrowthCap: CGFloat = 180
@@ -2039,9 +2259,12 @@ public struct HardwareVitalsDrawerView: View {
                 value: "\(metrics.batteryLevel)%",
                 tint: powerColor
             )
-            vitalsRail(
-                ratio: Double(metrics.batteryLevel) / 100.0,
-                tint: powerColor
+            vitalsCompositionBar(
+                segments: [
+                    (Double(metrics.batteryLevel) / 100.0, powerColor),
+                    (1.0 - Double(metrics.batteryLevel) / 100.0, Color.primary.opacity(0.12))
+                ],
+                height: 16
             )
             VitalsStateRibbon(
                 cells: ribbonCells,

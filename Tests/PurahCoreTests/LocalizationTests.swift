@@ -156,7 +156,9 @@ struct LocalizationTests {
             // +1: "Hover here" for the two hover targets.
             // -11: the six-step taxonomy (breathing, gate drill, old mount and
             // permission titles) retired with the five task steps.
-            .traditionalChinese: 1004
+            // +10: Vitals gains its thermal/fan, Wi-Fi and overview
+            // machine-facts labels.
+            .traditionalChinese: 1014
         ]
 
         for (language, expected) in pinnedCoverage {
