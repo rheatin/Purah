@@ -16,9 +16,11 @@ public struct OnboardingWorkbenchView: View {
     @State private var isMistouchBlockedAlert: Bool = false
     @State private var meterStatusText: String = "已加载你的默认参数 (80ms 极速悬停 · 24px 阻尼 · 180ms 宽限期) · 移至边缘或点击测试"
     @State private var chargeTimer: Timer? = nil
+    @State private var showBothParameterMeters: Bool = false
 
     // Act 2 Preset Selection State
     @State private var selectedRigMode: OnboardingRigPreset = .developer
+    @State private var isCustomWorkbenchExpanded: Bool = false
     @State private var positionActionFeedback: String? = nil
 
     // Act 3 Grammar Playground State
@@ -199,10 +201,10 @@ public struct OnboardingWorkbenchView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isDone ? "太棒了！你已成功唤醒边缘抽屉" : "去碰一下窗口最左或最右侧的彩色轨道条")
+                    Text(isDone ? "太棒了！你已成功唤醒边缘抽屉" : "去碰一下屏幕最左或最右侧的彩色轨道条")
                         .font(.system(size: 11.5, weight: .bold, design: .rounded))
                         .foregroundColor(isDone ? .green : .white)
-                    Text("抽屉与轨道条严格物理等高 (drawerHeight == barHeight)，下方仪表盘可实时观测并微调『Hover 时间』与『防误触阻力』。")
+                    Text("轨道条有多长，滑出的抽屉就有多高。将鼠标移至左右边缘触发，下方 Meter 会实时显示蓄力进度与当前手感参数。")
                         .font(.system(size: 9.5, design: .rounded))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
@@ -280,7 +282,7 @@ public struct OnboardingWorkbenchView: View {
                 }
             }
 
-            // Dual-Meter Console: Live Charge Meter + Side-by-Side Param Meters
+            // Dual-Meter Console: Live Charge Meter + Focused/Dual Param Meters
             act1DualMeterConsole
         }
         .onChange(of: store.onboardingGateState) { _, newState in
@@ -445,6 +447,26 @@ public struct OnboardingWorkbenchView: View {
                         .cornerRadius(5)
                     }
                     .buttonStyle(.plain)
+
+                    Button {
+                        withAnimation(PurahMotionPolicy.surface) {
+                            showBothParameterMeters.toggle()
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 8))
+                            Text(showBothParameterMeters ? "仅看当前模式表盘 ▴" : "同时对比双表盘 ▾")
+                                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(.white.opacity(0.85))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.10))
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
                 }
 
                 // 24-Segment LED Live Charge Bar
@@ -495,10 +517,18 @@ public struct OnboardingWorkbenchView: View {
                     )
             )
 
-            // 2. Side-by-Side Parameter Meters
-            HStack(spacing: 8) {
-                hoverTimeMeterCard
-                antiMistouchMeterCard
+            // 2. Parameter Meter(s): Focused Active Mode Meter by default, or Side-by-Side Dual Meters on demand
+            if showBothParameterMeters {
+                HStack(spacing: 8) {
+                    hoverTimeMeterCard
+                    antiMistouchMeterCard
+                }
+            } else {
+                if store.edgeTriggerMode == .hoverDwell {
+                    hoverTimeMeterCard
+                } else {
+                    antiMistouchMeterCard
+                }
             }
         }
     }
@@ -776,10 +806,12 @@ public struct OnboardingWorkbenchView: View {
         meterStatusText = "🚫 [防误触拦截生效] 检测到快速甩动光标，驻留不足 \(Int(store.customInitialDwellMs))ms，已自动屏蔽！"
     }
 
-    // MARK: - Act 2: 预设与位置调整 (Presets & 3-Column Position/Height Workbench)
+    // MARK: - Act 2: 预设与位置调整 (Presets & Progressive 3-Column Position/Height Workbench)
 
     private var act2PickOrCustomRigBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let showFullWorkbench = (selectedRigMode == .custom) || isCustomWorkbenchExpanded
+
+        return VStack(alignment: .leading, spacing: 8) {
             // Top Row: 4 Rig Mode Preset Cards
             HStack(spacing: 6) {
                 ForEach(OnboardingRigPreset.allCases) { preset in
@@ -787,18 +819,122 @@ public struct OnboardingWorkbenchView: View {
                 }
             }
 
-            // 3-Column Position & Height Workbench
-            HStack(alignment: .top, spacing: 7) {
-                // Column 1: Left Rail
-                railColumnView(title: "◀ 左轨位置顺序 (上→下)", accent: palette.primaryAccent, edge: .left)
+            if showFullWorkbench {
+                // Header bar for expanded 3-column workbench
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.vertical.3")
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundColor(palette.primaryAccent)
+                    Text("三栏位置与高矮工作台：点击 ↑/↓ 调整上下顺序，点击百分比调节高度，点击 ⇄ 切换左右边缘")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundColor(.white.opacity(0.82))
+                    Spacer()
+                    if selectedRigMode != .custom {
+                        Button {
+                            withAnimation(PurahMotionPolicy.surface) {
+                                isCustomWorkbenchExpanded = false
+                                store.triggerControlHaptic(.alignment)
+                            }
+                        } label: {
+                            Text("收起三栏工作台 ▴")
+                                .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                                .foregroundColor(.secondary)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2.5)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
 
-                // Column 2: Unmounted Library
-                unmountedLibraryColumn
+                // 3-Column Position & Height Workbench
+                HStack(alignment: .top, spacing: 7) {
+                    // Column 1: Left Rail
+                    railColumnView(title: "◀ 左轨位置顺序 (上→下)", accent: palette.primaryAccent, edge: .left)
 
-                // Column 3: Right Rail
-                railColumnView(title: "右轨位置顺序 (上→下) ▶", accent: .orange, edge: .right)
+                    // Column 2: Unmounted Library
+                    unmountedLibraryColumn
+
+                    // Column 3: Right Rail
+                    railColumnView(title: "右轨位置顺序 (上→下) ▶", accent: .orange, edge: .right)
+                }
+            } else {
+                // Clean, Scannable Left/Right Summary Preview + One-Click Expand Workbench Button
+                compactRigSummaryCard
             }
         }
+    }
+
+    private var compactRigSummaryCard: some View {
+        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+        let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+            .sorted { $0.range.start < $1.range.start }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                compactRailPreviewBox(title: "◀ 左侧屏幕边缘 (从上到下 \(leftPods.count) 个模块)", pods: leftPods, accent: palette.primaryAccent)
+                compactRailPreviewBox(title: "右侧屏幕边缘 (从上到下 \(rightPods.count) 个模块) ▶", pods: rightPods, accent: .orange)
+            }
+
+            HStack {
+                Text("💡 想要调整某个插件的上下顺序、高矮比例，或增删模块？")
+                    .font(.system(size: 9.5, design: .rounded))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Button {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        isCustomWorkbenchExpanded = true
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.up.and.down.text.horizontal")
+                            .font(.system(size: 9.5, weight: .bold))
+                        Text("🛠️ 展开三栏工作台：调整每个插件位置与高矮 ▾")
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(palette.primaryAccent)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(9)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.white.opacity(0.035))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                )
+        )
+    }
+
+    private func compactRailPreviewBox(title: String, pods: [SlotPod], accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundColor(accent)
+
+            FlowLayoutPodsPreview(pods: pods, store: store, palette: palette)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.black.opacity(0.28))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .stroke(accent.opacity(0.25), lineWidth: 1)
+                )
+        )
     }
 
     private func rigPresetCard(_ preset: OnboardingRigPreset) -> some View {
@@ -815,8 +951,13 @@ public struct OnboardingWorkbenchView: View {
         return Button {
             withAnimation(PurahMotionPolicy.surface) {
                 selectedRigMode = preset
-                store.applyOnboardingRigPreset(preset)
-                positionActionFeedback = "✅ 已套用「\(preset.title)」预设，可在下方直接点 ↑ / ↓ 微调每个插件的位置顺序"
+                if preset == .custom {
+                    isCustomWorkbenchExpanded = true
+                    positionActionFeedback = "🛠️ 已展开自由自定义工作台，可按需调整每个插件的上下顺序、高矮与左右归属"
+                } else {
+                    store.applyOnboardingRigPreset(preset)
+                    positionActionFeedback = "✅ 已套用「\(preset.title)」预设"
+                }
                 store.triggerControlHaptic(.alignment)
             }
         } label: {
@@ -863,13 +1004,13 @@ public struct OnboardingWorkbenchView: View {
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundColor(accent)
                 Spacer()
-                Text("↑↓换位 · −+调高")
+                Text("↑↓换位 · 百分比调高")
                     .font(.system(size: 8, design: .rounded))
                     .foregroundColor(.secondary)
             }
 
             if railPods.isEmpty {
-                Text("空轨道（从中间点 +L / +R 添加）")
+                Text("空轨道（从中间点 +左轨 / +右轨 添加）")
                     .font(.system(size: 9, design: .rounded))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80)
@@ -890,13 +1031,13 @@ public struct OnboardingWorkbenchView: View {
 
     private func mountedRow(pod: SlotPod, index: Int, totalCount: Int, accent: Color) -> some View {
         let podColor = palette.podColor(for: pod.id, store: store)
-        let zoneLabel: String = (index == 0) ? "顶部" : (index == totalCount - 1 && totalCount > 2 ? "底部" : "🎯黄金")
+        let zoneLabel: String = (index == 0) ? "顶部" : (index == totalCount - 1 && totalCount > 2 ? "底部" : "顺手区")
 
         return HStack(spacing: 3) {
             Text(zoneLabel)
                 .font(.system(size: 7.5, weight: .bold, design: .rounded))
-                .foregroundColor(zoneLabel.contains("黄金") ? .yellow : .secondary)
-                .frame(width: 26, alignment: .leading)
+                .foregroundColor(zoneLabel == "顺手区" ? .yellow : .secondary)
+                .frame(width: 28, alignment: .leading)
 
             Image(systemName: pod.systemIcon)
                 .font(.system(size: 9, weight: .bold))
@@ -955,7 +1096,7 @@ public struct OnboardingWorkbenchView: View {
                     selectedRigMode = .custom
                     let delta = (pod.range.length >= 0.32) ? -0.08 : 0.06
                     store.adjustPodLength(id: pod.id, delta: delta)
-                    positionActionFeedback = "📐 已调整「\(pod.name)」高度为 \(Int(pod.range.length * 100))%"
+                    positionActionFeedback = "📐 已调整「\(pod.name)」高度占比为 \(Int(pod.range.length * 100))%"
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
@@ -968,7 +1109,7 @@ public struct OnboardingWorkbenchView: View {
                     .cornerRadius(3)
             }
             .buttonStyle(.plain)
-            .help("点击调节高度占比 (轨高 == 抽屉高)")
+            .help("点击调节高度占比（轨道多长 = 弹出的抽屉多高）")
 
             // Flip Left <-> Right Edge
             Button {
@@ -1006,7 +1147,7 @@ public struct OnboardingWorkbenchView: View {
                     .cornerRadius(3)
             }
             .buttonStyle(.plain)
-            .help("卸下模块")
+            .help("暂不启用此模块")
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 3.5)
@@ -1064,8 +1205,8 @@ public struct OnboardingWorkbenchView: View {
                                 store.triggerControlHaptic(.alignment)
                             }
                         } label: {
-                            Text("+L")
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            Text("+左轨")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
                                 .foregroundColor(palette.primaryAccent)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1.5)
@@ -1082,8 +1223,8 @@ public struct OnboardingWorkbenchView: View {
                                 store.triggerControlHaptic(.alignment)
                             }
                         } label: {
-                            Text("+R")
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            Text("+右轨")
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
                                 .foregroundColor(.orange)
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1.5)
@@ -1099,7 +1240,7 @@ public struct OnboardingWorkbenchView: View {
             }
         }
         .padding(7)
-        .frame(width: 175, alignment: .topLeading)
+        .frame(width: 185, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.white.opacity(0.02))
@@ -1107,7 +1248,7 @@ public struct OnboardingWorkbenchView: View {
         )
     }
 
-    // MARK: - Act 3: 五大空间内功 (5 Core Spatial Mechanics)
+    // MARK: - Act 3: 进阶空间技巧 (5 Core Spatial Mechanics)
 
     private enum GrammarTab: String, CaseIterable, Identifiable {
         case positionResize = "positionResize"
@@ -1121,20 +1262,20 @@ public struct OnboardingWorkbenchView: View {
         var title: String {
             switch self {
             case .positionResize: return "1. 位置与高矮"
-            case .decompose: return "2. 胶囊分解"
-            case .stack: return "3. 磁吸堆叠"
+            case .decompose: return "2. 独立胶囊 (分解)"
+            case .stack: return "3. 共享抽屉 (堆叠)"
             case .pages: return "4. 多页翻页"
-            case .breathing: return "5. 动态呼吸"
+            case .breathing: return "5. 自动伸缩 (呼吸)"
             }
         }
 
         var badge: String {
             switch self {
-            case .positionResize: return "上下换位 · 轨高=抽屉高"
-            case .decompose: return "整条 ↔ 独立芯片"
-            case .stack: return "合并共享抽屉"
-            case .pages: return "上下传送门翻页"
-            case .breathing: return "手风琴防拥挤"
+            case .positionResize: return "上下换位 · 轨长=抽屉高"
+            case .decompose: return "多项内容独立秒开"
+            case .stack: return "多插件合一省空间"
+            case .pages: return "上下传送门切页"
+            case .breathing: return "平时收拢 · 悬停舒展"
             }
         }
 
@@ -1161,15 +1302,15 @@ public struct OnboardingWorkbenchView: View {
         var guideText: String {
             switch self {
             case .positionResize:
-                return "【位置与等高法则】你既可以在两侧轨道上直接拖拽换位、拖拽底边拉长高度，也可点击右侧按钮体验：拉长轨道条 = 同步拉高弹出的抽屉！"
+                return "【位置与等高法则】你既可以在两侧轨道上直接上下拖拽换位、拖拽底边拉长高度，也可点击右侧按钮体验：拉长轨道条 = 同步拉高弹出的抽屉！"
             case .decompose:
-                return "【胶囊分解】看左侧的『Vitals 硬件遥测』：开启分解后，一条长轨裂变为 CPU、内存、网络独立胶囊，悬停哪枚就单独滑出哪枚！"
+                return "【独立胶囊 (分解)】看左侧的『Vitals 硬件遥测』：开启分解后，一条长轨裂变为 CPU、内存、网络独立胶囊，悬停哪枚就单独滑出哪枚！"
             case .stack:
-                return "【磁吸堆叠】你的默认配置已内置三组黄金堆叠（左轨『暂存+剪贴+便签』、右顶『日历+待办』、右底『终端+音乐+脚本』），共享抽屉顶部 Tab 秒切！"
+                return "【共享抽屉 (堆叠)】你的默认布局已内置三组黄金堆叠（左轨『暂存+剪贴+便签』、右顶『日历+待办』、右底『终端+音乐+脚本』），共享同一个抽屉并通过顶部 Tab 秒切！"
             case .pages:
                 return "【多页翻页】当单侧插件较多时，轨道上下两端会出现『▲ 1/2 ▼ 翻页传送门』，悬停或点击即可切换到第 2 页轨道！"
             case .breathing:
-                return "【动态呼吸】当一条轨道挂载了较多模块时，平时会自动收拢；鼠标滑过哪个模块，哪个模块就像手风琴一样原地舒展放大！"
+                return "【自动伸缩 (呼吸)】当一条轨道挂载了较多模块时，平时会自动收拢；鼠标滑过哪个模块，哪个模块就像手风琴一样原地舒展放大！"
             }
         }
     }
@@ -1184,6 +1325,7 @@ public struct OnboardingWorkbenchView: View {
                     Button {
                         withAnimation(PurahMotionPolicy.surface) {
                             activeGrammarTab = tab
+                            store.onboardingActiveGrammarSubstep = tab.rawValue
                             completedGrammarTabs.insert(tab)
                             applyGrammarLiveEffect(tab)
                             store.triggerControlHaptic(.alignment)
@@ -1244,6 +1386,9 @@ public struct OnboardingWorkbenchView: View {
                             .stroke(activeGrammarTab.color.opacity(0.4), lineWidth: 1)
                     )
             )
+        }
+        .onAppear {
+            store.onboardingActiveGrammarSubstep = activeGrammarTab.rawValue
         }
     }
 
@@ -1314,7 +1459,7 @@ public struct OnboardingWorkbenchView: View {
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
-                Text("演示左轨 3 模块磁吸堆叠")
+                Text("演示左轨模块磁吸堆叠")
                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                     .foregroundColor(.black)
                     .padding(.horizontal, 9)
@@ -1348,7 +1493,7 @@ public struct OnboardingWorkbenchView: View {
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
-                Text(store.isDynamicBreathingEnabled ? "动态呼吸中 (点击关闭)" : "开启动态呼吸演示")
+                Text(store.isDynamicBreathingEnabled ? "自动伸缩中 (点击关闭)" : "开启自动伸缩演示")
                     .font(.system(size: 9.5, weight: .bold, design: .rounded))
                     .foregroundColor(.black)
                     .padding(.horizontal, 9)
@@ -1361,6 +1506,7 @@ public struct OnboardingWorkbenchView: View {
     }
 
     private func applyGrammarLiveEffect(_ tab: GrammarTab) {
+        store.onboardingActiveGrammarSubstep = tab.rawValue
         switch tab {
         case .positionResize:
             break
@@ -1377,7 +1523,7 @@ public struct OnboardingWorkbenchView: View {
         }
     }
 
-    // MARK: - Act 4: App 智能场景调度 (App-Aware Context Profiles)
+    // MARK: - Act 4: App 智能场景调度 (App-Aware Context Profiles - Non-Destructive Sandbox)
 
     public enum OnboardingSimulatedApp: String, CaseIterable, Identifiable {
         case xcode = "xcode"
@@ -1434,7 +1580,7 @@ public struct OnboardingWorkbenchView: View {
                     Image(systemName: "sparkles.tv.fill")
                         .foregroundColor(palette.primaryAccent)
                         .font(.system(size: 11))
-                    Text("点击下方模拟切换前台软件，观察屏幕左右两侧轨道如何自动变身：")
+                    Text("点击下方模拟切换前台软件，在两侧轨道预览场景自动变身效果：")
                         .font(.system(size: 10.5, weight: .semibold, design: .rounded))
                         .foregroundColor(.white)
                 }
@@ -1453,12 +1599,12 @@ public struct OnboardingWorkbenchView: View {
 
             HStack(spacing: 8) {
                 ForEach(OnboardingSimulatedApp.allCases) { app in
-                    let isSel = (simulatedFrontmostApp == app)
+                    let isSel = (simulatedFrontmostApp == app && store.isUsingTemporaryDemoSandbox)
                     Button {
                         withAnimation(PurahMotionPolicy.surface) {
                             simulatedFrontmostApp = app
                             applySimulatedAppProfile(app)
-                            appSwitchBannerText = "🎯 前台切换至 \(app.appName) → 轨道已自动切换为「\(app.profileName)」"
+                            appSwitchBannerText = "🎯 正在预览「\(app.profileName)」(离开此步将自动恢复你的第 2 步默认布局)"
                             store.triggerControlHaptic(.alignment)
                         }
                     } label: {
@@ -1480,7 +1626,7 @@ public struct OnboardingWorkbenchView: View {
                                     .clipShape(Capsule())
                             }
 
-                            Text("切到 \(app.appName)")
+                            Text("预览切到 \(app.appName)")
                                 .font(.system(size: 10.5, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
 
@@ -1505,18 +1651,47 @@ public struct OnboardingWorkbenchView: View {
                 }
             }
 
-            HStack(spacing: 5) {
-                Image(systemName: "info.circle.fill")
+            HStack(spacing: 6) {
+                Image(systemName: "shield.checkered")
                     .font(.system(size: 9.5))
                     .foregroundColor(palette.primaryAccent)
-                Text("防打断保护：当你正在某个抽屉内输入或浏览时，即便后台 App 焦点变化，Purah 也会等你收起抽屉后再平滑切换。")
-                    .font(.system(size: 9.5, design: .rounded))
+                Text("安全沙盒保障：上方场景仅为临时预览，不会覆盖你在第 2 步设好的默认布局；当你正在抽屉内输入时，后台切换 App 也不会打断你。")
+                    .font(.system(size: 9, design: .rounded))
                     .foregroundColor(.secondary)
+
+                Spacer()
+
+                if store.isUsingTemporaryDemoSandbox {
+                    Button {
+                        withAnimation(PurahMotionPolicy.surface) {
+                            store.restoreUserLayoutSnapshotIfNeeded()
+                            appSwitchBannerText = "✅ 已恢复你在第 2 步设好的默认布局"
+                            store.triggerControlHaptic(.alignment)
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.system(size: 9))
+                            Text("立即恢复我的第 2 步布局")
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color.green)
+                        .cornerRadius(5)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
 
     private func applySimulatedAppProfile(_ app: OnboardingSimulatedApp) {
+        // Save the user's Act 2 layout before applying temporary scene preview!
+        store.saveUserLayoutSnapshotIfNeeded()
+        store.isUsingTemporaryDemoSandbox = true
+
         let leftIds: [String]
         let rightIds: [String]
         switch app {
@@ -1726,3 +1901,53 @@ public struct OnboardingWorkbenchView: View {
         }
     }
 }
+
+private struct FlowLayoutPodsPreview: View {
+    let pods: [SlotPod]
+    let store: PurahWorkspaceStore
+    let palette: ThemePalette
+
+    var body: some View {
+        if pods.isEmpty {
+            Text("当前未挂载模块")
+                .font(.system(size: 8.5, design: .rounded))
+                .foregroundColor(.secondary)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(Array(pods.enumerated()), id: \.element.id) { idx, pod in
+                        let podColor = palette.podColor(for: pod.id, store: store)
+                        HStack(spacing: 4) {
+                            Text("\(idx + 1)")
+                                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(podColor))
+
+                            Image(systemName: pod.systemIcon)
+                                .font(.system(size: 8.5, weight: .bold))
+                                .foregroundColor(podColor)
+
+                            Text(pod.name)
+                                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(podColor.opacity(0.14))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .stroke(podColor.opacity(0.40), lineWidth: 0.8)
+                                )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+

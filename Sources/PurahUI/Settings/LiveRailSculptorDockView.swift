@@ -3,17 +3,8 @@ import SwiftUI
 import AppKit
 import PurahCore
 
-private struct SculptorDockContentHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
 public struct LiveRailSculptorDockView: View {
     public let store: PurahWorkspaceStore
-    public var onContentHeightChange: (@MainActor (CGFloat) -> Void)?
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -24,7 +15,6 @@ public struct LiveRailSculptorDockView: View {
         onContentHeightChange: (@MainActor (CGFloat) -> Void)? = nil
     ) {
         self.store = store
-        self.onContentHeightChange = onContentHeightChange
     }
 
     public var body: some View {
@@ -44,10 +34,6 @@ public struct LiveRailSculptorDockView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .frame(width: store.isOnboardingGuideActive ? 760 : 720)
-        // The guide dock grows with its content. The panel asks this view for
-        // its ideal height instead of compressing a fixed 245/285pt box, which
-        // is what let four unmounted chips stack over the mission row.
-        .fixedSize(horizontal: false, vertical: store.isOnboardingGuideActive)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.black.opacity(0.72))
@@ -56,26 +42,9 @@ public struct LiveRailSculptorDockView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(
-                    store.isOnboardingGuideActive
-                        ? Color.white.opacity(0.12)
-                        : palette.primaryAccent.opacity(0.65),
-                    lineWidth: 1.4
-                )
+                .stroke(palette.primaryAccent.opacity(0.65), lineWidth: 1.4)
         )
         .shadow(color: Color.black.opacity(0.45), radius: 14, x: 0, y: 6)
-        .background(
-            GeometryReader { proxy in
-                Color.clear.preference(
-                    key: SculptorDockContentHeightKey.self,
-                    value: proxy.size.height
-                )
-            }
-        )
-        .onPreferenceChange(SculptorDockContentHeightKey.self) { height in
-            guard store.isOnboardingGuideActive, height > 0 else { return }
-            onContentHeightChange?(height)
-        }
     }
 
     // MARK: - Dock Header
@@ -189,51 +158,20 @@ public struct LiveRailSculptorDockView: View {
             VStack(alignment: .leading, spacing: 6) {
                 unmountedDockStatusLine
 
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(unmounted) { pod in
-                                unmountedPodChip(pod)
-                                    .id(pod.id)
-                            }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(unmounted) { pod in
+                            unmountedPodChip(pod)
                         }
                     }
-                    .onAppear { scrollMountTarget(into: proxy, unmounted: unmounted) }
-                    .onChange(of: store.onboardingTarget) { _, _ in
-                        scrollMountTarget(into: proxy, unmounted: unmounted)
-                    }
-                    .onChange(of: unmounted.map(\.id)) { _, _ in
-                        scrollMountTarget(into: proxy, unmounted: unmounted)
-                    }
                 }
-                // Pin the scrolling row to one chip height. The ScrollView's
-                // ideal height follows its content, so the dock's measured
-                // height would otherwise change with the number of unmounted
-                // chips — and round a few points short, drawing the row over
-                // the panel's bottom edge. Scrolling is horizontal only.
-                .frame(height: 30)
             }
-        }
-    }
-
-    /// The mount step's callout frames a button inside this row. The row
-    /// scrolls horizontally, so the target has to be brought on screen or the
-    /// frame would be drawn over whichever chip happens to sit at the edge.
-    private func scrollMountTarget(into proxy: ScrollViewProxy, unmounted: [SlotPod]) {
-        guard store.isOnboardingGuideActive,
-              store.onboardingStep == .firstPod,
-              case .dockButton(let podId, _) = store.onboardingTarget,
-              unmounted.contains(where: { $0.id == podId }) else { return }
-        withAnimation(PurahMotionPolicy.surface) {
-            proxy.scrollTo(podId, anchor: .center)
         }
     }
 
     /// The hint above the chips: what a drag in flight will do, or the idle tip.
     @ViewBuilder
     private var unmountedDockStatusLine: some View {
-        let isMountStep = store.isOnboardingGuideActive && store.onboardingStep == .firstPod
-
         HStack(spacing: 6) {
             Text("sculptor.dock.unmounted".localized)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -257,14 +195,6 @@ public struct LiveRailSculptorDockView: View {
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                         .foregroundColor(.white.opacity(0.85))
                 }
-            } else if isMountStep, case .dockButton(let podId, let edge) = store.onboardingTarget {
-                let podName = store.pods.first(where: { $0.id == podId })?.name ?? podId
-                Text(String(
-                    format: (edge == .left ? "help.mountLeftRail" : "help.mountRightRail").localized,
-                    podName
-                ))
-                .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                .foregroundColor(palette.primaryAccent)
             } else {
                 Text("sculptor.dragTip".localized)
                     .font(.system(size: 9, weight: .medium, design: .rounded))
@@ -278,18 +208,10 @@ public struct LiveRailSculptorDockView: View {
     private func unmountedPodChip(_ pod: SlotPod) -> some View {
         let podColor = palette.podColor(for: pod.id, store: store)
         let isBeingDragged = (store.externalDraggedPodId == pod.id)
-        let isMountStep = store.isOnboardingGuideActive && store.onboardingStep == .firstPod
-        let dockTarget: (podId: String, edge: MountEdge)? = {
-            guard isMountStep, case .dockButton(let podId, let edge) = store.onboardingTarget else {
-                return nil
-            }
-            return (podId, edge)
-        }()
-        let isTargetChip = (dockTarget?.podId == pod.id)
-        let isTargetLeftButton = isTargetChip && dockTarget?.edge == .left
-        let isTargetRightButton = isTargetChip && dockTarget?.edge == .right
+        let isOnboardingDockPulse = store.isOnboardingGuideActive
+            && (store.onboardingStep == .mountPods || store.onboardingStep == .stackDemo)
 
-        let chip = HStack(spacing: 5) {
+        return HStack(spacing: 5) {
             Image(systemName: pod.systemIcon)
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundColor(podColor)
@@ -314,15 +236,6 @@ public struct LiveRailSculptorDockView: View {
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
-            .onboardingCalloutAnchor(
-                store: store,
-                owner: "dock-mount-left-\(pod.id)",
-                step: .firstPod,
-                isActive: isTargetLeftButton,
-                labelKey: "onboarding.callout.clickHere",
-                side: .below,
-                arrow: .up
-            )
             .help(String(format: "help.mountLeftRail".localized, pod.name))
             .accessibilityLabel(String(format: "help.mountLeftRail".localized, pod.name))
 
@@ -341,17 +254,18 @@ public struct LiveRailSculptorDockView: View {
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
-            .onboardingCalloutAnchor(
-                store: store,
-                owner: "dock-mount-right-\(pod.id)",
-                step: .firstPod,
-                isActive: isTargetRightButton,
-                labelKey: "onboarding.callout.clickHere",
-                side: .below,
-                arrow: .up
-            )
             .help(String(format: "help.mountRightRail".localized, pod.name))
             .accessibilityLabel(String(format: "help.mountRightRail".localized, pod.name))
+
+            if isOnboardingDockPulse {
+                Text("onboarding.dock.dragHint".localized)
+                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                    .foregroundColor(palette.primaryAccent)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1.5)
+                    .background(palette.primaryAccent.opacity(0.18))
+                    .cornerRadius(3)
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -361,8 +275,8 @@ public struct LiveRailSculptorDockView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .stroke(
-                            isBeingDragged ? Color.orange : podColor.opacity(0.45),
-                            lineWidth: isBeingDragged ? 1.6 : 1.0
+                            isBeingDragged ? Color.orange : (isOnboardingDockPulse ? palette.primaryAccent.opacity(0.85) : podColor.opacity(0.45)),
+                            lineWidth: (isBeingDragged || isOnboardingDockPulse) ? 1.6 : 1.0
                         )
                 )
         )
@@ -389,29 +303,19 @@ public struct LiveRailSculptorDockView: View {
                     }
                 }
         )
-
-        return chip
     }
 
     // MARK: - Onboarding Coach HUD
 
     @ViewBuilder
     private var onboardingCoachHUD: some View {
-        let enabledCount = store.pods.filter(\.isEnabled).count
-        let isThinBuild = enabledCount < 6
-        let isMissionComplete = store.isCurrentOnboardingMissionCompleted
-
         VStack(alignment: .leading, spacing: 9) {
             // Header Row: Step badge, 6 dots, Spacer, Skip All button
             HStack(spacing: 10) {
                 HStack(spacing: 5) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 10, weight: .bold))
-                    Text(String(
-                        format: "onboarding.stepCounter".localized,
-                        store.onboardingStep.rawValue + 1,
-                        OnboardingGuideStep.allCases.count
-                    ))
+                    Text(String(format: "onboarding.stepCounter".localized, store.onboardingStep.rawValue + 1))
                         .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                 }
                 .foregroundColor(.black)
@@ -463,12 +367,6 @@ public struct LiveRailSculptorDockView: View {
             // Body Card
             onboardingStepBodyCard
 
-            if isThinBuild, store.onboardingStep == .handAndPermissions {
-                Text(String(format: "onboarding.finish.fewPods".localized, enabledCount))
-                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary)
-            }
-
             // Footer Navigation Row
             HStack(spacing: 10) {
                 Button {
@@ -483,18 +381,18 @@ public struct LiveRailSculptorDockView: View {
                         Text("onboarding.back".localized)
                             .font(.system(size: 10.5, weight: .medium, design: .rounded))
                     }
-                    .foregroundColor(store.onboardingStep == .firstPod ? .secondary.opacity(0.4) : .white)
+                    .foregroundColor(store.onboardingStep == .mountPods ? .secondary.opacity(0.4) : .white)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 4.5)
-                    .background(Color.white.opacity(store.onboardingStep == .firstPod ? 0.04 : 0.10))
+                    .background(Color.white.opacity(store.onboardingStep == .mountPods ? 0.04 : 0.10))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.tactile)
-                .disabled(store.onboardingStep == .firstPod)
+                .disabled(store.onboardingStep == .mountPods)
 
                 Spacer()
 
-                if store.onboardingStep != .handAndPermissions {
+                if store.onboardingStep != .permissions {
                     Button {
                         withAnimation(PurahMotionPolicy.surface) {
                             store.skipCurrentOnboardingStep()
@@ -523,39 +421,24 @@ public struct LiveRailSculptorDockView: View {
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 9, weight: .bold))
                         }
-                        .foregroundColor(isMissionComplete ? .black : .white)
+                        .foregroundColor(.black)
                         .padding(.horizontal, 11)
                         .padding(.vertical, 4.5)
-                        .background(isMissionComplete ? palette.primaryAccent : Color.white.opacity(0.08))
+                        .background(palette.primaryAccent)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.tactile)
-                    // A completed step points at the control that advances it.
-                    // The one place that enforces this is the anchor modifier;
-                    // this owner is the only one allowed to publish then.
-                    .onboardingCalloutAnchor(
-                        store: store,
-                        owner: "dock-next-step",
-                        step: store.onboardingStep,
-                        isActive: store.isCurrentOnboardingMissionCompleted,
-                        labelKey: "onboarding.callout.clickHere",
-                        side: .leading
-                    )
                 } else {
                     Button {
                         store.triggerControlHaptic(.levelChange)
                         store.finishOnboarding(useRecommendedLayout: true)
                     } label: {
                         Text("onboarding.finishRecommended".localized)
-                            .font(.system(
-                                size: 10.5,
-                                weight: isThinBuild ? .bold : .medium,
-                                design: .rounded
-                            ))
-                            .foregroundColor(isThinBuild ? .black : .white)
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
                             .padding(.horizontal, 9)
                             .padding(.vertical, 4.5)
-                            .background(isThinBuild ? palette.primaryAccent : Color.white.opacity(0.14))
+                            .background(Color.white.opacity(0.14))
                             .cornerRadius(6)
                     }
                     .buttonStyle(.tactile)
@@ -568,27 +451,15 @@ public struct LiveRailSculptorDockView: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 10, weight: .bold))
                             Text("onboarding.finish".localized)
-                                .font(.system(
-                                    size: 10.5,
-                                    weight: isThinBuild ? .medium : .bold,
-                                    design: .rounded
-                                ))
+                                .font(.system(size: 10.5, weight: .bold, design: .rounded))
                         }
-                        .foregroundColor(isThinBuild ? .white : .black)
+                        .foregroundColor(.black)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 4.5)
-                        .background(isThinBuild ? Color.white.opacity(0.14) : palette.primaryAccent)
+                        .background(palette.primaryAccent)
                         .cornerRadius(6)
                     }
                     .buttonStyle(.tactile)
-                    .onboardingCalloutAnchor(
-                        store: store,
-                        owner: "dock-next-step",
-                        step: store.onboardingStep,
-                        isActive: store.isCurrentOnboardingMissionCompleted,
-                        labelKey: "onboarding.callout.clickHere",
-                        side: .leading
-                    )
                 }
             }
         }
@@ -661,10 +532,6 @@ public struct LiveRailSculptorDockView: View {
         .padding(.vertical, 7)
         .background(Color.white.opacity(0.05))
         .cornerRadius(8)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(palette.primaryAccent.opacity(0), lineWidth: 1.6)
-        )
     }
 
     /// Title / subtitle pair plus the "Auto Demo" button, shared by the steps
@@ -705,190 +572,108 @@ public struct LiveRailSculptorDockView: View {
         }
     }
 
-    // MARK: Step 0 — One pod, and its drawer
+    // MARK: Step 1 — Mount Pods
 
-    private var firstPodStepBody: some View {
-        let isDone = store.isCurrentOnboardingMissionCompleted
+    private var mountPodsStepBody: some View {
+        let leftCount = store.pods.filter { $0.edge == .left && $0.isEnabled }.count
+        let rightCount = store.pods.filter { $0.edge == .right && $0.isEnabled }.count
+        let isStepDone = (leftCount >= 1 && rightCount >= 1)
 
         return VStack(alignment: .leading, spacing: 6) {
             stepHeader(
-                titleKey: "onboarding.firstPod.title",
-                subtitleKey: "onboarding.firstPod.subtitle",
+                titleKey: "onboarding.step1.title",
+                subtitleKey: "onboarding.step1.subtitle",
                 rehearse: { store.rehearseMountSamplePods() }
             )
 
-            missionBox(isCompleted: isDone) {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 8) {
-                        missionCheckItem(
-                            isDone: isDone,
-                            text: "onboarding.firstPod.mission".localized
-                        )
-                        Spacer()
-
-                        Button {
-                            withAnimation(PurahMotionPolicy.surface) {
-                                store.applyRecommendedLayout()
-                                store.triggerControlHaptic(.alignment)
-                            }
-                        } label: {
-                            Text("onboarding.mount.applyRecommended".localized)
-                                .font(.system(size: 9, weight: .bold, design: .rounded))
-                                .foregroundColor(palette.primaryAccent)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(palette.primaryAccent.opacity(0.14))
-                                .cornerRadius(5)
-                        }
-                        .buttonStyle(.tactile)
-                    }
-
-                    Text("onboarding.firstPod.coach".localized)
-                        .font(.system(size: 9, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
-    // MARK: Step 1 — The edge is the door
-
-    private var edgeUseStepBody: some View {
-        let isDone = store.isCurrentOnboardingMissionCompleted
-
-        return VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("onboarding.edgeUse.title".localized)
-                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                Text("onboarding.edgeUse.subtitle".localized)
-                    .font(.system(size: 9.5, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            missionBox(isCompleted: isDone) {
-                VStack(alignment: .leading, spacing: 5) {
+            // Bottom Interactive Mission Box
+            missionBox(isCompleted: isStepDone) {
+                HStack(spacing: 16) {
                     missionCheckItem(
-                        isDone: isDone,
-                        text: "onboarding.edgeUse.mission".localized
+                        isDone: leftCount >= 1,
+                        text: String(format: "onboarding.step1.missionLeft".localized, leftCount)
                     )
-                    Text("onboarding.edgeUse.invite".localized)
-                        .font(.system(size: 9, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    missionCheckItem(
+                        isDone: rightCount >= 1,
+                        text: String(format: "onboarding.step1.missionRight".localized, rightCount)
+                    )
+                    Spacer()
                 }
             }
         }
     }
 
-    // MARK: Step 3 — One pod, two shapes
+    // MARK: Step 2 — Decompose Demo
 
     private var decomposeDemoStepBody: some View {
         let isDone = store.onboardingDidToggleDecompose
-        let demoId = store.onboardingDemoPodId ?? "vitals"
-        let accent = palette.podColor(for: demoId, store: store)
-        let isDecomposed = store.isPodDecomposed(demoId)
-        let chipCount: Int = {
-            if demoId == "vitals" {
-                return max(store._vitalsEnabledMetrics.count, 1)
-            }
-            return max(store.capabilityProvider(for: demoId)?.subItemCount ?? 0, 3)
-        }()
 
         return VStack(alignment: .leading, spacing: 6) {
             stepHeader(
-                titleKey: "onboarding.decompose.title",
-                subtitleKey: "onboarding.decompose.subtitle",
+                titleKey: "onboarding.step2.title",
+                subtitleKey: "onboarding.step2.subtitle",
                 rehearse: { store.rehearseDecomposeDemo() }
             )
 
             missionBox(isCompleted: isDone) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 5) {
                     missionCheckItem(
                         isDone: isDone,
-                        text: "onboarding.decompose.mission".localized
+                        text: "onboarding.step2.mission".localized
                     )
 
                     HStack(spacing: 8) {
-                        decomposePreviewCard(
-                            titleKey: "onboarding.decompose.preview.composite",
-                            isActive: !isDecomposed,
-                            accent: accent
-                        ) {
-                            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                .fill(accent.opacity(0.85))
-                                .frame(width: 10, height: 30)
-                        }
-
-                        decomposePreviewCard(
-                            titleKey: "onboarding.decompose.preview.chips",
-                            isActive: isDecomposed,
-                            accent: accent
-                        ) {
-                            VStack(spacing: 2.5) {
-                                ForEach(0..<chipCount, id: \.self) { _ in
-                                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                                        .fill(accent.opacity(0.85))
-                                        .frame(width: 32, height: 4.5)
-                                }
+                        let isVitalsDecomp = store.isPodDecomposed("vitals")
+                        Button {
+                            withAnimation(PurahMotionPolicy.surface) {
+                                store.togglePodDecomposedInSculptor(podId: "vitals")
                             }
-                            .frame(height: 30)
+                        } label: {
+                            Text(isVitalsDecomp ? "onboarding.step2.capsuleButton.bar".localized : "onboarding.step2.capsuleButton.chips".localized)
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundColor(isVitalsDecomp ? palette.primaryAccent : .white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(isVitalsDecomp ? palette.primaryAccent.opacity(0.20) : Color.white.opacity(0.12))
+                                .cornerRadius(5)
                         }
+                        .buttonStyle(.tactile)
 
-                        Spacer(minLength: 4)
+                        Button {
+                            withAnimation(PurahMotionPolicy.surface) {
+                                store.isRehearsingBreathingInSculptor.toggle()
+                                store.onWindowsRebuildNeeded?()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: store.isRehearsingBreathingInSculptor ? "eye.fill" : "hammer.fill")
+                                Text("onboarding.step2.toggleLiveTest".localized)
+                            }
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .foregroundColor(store.isRehearsingBreathingInSculptor ? palette.primaryAccent : .secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(store.isRehearsingBreathingInSculptor ? palette.primaryAccent.opacity(0.16) : Color.white.opacity(0.08))
+                            .cornerRadius(5)
+                        }
+                        .buttonStyle(.tactile)
+
+                        Spacer()
                     }
-
-                    Text("onboarding.decompose.tradeoff".localized)
-                        .font(.system(size: 9, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("onboarding.decompose.hoverHint".localized)
-                        .font(.system(size: 9, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
     }
 
-    @ViewBuilder
-    private func decomposePreviewCard<Diagram: View>(
-        titleKey: String,
-        isActive: Bool,
-        accent: Color,
-        @ViewBuilder diagram: () -> Diagram
-    ) -> some View {
-        VStack(spacing: 3) {
-            diagram()
-                .frame(width: 44, height: 32)
-            Text(titleKey.localized)
-                .font(.system(size: 8.5, weight: isActive ? .bold : .medium, design: .rounded))
-                .foregroundColor(isActive ? .white : .secondary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(isActive ? accent.opacity(0.16) : Color.white.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(isActive ? accent : Color.white.opacity(0.12), lineWidth: isActive ? 1.3 : 0.8)
-                )
-        )
-    }
+    // MARK: Step 3 — Stack Demo
 
-    // MARK: Step 2 — Two pods, one group
-
-    private var stackStepBody: some View {
+    private var stackDemoStepBody: some View {
         let isDone = store.isCurrentOnboardingMissionCompleted
 
         return VStack(alignment: .leading, spacing: 6) {
             stepHeader(
-                titleKey: "onboarding.stack.title",
-                subtitleKey: "onboarding.stack.subtitle",
+                titleKey: "onboarding.step3.title",
+                subtitleKey: "onboarding.step3.subtitle",
                 rehearse: { store.rehearseStackMerge() }
             )
 
@@ -896,26 +681,26 @@ public struct LiveRailSculptorDockView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     missionCheckItem(
                         isDone: isDone,
-                        text: "onboarding.stack.mission".localized
+                        text: "onboarding.step3.mission".localized
                     )
 
                     HStack(spacing: 5) {
                         if isDone {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundColor(.green)
-                            Text("onboarding.stack.statusSuccess".localized)
+                            Text("onboarding.step3.statusSuccess".localized)
                                 .font(.system(size: 9, weight: .bold, design: .rounded))
                                 .foregroundColor(.green)
                         } else if store.externalDraggedPodId != nil || store.isDraggingFromDrawer {
                             Image(systemName: "flame.fill")
                                 .foregroundColor(.orange)
-                            Text("onboarding.stack.statusDragging".localized)
+                            Text("onboarding.step3.statusDragging".localized)
                                 .font(.system(size: 9, weight: .bold, design: .rounded))
                                 .foregroundColor(.orange)
                         } else {
                             Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
                                 .foregroundColor(.secondary)
-                            Text("onboarding.stack.statusHint".localized)
+                            Text("onboarding.step3.statusHint".localized)
                                 .font(.system(size: 9, weight: .regular, design: .rounded))
                                 .foregroundColor(.secondary)
                         }
@@ -926,21 +711,147 @@ public struct LiveRailSculptorDockView: View {
         }
     }
 
-    // MARK: Step 4 — Tune the edge to your hand, and permissions
+    // MARK: Step 4 — Page Demo
 
-    /// Both offers live in one step because neither is required to use Purah:
-    /// the edge already opened a drawer in step 1, and a skipped permission
-    /// only costs that plugin's connected feature.
-    private var handAndPermissionsStepBody: some View {
-        let rows = PermissionInventory.promptable()
+    private var pageDemoStepBody: some View {
+        let isDone = store.isCurrentOnboardingMissionCompleted
+
+        return VStack(alignment: .leading, spacing: 6) {
+            stepHeader(
+                titleKey: "onboarding.step4.title",
+                subtitleKey: "onboarding.step4.subtitle",
+                rehearse: { store.rehearsePaginationFlip() }
+            )
+
+            missionBox(isCompleted: isDone) {
+                HStack(spacing: 16) {
+                    missionCheckItem(
+                        isDone: store.onboardingDidCreatePage,
+                        text: "onboarding.step4.missionCreate".localized
+                    )
+                    missionCheckItem(
+                        isDone: store.onboardingDidSwitchPage,
+                        text: "onboarding.step4.missionSwitch".localized
+                    )
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    // MARK: Step 5 — Breathing Demo
+
+    private var breathingDemoStepBody: some View {
+        let hoveredCount = store.onboardingBreathingHoveredPods.count
+        let isDone = (hoveredCount >= 2)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("onboarding.step5.title".localized)
+                        .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("onboarding.step5.subtitle".localized)
+                        .font(.system(size: 9.5, weight: .regular))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+
+                // Temporary 7-Pod Sandbox Toggle / Restore My Layout Button
+                Button {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        store.toggleTemporaryBreathingSandbox()
+                        store.triggerControlHaptic(.alignment)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: store.isUsingTemporaryDemoSandbox ? "arrow.uturn.backward.circle.fill" : "flask.fill")
+                            .font(.system(size: 9.5, weight: .bold))
+                        Text(store.isUsingTemporaryDemoSandbox ? "onboarding.step5.sandboxRestore".localized : "onboarding.step5.sandboxTry".localized)
+                            .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(store.isUsingTemporaryDemoSandbox ? .black : .white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(store.isUsingTemporaryDemoSandbox ? Color.orange : Color.white.opacity(0.12))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.tactile)
+
+                Button {
+                    withAnimation(PurahMotionPolicy.surface) {
+                        store.rehearseDynamicBreathing()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                        Text("onboarding.autoDemo".localized)
+                    }
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.12))
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.tactile)
+            }
+
+            missionBox(isCompleted: store.isDynamicBreathingEnabled && isDone) {
+                if !store.isDynamicBreathingEnabled {
+                    HStack(spacing: 8) {
+                        Text("onboarding.step5.dynamicOffPrompt".localized)
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .foregroundColor(Color.orange.opacity(0.95))
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 4)
+
+                        Button {
+                            withAnimation(PurahMotionPolicy.surface) {
+                                store.setDynamicBreathingEnabled(true)
+                                store.triggerControlHaptic(.alignment)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "lungs.fill")
+                                Text("onboarding.step5.turnOnDynamic".localized)
+                            }
+                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.tactile)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        missionCheckItem(
+                            isDone: isDone,
+                            text: String(format: "onboarding.step5.missionActive".localized, min(hoveredCount, 2))
+                        )
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Step 6 — Anti-Touch Calibration
+
+    private var antiTouchCalibrationStepBody: some View {
+        let isDone = store.onboardingDidTriggerEdgeDrawer
 
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("onboarding.hand.title".localized)
+                    Text("onboarding.step6.title".localized)
                         .font(.system(size: 11.5, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                    Text("onboarding.hand.subtitle".localized)
+                    Text("onboarding.step6.subtitle".localized)
                         .font(.system(size: 9.5, weight: .regular))
                         .foregroundColor(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -951,38 +862,60 @@ public struct LiveRailSculptorDockView: View {
                 sensitivityPills
             }
 
-            missionBox(isCompleted: true) {
+            missionBox(isCompleted: isDone) {
                 VStack(alignment: .leading, spacing: 5) {
-                    missionCheckItem(
-                        isDone: true,
-                        text: "onboarding.hand.mission".localized
-                    )
-
                     HStack(spacing: 4) {
                         Image(systemName: "info.circle.fill")
                             .font(.system(size: 9))
                             .foregroundColor(palette.primaryAccent)
-                        Text(store.edgeTriggerMode == .hoverDwell ? "onboarding.edge.descDwell".localized : "onboarding.edge.descBarrier".localized)
+                        Text(store.edgeTriggerMode == .hoverDwell ? "onboarding.step6.descDwell".localized : "onboarding.step6.descBarrier".localized)
                             .font(.system(size: 9, weight: .medium, design: .rounded))
                             .foregroundColor(palette.primaryAccent)
                     }
 
+                    missionCheckItem(
+                        isDone: isDone,
+                        text: String(
+                            format: "onboarding.step6.mission".localized,
+                            isDone ? "onboarding.step6.statusTested".localized : "onboarding.step6.statusWaiting".localized
+                        )
+                    )
+
                     onboardingGateTelemetryMeter
+                }
+            }
+        }
+    }
 
-                    Divider()
-                        .background(Color.white.opacity(0.10))
+    // MARK: Step 7 — Connect what Purah can see
 
-                    Text("onboarding.hand.permissionsHeader".localized)
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
+    /// One panel for every system permission an installed plugin asks for.
+    ///
+    /// Each row is its own click, because each one raises its own macOS sheet
+    /// and a single "allow everything" button would put a wall of prompts behind
+    /// one tap. Skipping costs exactly the features listed here and nothing
+    /// else — the affected pods go on to show their own "Connect" affordance.
+    private var permissionsStepBody: some View {
+        let rows = PermissionInventory.promptable()
 
-                    if rows.isEmpty {
-                        missionCheckItem(isDone: true, text: "onboarding.permissions.none".localized)
-                    } else {
-                        VStack(spacing: 4) {
-                            ForEach(rows) { group in
-                                permissionRow(group)
-                            }
+        return VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("onboarding.step7.title".localized)
+                    .font(.system(size: 11.5, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("onboarding.step7.subtitle".localized)
+                    .font(.system(size: 9.5, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            missionBox(isCompleted: true) {
+                if rows.isEmpty {
+                    missionCheckItem(isDone: true, text: "onboarding.step7.none".localized)
+                } else {
+                    VStack(spacing: 4) {
+                        ForEach(rows) { group in
+                            permissionRow(group)
                         }
                     }
                 }
@@ -1088,7 +1021,7 @@ public struct LiveRailSculptorDockView: View {
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
-                Text("onboarding.edge.hoverDwell".localized)
+                Text("onboarding.step6.hoverDwell".localized)
                     .font(.system(size: 9, weight: store.edgeTriggerMode == .hoverDwell ? .bold : .medium, design: .rounded))
                     .foregroundColor(store.edgeTriggerMode == .hoverDwell ? palette.primaryAccent : .secondary)
                     .padding(.horizontal, 6)
@@ -1110,7 +1043,7 @@ public struct LiveRailSculptorDockView: View {
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
-                Text("onboarding.edge.pushBarrier".localized)
+                Text("onboarding.step6.pushBarrier".localized)
                     .font(.system(size: 9, weight: store.edgeTriggerMode == .pushForce ? .bold : .medium, design: .rounded))
                     .foregroundColor(store.edgeTriggerMode == .pushForce ? palette.primaryAccent : .secondary)
                     .padding(.horizontal, 6)
@@ -1178,22 +1111,22 @@ public struct LiveRailSculptorDockView: View {
         let gateStatusText: String = {
             switch store.onboardingGateState {
             case .idle:
-                return "onboarding.edge.gate.idle".localized
+                return "onboarding.step6.gate.idle".localized
             case .dwelling:
-                return String(format: "onboarding.edge.gate.dwelling".localized, store.onboardingGateCurrentValue, store.onboardingGateTargetValue)
+                return String(format: "onboarding.step6.gate.dwelling".localized, store.onboardingGateCurrentValue, store.onboardingGateTargetValue)
             case .pushing:
-                return String(format: "onboarding.edge.gate.pushing".localized, store.onboardingGateCurrentValue, store.onboardingGateTargetValue)
+                return String(format: "onboarding.step6.gate.pushing".localized, store.onboardingGateCurrentValue, store.onboardingGateTargetValue)
             case .suppressedFling:
-                return String(format: "onboarding.edge.gate.suppressedFling".localized, store.onboardingGateCurrentValue)
+                return String(format: "onboarding.step6.gate.suppressedFling".localized, store.onboardingGateCurrentValue)
             case .opened:
                 let unit = store.edgeTriggerMode == .hoverDwell ? "ms" : "px"
-                return String(format: "onboarding.edge.gate.opened".localized, store.onboardingGateTargetValue, unit)
+                return String(format: "onboarding.step6.gate.opened".localized, store.onboardingGateTargetValue, unit)
             }
         }()
 
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 4) {
-                Text("onboarding.edge.gate.title".localized)
+                Text("onboarding.step6.gate.title".localized)
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
                     .foregroundColor(palette.primaryAccent)
                 Spacer()

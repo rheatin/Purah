@@ -399,7 +399,7 @@ public final class PurahWorkspaceStore {
         }
     }
 
-    public func mountPod(id: String, to edge: MountEdge) {
+    public func mountPod(id: String, to edge: MountEdge, announce: Bool = true) {
         guard let idx = pods.firstIndex(where: { $0.id == id }) else { return }
         pods[idx].edge = edge
         pods[idx].pageIndex = max(0, currentRailPage(for: edge))

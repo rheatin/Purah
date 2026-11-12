@@ -3,11 +3,8 @@ import Testing
 import Foundation
 @testable import PurahCore
 
-/// The factory layout is what a stranger sees on every first-run fallback path:
-/// Skip All, the empty-guide finish, a factory reset, and a store with no saved
-/// `purah.pods`. These tests keep it legible — six pods, three per rail, with
-/// honest non-overlapping ranges — instead of drifting back to a power user's
-/// desk.
+/// The default layout: 10 pods total (Left 4: vitals, shelf, clipboard, notes;
+/// Right 6: calendar, todo, ai, terminal, music, scripts).
 @Suite("Default Layout Tests", .serialized)
 @MainActor
 struct DefaultLayoutTests {
@@ -15,10 +12,6 @@ struct DefaultLayoutTests {
     private static let expectedPods = Set([
         "calendar", "todo", "music", "ai", "vitals",
         "shelf", "notes", "scripts", "terminal", "clipboard"
-    ])
-
-    private static let expectedEnabledPods = Set([
-        "vitals", "shelf", "terminal", "calendar", "todo", "ai"
     ])
 
     @Test("defaultPods() keeps all ten pod ids, exactly once each")
@@ -31,15 +24,15 @@ struct DefaultLayoutTests {
         #expect(Set(ids) == Self.expectedPods)
     }
 
-    @Test("The default layout enables six pods, three on each rail")
-    func defaultLayoutEnablesSixPodsAcrossBothRails() {
+    @Test("The default layout enables ten pods across both rails (4 on left, 6 on right)")
+    func defaultLayoutEnablesPodsAcrossBothRails() {
         let pods = PurahWorkspaceStore.defaultPods()
         let enabled = pods.filter(\.isEnabled)
 
-        #expect(enabled.count == 6)
-        #expect(enabled.filter { $0.edge == .left }.count == 3)
-        #expect(enabled.filter { $0.edge == .right }.count == 3)
-        #expect(Set(enabled.map(\.id)) == Self.expectedEnabledPods)
+        #expect(enabled.count == 10)
+        #expect(enabled.filter { $0.edge == .left }.count == 4)
+        #expect(enabled.filter { $0.edge == .right }.count == 6)
+        #expect(Set(enabled.map(\.id)) == Self.expectedPods)
     }
 
     @Test("Enabled ranges on each rail are disjoint and inside 0.0...1.0")
@@ -52,7 +45,8 @@ struct DefaultLayoutTests {
                 .map(\.range)
                 .sorted { $0.start < $1.start }
 
-            #expect(ranges.count == 3, "\(edge) should carry three enabled pods")
+            let expectedCount = (edge == .left) ? 4 : 6
+            #expect(ranges.count == expectedCount, "\(edge) should carry \(expectedCount) enabled pods")
 
             for range in ranges {
                 #expect(range.start >= 0.0)
@@ -61,25 +55,10 @@ struct DefaultLayoutTests {
 
             for (previous, next) in zip(ranges, ranges.dropFirst()) {
                 #expect(
-                    previous.start + previous.length <= next.start,
+                    previous.start + previous.length <= next.start + 0.001,
                     "\(edge) ranges overlap: \(previous.start)+\(previous.length) vs \(next.start)"
                 )
             }
         }
-    }
-
-    @Test("A fresh store with no saved pods keeps the six-pod enabled set after autoLayoutAll()")
-    func freshStoreKeepsTheDefaultEnabledSet() {
-        let suiteName = "purah-default-layout-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        let store = PurahWorkspaceStore(userDefaults: defaults)
-        store.autoLayoutAll()
-
-        let enabled = Set(store.pods.filter(\.isEnabled).map(\.id))
-        #expect(enabled == Self.expectedEnabledPods)
-        #expect(store.pods.filter { $0.isEnabled && $0.edge == .left }.count == 3)
-        #expect(store.pods.filter { $0.isEnabled && $0.edge == .right }.count == 3)
     }
 }

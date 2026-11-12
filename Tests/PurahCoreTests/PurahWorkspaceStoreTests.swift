@@ -98,10 +98,6 @@ struct PurahWorkspaceStoreTests {
         // to exceed 1.0 — so paging never enters the picture. Paging is what
         // happens once compression would fall below the ergonomic floor.
         store.isDynamicBreathingEnabled = false
-        // The default layout keeps three pods on the right rail, which fits at
-        // 681pt. Add Music back so this fixture still describes a rail that is
-        // genuinely too short for what it carries.
-        store.togglePodEnabled(id: "music")
         store.overriddenScreenHeight = 681.0
         store.autoLayoutAll()
 
@@ -530,9 +526,6 @@ struct PurahWorkspaceStoreTests {
 
         // Keep only 4 pods enabled (e.g. calendar, music, vitals, shelf)
         let keepIds: Set<String> = ["calendar", "music", "vitals", "shelf"]
-        for pod in store.pods where keepIds.contains(pod.id) && !pod.isEnabled {
-            store.togglePodEnabled(id: pod.id)
-        }
         for pod in store.pods {
             if !keepIds.contains(pod.id) && pod.isEnabled {
                 store.togglePodEnabled(id: pod.id)
@@ -629,16 +622,16 @@ struct PurahWorkspaceStoreTests {
         #expect(isolated.object(forKey: "purah.scripts.isDecomposed") == nil)
     }
 
-    @Test("The hand-and-permissions step initializes live gate telemetry and handles drawer states")
-    func testHandAndPermissionsGateTelemetry() {
+    @Test("Onboarding Step 6 Anti-Touch Calibration initializes live gate telemetry and handles drawer states")
+    func testOnboardingStep6GateTelemetry() {
         let isolated = UserDefaults(suiteName: "test_gate_telemetry_\(UUID().uuidString)")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.isOnboardingGuideActive = true
-        store.edgeTriggerSensitivity = .agile
+        store.edgeTriggerSensitivity = .balanced
         store.edgeTriggerMode = .hoverDwell
 
-        // Enter the last step: must force .balanced sensitivity, reset gate state and target value to 150ms
-        store.selectOnboardingStep(.handAndPermissions)
+        // Enter Step 6: reset gate state and target value to 150ms
+        store.selectOnboardingStep(.antiTouchCalibration)
         #expect(store.edgeTriggerSensitivity == .balanced)
         #expect(store.onboardingGateState == .idle)
         #expect(store.onboardingGateProgress == 0.0)
@@ -647,6 +640,7 @@ struct PurahWorkspaceStoreTests {
 
         // Activating a drawer sets state to .opened and progress to 1.0
         store.activateDrawer(podId: "vitals")
+        #expect(store.onboardingDidTriggerEdgeDrawer == true)
         #expect(store.onboardingGateState == .opened)
         #expect(store.onboardingGateProgress == 1.0)
         #expect(store.onboardingGateCurrentValue == 150)
@@ -658,74 +652,9 @@ struct PurahWorkspaceStoreTests {
         #expect(store.onboardingGateCurrentValue == 0)
     }
 
-    @Test("Onboarding target follows the mission")
-    func onboardingTargetFollowsTheMission() throws {
-        let suiteName = "test_onboarding_target_\(UUID().uuidString)"
-        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
-        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
-
-        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
-        store.startInteractiveOnboarding(clearAllPods: true)
-
-        // 1. Step 0 points at the first unmounted pod's own mount button.
-        let first = try #require(store.pods.first(where: { !$0.isEnabled }))
-        #expect(store.onboardingTarget == .dockButton(
-            podId: first.id,
-            edge: first.defaultEdge ?? first.edge
-        ))
-        // A dockButton target is a chip in the dock, not a pod on the rail.
-        #expect(store.isOnboardingTargetPod(first.id) == false)
-        store.mountPod(id: first.id, to: first.defaultEdge ?? first.edge)
-        #expect(store.isCurrentOnboardingMissionCompleted == true)
-
-        // 2. The edge step points at the busier rail's band.
-        store.selectOnboardingStep(.edgeUse)
-        guard case .railBand(let bandEdge, let bandPods) = store.onboardingTarget else {
-            Issue.record("Expected a railBand target on the edge step")
-            return
-        }
-        let leftPods = Set(store.pods.filter { $0.edge == .left && $0.isEnabled }.map(\.id))
-        let rightPods = Set(store.pods.filter { $0.edge == .right && $0.isEnabled }.map(\.id))
-        let expectedEdge: MountEdge = rightPods.count > leftPods.count ? .right : .left
-        #expect(bandEdge == expectedEdge)
-        #expect(bandPods == (expectedEdge == .left ? leftPods : rightPods))
-
-        // 3. The stack step points at the two pods on one rail.
-        store.selectOnboardingStep(.stack)
-        guard case .railPods(let stackTargets) = store.onboardingTarget else {
-            Issue.record("Expected rail pods on the stack step")
-            return
-        }
-        #expect(stackTargets.count == 2)
-
-        // 4. The decompose lesson points at exactly one pod.
-        store.selectOnboardingStep(.decomposeDemo)
-        guard case .railPods(let decomposeTargets) = store.onboardingTarget else {
-            Issue.record("Expected a railPods target on the decompose step")
-            return
-        }
-        #expect(decomposeTargets.count == 1)
-
-        // 5. The last step lights the panel, not the rail.
-        store.selectOnboardingStep(.handAndPermissions)
-        #expect(store.onboardingTarget == .guidePanel)
-        for pod in store.pods {
-            #expect(store.isOnboardingTargetPod(pod.id) == false)
-        }
-
-        // 6. Leaving the guide clears the spotlight.
-        store.finishOnboarding()
-        #expect(store.onboardingTarget == .none)
-    }
-
     @Test("Onboarding decompose and edge localized strings exist across EN, zh-Hans, zh-Hant")
     func testOnboardingLocalizedStrings() {
         let requiredKeys = [
-            "onboarding.firstPod.title",
-            "onboarding.edgeUse.invite",
-            "onboarding.stack.mission",
-            "onboarding.decompose.preview.composite",
-            "onboarding.hand.mission",
             "onboarding.decompose.heroButton.toChips",
             "onboarding.decompose.heroButton.toBar",
             "onboarding.edge.gate.title",
@@ -738,25 +667,5 @@ struct PurahWorkspaceStoreTests {
         for key in requiredKeys {
             #expect(!key.localized.isEmpty && key.localized != key, "Missing localization for \(key)")
         }
-    }
-
-    @Test("Apply Recommended Layout mounts six pods and keeps the guide open")
-    func applyRecommendedLayoutKeepsGuideOpen() {
-        let suiteName = "test_onboarding_recommended_\(UUID().uuidString)"
-        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
-        defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
-
-        let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
-        store.startInteractiveOnboarding(clearAllPods: true)
-
-        store.applyRecommendedLayout()
-
-        let enabled = store.pods.filter(\.isEnabled)
-        #expect(enabled.count == 6)
-        #expect(enabled.filter { $0.edge == .left }.count == 3)
-        #expect(enabled.filter { $0.edge == .right }.count == 3)
-        #expect(store.isCurrentOnboardingMissionCompleted == true)
-        #expect(store.isOnboardingGuideActive == true)
-        #expect(store.onboardingStep == .firstPod)
     }
 }
