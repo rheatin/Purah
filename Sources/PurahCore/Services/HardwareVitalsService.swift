@@ -640,6 +640,7 @@ public final class HardwareVitalsService {
     private var diskBuffer = VitalsHistoryBuffer()
     private var diskReadBuffer = VitalsHistoryBuffer()
     private var diskWriteBuffer = VitalsHistoryBuffer()
+    private var wifiRSSIBuffer = VitalsHistoryBuffer()
     private var batteryStateHistory = VitalsStateHistory()
 
     @ObservationIgnored private var batteryStateBucketStart: Date?
@@ -654,6 +655,7 @@ public final class HardwareVitalsService {
     public var diskHistory: [VitalsHistoryPoint] { diskBuffer.tiers.fast }
     public var diskReadHistory: [VitalsHistoryPoint] { diskReadBuffer.tiers.fast }
     public var diskWriteHistory: [VitalsHistoryPoint] { diskWriteBuffer.tiers.fast }
+    public var wifiRSSIHistory: [VitalsHistoryPoint] { wifiRSSIBuffer.tiers.fast }
     public var batteryStatePoints: [VitalsHistoryPoint] { batteryStateHistory.points }
 
     public var selectedTimeScope: VitalsTimeScope = .realTime30s
@@ -859,6 +861,7 @@ public final class HardwareVitalsService {
         diskBuffer.setFastCapacity(capacity)
         diskReadBuffer.setFastCapacity(capacity)
         diskWriteBuffer.setFastCapacity(capacity)
+        wifiRSSIBuffer.setFastCapacity(capacity)
     }
 
     public func history(for metric: VitalsMetricType, scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
@@ -1341,6 +1344,13 @@ public final class HardwareVitalsService {
             timestamp: now,
             value: diskIO.writeBytesPerSec
         ))
+        // RSSI is only meaningful while the link is associated.
+        if wifiService.info.rssi < 0 {
+            wifiRSSIBuffer.append(VitalsHistoryPoint(
+                timestamp: now,
+                value: Double(wifiService.info.rssi)
+            ))
+        }
         let batteryState: Int = {
             guard battery.isPresent else { return 0 }
             if battery.level >= 100, !battery.isCharging, battery.source == "AC Power" {

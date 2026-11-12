@@ -2070,10 +2070,7 @@ public struct HardwareVitalsDrawerView: View {
             }
 
             HStack(spacing: 6) {
-                wifiSignalBars(
-                    count: associated ? rssiBarCount(metrics.wifiRSSI) : 0,
-                    tint: tint
-                )
+                rssiHistogram(points: vitals.wifiRSSIHistory, tint: tint)
                 Text("vitals.wifi.rssi".localized)
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
@@ -2092,21 +2089,23 @@ public struct HardwareVitalsDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func wifiSignalBars(count: Int, tint: Color) -> some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<4, id: \.self) { index in
+    private func rssiHistogram(
+        points: [VitalsHistoryPoint],
+        tint: Color,
+        height: CGFloat = 24
+    ) -> some View {
+        let floorDBm = -95.0
+        let ceilingDBm = -30.0
+        let samples = Array(points.suffix(40))
+        return HStack(alignment: .bottom, spacing: 1) {
+            ForEach(Array(samples.enumerated()), id: \.offset) { _, point in
+                let ratio = min(max((point.value - floorDBm) / (ceilingDBm - floorDBm), 0), 1)
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(index < count ? tint : Color.primary.opacity(0.16))
-                    .frame(width: 6, height: CGFloat(8 + index * 4))
+                    .fill(wifiTint(Int(point.value), associated: true))
+                    .frame(width: 3, height: max(2, height * ratio))
             }
         }
-    }
-
-    private func rssiBarCount(_ rssi: Int) -> Int {
-        if rssi >= -50 { return 4 }
-        if rssi >= -60 { return 3 }
-        if rssi >= -70 { return 2 }
-        return 1
+        .frame(height: height, alignment: .bottom)
     }
 
     private func wifiTint(_ rssi: Int, associated: Bool) -> Color {
