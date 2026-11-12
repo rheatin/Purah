@@ -401,7 +401,7 @@ struct VitalsMetricColumnBand: View {
                 }
                 Spacer(minLength: 2)
                 Text(hoveredBucket.map { valueFormatter($0.mean) } ?? liveValue)
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(tint)
                     .lineLimit(1)
                     // The reading is the fact; the subtitle gives way first.
@@ -789,7 +789,7 @@ struct VitalsThroughputBand: View {
                 }
                 Spacer(minLength: 2)
                 Text(headerText)
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(tint)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

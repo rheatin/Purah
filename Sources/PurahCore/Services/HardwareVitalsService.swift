@@ -641,6 +641,8 @@ public final class HardwareVitalsService {
     private var diskReadBuffer = VitalsHistoryBuffer()
     private var diskWriteBuffer = VitalsHistoryBuffer()
     private var wifiRSSIBuffer = VitalsHistoryBuffer()
+    private var cpuTemperatureBuffer = VitalsHistoryBuffer()
+    private var gpuTemperatureBuffer = VitalsHistoryBuffer()
     private var batteryStateHistory = VitalsStateHistory()
 
     @ObservationIgnored private var batteryStateBucketStart: Date?
@@ -656,6 +658,8 @@ public final class HardwareVitalsService {
     public var diskReadHistory: [VitalsHistoryPoint] { diskReadBuffer.tiers.fast }
     public var diskWriteHistory: [VitalsHistoryPoint] { diskWriteBuffer.tiers.fast }
     public var wifiRSSIHistory: [VitalsHistoryPoint] { wifiRSSIBuffer.tiers.fast }
+    public var cpuTemperatureHistory: [VitalsHistoryPoint] { cpuTemperatureBuffer.tiers.fast }
+    public var gpuTemperatureHistory: [VitalsHistoryPoint] { gpuTemperatureBuffer.tiers.fast }
     public var batteryStatePoints: [VitalsHistoryPoint] { batteryStateHistory.points }
 
     public var selectedTimeScope: VitalsTimeScope = .realTime30s
@@ -862,6 +866,10 @@ public final class HardwareVitalsService {
         diskReadBuffer.setFastCapacity(capacity)
         diskWriteBuffer.setFastCapacity(capacity)
         wifiRSSIBuffer.setFastCapacity(capacity)
+        cpuTemperatureBuffer.setFastCapacity(capacity)
+        gpuTemperatureBuffer.setFastCapacity(capacity)
+        cpuTemperatureBuffer.setFastCapacity(capacity)
+        gpuTemperatureBuffer.setFastCapacity(capacity)
     }
 
     public func history(for metric: VitalsMetricType, scope: VitalsTimeScope? = nil) -> [VitalsHistoryPoint] {
@@ -1325,6 +1333,12 @@ public final class HardwareVitalsService {
         )
 
         let now = Date()
+        if let cpuTemperature = sensors.cpu, cpuTemperature > 0 {
+            cpuTemperatureBuffer.append(VitalsHistoryPoint(timestamp: now, value: cpuTemperature))
+        }
+        if let gpuTemperature = sensors.gpu, gpuTemperature > 0 {
+            gpuTemperatureBuffer.append(VitalsHistoryPoint(timestamp: now, value: gpuTemperature))
+        }
         cpuBuffer.append(VitalsHistoryPoint(timestamp: now, value: cpuBreakdown.totalUsage))
         gpuBuffer.append(VitalsHistoryPoint(timestamp: now, value: gpu))
         ramBuffer.append(VitalsHistoryPoint(timestamp: now, value: mem.usage))
@@ -1349,6 +1363,18 @@ public final class HardwareVitalsService {
             wifiRSSIBuffer.append(VitalsHistoryPoint(
                 timestamp: now,
                 value: Double(wifiService.info.rssi)
+            ))
+        }
+        if let cpuTemperature = sensors.cpu, cpuTemperature > 0 {
+            cpuTemperatureBuffer.append(VitalsHistoryPoint(
+                timestamp: now,
+                value: cpuTemperature
+            ))
+        }
+        if let gpuTemperature = sensors.gpu, gpuTemperature > 0 {
+            gpuTemperatureBuffer.append(VitalsHistoryPoint(
+                timestamp: now,
+                value: gpuTemperature
             ))
         }
         let batteryState: Int = {

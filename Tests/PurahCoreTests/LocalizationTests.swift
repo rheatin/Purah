@@ -158,7 +158,8 @@ struct LocalizationTests {
             // permission titles) retired with the five task steps.
             // +10: Vitals gains its thermal/fan, Wi-Fi and overview
             // machine-facts labels; +1 for the channel label.
-            .traditionalChinese: 1015
+            // +1: the DISK band's size-free "boot disk" label.
+            .traditionalChinese: 1016
         ]
 
         for (language, expected) in pinnedCoverage {

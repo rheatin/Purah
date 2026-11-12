@@ -422,16 +422,6 @@ public struct HardwareVitalsDrawerView: View {
         )
     }
 
-    private func batteryRangeFooter(
-        scope: VitalsTimeScope,
-        now: Date = Date()
-    ) -> String {
-        VitalsColumnFormatting.rangeFooter(
-            scope: scope,
-            available: batteryStateAvailableSpan(now: now)
-        )
-    }
-
     public init(store: PurahWorkspaceStore) {
         let pluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
         self.init(state: pluginState, store: store)
@@ -543,7 +533,6 @@ public struct HardwareVitalsDrawerView: View {
             tabbedDashboard(
                 metrics: metrics,
                 height: height,
-                showsDeepTelemetry: true,
                 cpuColor: cpuColor,
                 gpuColor: gpuColor,
                 ramColor: ramColor,
@@ -555,7 +544,6 @@ public struct HardwareVitalsDrawerView: View {
             tabbedDashboard(
                 metrics: metrics,
                 height: height,
-                showsDeepTelemetry: false,
                 cpuColor: cpuColor,
                 gpuColor: gpuColor,
                 ramColor: ramColor,
@@ -570,7 +558,6 @@ public struct HardwareVitalsDrawerView: View {
     private func tabbedDashboard(
         metrics: HardwareVitalsInfo,
         height: CGFloat,
-        showsDeepTelemetry: Bool,
         cpuColor: Color,
         gpuColor: Color,
         ramColor: Color,
@@ -592,7 +579,6 @@ public struct HardwareVitalsDrawerView: View {
                         overviewTabContent(
                             metrics: metrics,
                             availableHeight: proxy.size.height,
-                            showsDeepTelemetry: showsDeepTelemetry,
                             cpuColor: cpuColor,
                             gpuColor: gpuColor,
                             ramColor: ramColor,
@@ -749,7 +735,6 @@ public struct HardwareVitalsDrawerView: View {
     private func overviewTabContent(
         metrics: HardwareVitalsInfo,
         availableHeight: CGFloat,
-        showsDeepTelemetry: Bool,
         cpuColor: Color,
         gpuColor: Color,
         ramColor: Color,
@@ -760,7 +745,6 @@ public struct HardwareVitalsDrawerView: View {
         overviewSheet(
             metrics: metrics,
             availableHeight: availableHeight,
-            showsDeepTelemetry: showsDeepTelemetry,
             cpuColor: cpuColor,
             gpuColor: gpuColor,
             ramColor: ramColor,
@@ -777,7 +761,6 @@ public struct HardwareVitalsDrawerView: View {
     private func overviewSheet(
         metrics: HardwareVitalsInfo,
         availableHeight: CGFloat,
-        showsDeepTelemetry: Bool,
         cpuColor: Color,
         gpuColor: Color,
         ramColor: Color,
@@ -789,7 +772,7 @@ public struct HardwareVitalsDrawerView: View {
         // network band and the deep-telemetry line never stretch with the
         // drawer. Everything above that zone is a process list, so a tall
         // drawer shows more processes instead of taller charts.
-        var bands: [VitalsBandBudget.Band] = [
+        let bands: [VitalsBandBudget.Band] = [
             .fixed(Self.overviewCellNaturalHeight),
             .fixed(Self.overviewHairlineHeight),
             .fixed(Self.overviewCellNaturalHeight),
@@ -798,12 +781,6 @@ public struct HardwareVitalsDrawerView: View {
             .fixed(Self.overviewHairlineHeight),
             .fixed(Self.overviewSystemInfoHeight)
         ]
-        if showsDeepTelemetry {
-            bands += [
-                .fixed(Self.overviewHairlineHeight),
-                .fixed(Self.overviewDeepRowNaturalHeight)
-            ]
-        }
         let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
         let split = VitalsTabLayout.split(
             available: availableHeight - 4,
@@ -906,20 +883,9 @@ public struct HardwareVitalsDrawerView: View {
             overviewHairline
                 .frame(height: heights[5])
 
-            overviewSystemInfoRow(
-                metrics: metrics,
-                height: heights[6],
-                cpuColor: cpuColor,
-                gpuColor: gpuColor
-            )
+            overviewSystemInfoRow(metrics: metrics)
                 .frame(height: heights[6], alignment: .topLeading)
 
-            if showsDeepTelemetry {
-                overviewHairline
-                    .frame(height: heights[7])
-                overviewDeepTelemetryRow(metrics: metrics)
-                    .frame(height: heights[8])
-            }
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -943,7 +909,6 @@ public struct HardwareVitalsDrawerView: View {
 
     private static let overviewCellNaturalHeight: CGFloat = 62
     private static let overviewNetworkNaturalHeight: CGFloat = 54
-    private static let overviewDeepRowNaturalHeight: CGFloat = 21
     private static let overviewHairlineHeight: CGFloat = 0.6
     private static let overviewSystemInfoHeight: CGFloat = 80
     private static let overviewContentGrowthCap: CGFloat = 200
@@ -1227,12 +1192,7 @@ public struct HardwareVitalsDrawerView: View {
     /// Three rows of machine facts in the same label/value grammar as the
     /// breakdown row below: identity, capacity and thermals. They sit in the
     /// fixed instrument zone; the process list below is what grows.
-    private func overviewSystemInfoRow(
-        metrics: HardwareVitalsInfo,
-        height: CGFloat,
-        cpuColor: Color,
-        gpuColor: Color
-    ) -> some View {
+    private func overviewSystemInfoRow(metrics: HardwareVitalsInfo) -> some View {
         let cores = metrics.performanceCoreCount + metrics.efficiencyCoreCount
         let version = ProcessInfo.processInfo.operatingSystemVersion
         let os = "macOS \(version.majorVersion).\(version.minorVersion)"
@@ -1250,11 +1210,10 @@ public struct HardwareVitalsDrawerView: View {
         let fan = metrics.fanRPM.map { "\(fanLabel) \($0) RPM" }
             ?? "vitals.thermal.fanless".localized
         let fanIcon = metrics.fanRPM == nil ? "fanblades.slash" : "fanblades"
-        let showsThermals = height >= 60
 
         return VStack(spacing: 0) {
             Spacer(minLength: 0)
-            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 5) {
+            Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 5) {
                 GridRow {
                     systemFact(icon: "cpu", value: metrics.chipModelName)
                     systemFact(
@@ -1276,12 +1235,9 @@ public struct HardwareVitalsDrawerView: View {
                     )
                     systemFact(icon: "clock", value: uptime)
                 }
-                if showsThermals {
-                    GridRow {
-                        systemThermalFact(metrics: metrics, cpuColor: cpuColor, gpuColor: gpuColor)
-                        systemFact(icon: fanIcon, value: fan)
-                        systemFact(icon: "speedometer", value: load)
-                    }
+                GridRow {
+                    systemFact(icon: "speedometer", value: load)
+                    systemFact(icon: fanIcon, value: fan)
                 }
             }
             Spacer(minLength: 0)
@@ -1304,39 +1260,6 @@ public struct HardwareVitalsDrawerView: View {
         }
     }
 
-    private func systemThermalFact(
-        metrics: HardwareVitalsInfo,
-        cpuColor: Color,
-        gpuColor: Color
-    ) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: "thermometer.medium")
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-            Text("CPU")
-                .font(.system(size: 8.5))
-                .foregroundColor(.secondary)
-            Text(temperatureText(metrics.cpuTemperatureCelsius))
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                .foregroundColor(
-                    thermalTint(metrics.cpuTemperatureCelsius, fallback: cpuColor)
-                )
-            Text("·")
-                .font(.system(size: 8.5))
-                .foregroundColor(.secondary)
-            Text("GPU")
-                .font(.system(size: 8.5))
-                .foregroundColor(.secondary)
-            Text(temperatureText(metrics.gpuTemperatureCelsius))
-                .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
-                .foregroundColor(
-                    thermalTint(metrics.gpuTemperatureCelsius, fallback: gpuColor)
-                )
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.8)
-    }
-
     private func uptimeLabel(_ seconds: Double) -> String {
         let total = Int(max(seconds, 0))
         let days = total / 86_400
@@ -1345,38 +1268,6 @@ public struct HardwareVitalsDrawerView: View {
         if days > 0 { return "\(days)d \(hours)h" }
         if hours > 0 { return "\(hours)h \(minutes)m" }
         return "\(minutes)m"
-    }
-
-    private func overviewDeepTelemetryRow(metrics: HardwareVitalsInfo) -> some View {
-        return HStack(spacing: 8) {
-            overviewBreakdownPair(label: "USER", value: "\(Int(metrics.cpuUserUsage * 100))%")
-            Text("·").foregroundColor(.secondary)
-            overviewBreakdownPair(label: "SYS", value: "\(Int(metrics.cpuSystemUsage * 100))%")
-            Text("·").foregroundColor(.secondary)
-            overviewBreakdownPair(label: "APP", value: "\(String(format: "%.1f", metrics.memoryAppGB))G")
-            Text("·").foregroundColor(.secondary)
-            overviewBreakdownPair(label: "WIRED", value: "\(String(format: "%.1f", metrics.memoryWiredGB))G")
-            Text("·").foregroundColor(.secondary)
-            overviewBreakdownPair(label: "SWAP", value: compactSwap(metrics.memorySwapUsedMB))
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-    }
-
-    private func overviewBreakdownPair(label: String, value: String) -> some View {
-        HStack(spacing: 3) {
-            Text(label)
-                .font(.system(size: 7.5, weight: .semibold, design: .rounded))
-                .foregroundColor(.secondary)
-            Text(value)
-                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                .foregroundColor(.primary)
-        }
-        .lineLimit(1)
-        .fixedSize()
     }
 
     private var overviewHairline: some View {
@@ -1400,7 +1291,7 @@ public struct HardwareVitalsDrawerView: View {
         detail: String = "",
         value: String = "",
         tint: Color,
-        valueSize: CGFloat = 20
+        valueSize: CGFloat = 14
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(title)
@@ -1530,6 +1421,8 @@ public struct HardwareVitalsDrawerView: View {
         let cpuScope = state.scope(for: .cpu)
         let gpuScope = state.scope(for: .gpu)
         let ramScope = state.scope(for: .ram)
+        let cpuBuckets = columnBuckets(.cpu, scope: cpuScope)
+        let gpuBuckets = columnBuckets(.gpu, scope: gpuScope)
         // The three bands draw at their natural height; the drawer's surplus
         // belongs to the process list below them.
         let bands: [VitalsBandBudget.Band] = [
@@ -1537,9 +1430,7 @@ public struct HardwareVitalsDrawerView: View {
             .fixed(Self.computeHairlineHeight),
             .fixed(Self.gpuBandNaturalHeight),
             .fixed(Self.computeHairlineHeight),
-            .fixed(Self.ramBandNaturalHeight),
-            .fixed(Self.computeHairlineHeight),
-            .fixed(Self.thermalBandNaturalHeight)
+            .fixed(Self.ramBandNaturalHeight)
         ]
         let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
         let split = VitalsTabLayout.split(
@@ -1558,7 +1449,7 @@ public struct HardwareVitalsDrawerView: View {
                 liveValue: "\(Int(metrics.cpuUsage * 100))%",
                 tint: cpuColor,
                 columnTint: VitalsColorResolver.identityColor(for: .cpu),
-                buckets: columnBuckets(.cpu, scope: cpuScope),
+                buckets: cpuBuckets,
                 domain: .percentage,
                 scope: cpuScope,
                 thresholds: effectiveThresholds,
@@ -1577,11 +1468,18 @@ public struct HardwareVitalsDrawerView: View {
                             tint: cpuColor
                         )
                         .padding(.top, 1)
+                        temperatureHistoryStrip(
+                            title: "CPU \(String("vitals.power.temp".localized))",
+                            current: metrics.cpuTemperatureCelsius,
+                            history: vitals.cpuTemperatureHistory,
+                            grid: cpuBuckets,
+                            tint: cpuColor,
+                            metric: .cpu
+                        )
                         vitalsLegend([
                             ("USR", "\(Int(metrics.cpuUserUsage * 100))", cpuColor),
                             ("SYS", "\(Int(metrics.cpuSystemUsage * 100))", VitalsColorResolver.warningYellow),
                             ("IDLE", "\(Int(metrics.cpuIdleUsage * 100))", Color.primary.opacity(0.35)),
-                            ("LOAD", String(format: "%.2f", metrics.loadAverage1m), Color.primary.opacity(0.8)),
                             (
                                 "vitals.compute.thermal".localized,
                                 localizedThermalState(metrics.thermalStateLabel),
@@ -1611,7 +1509,7 @@ public struct HardwareVitalsDrawerView: View {
                 liveValue: "\(Int(metrics.gpuUsage * 100))%",
                 tint: gpuColor,
                 columnTint: VitalsColorResolver.identityColor(for: .gpu),
-                buckets: columnBuckets(.gpu, scope: gpuScope),
+                buckets: gpuBuckets,
                 domain: .percentage,
                 scope: gpuScope,
                 thresholds: effectiveThresholds,
@@ -1622,11 +1520,21 @@ public struct HardwareVitalsDrawerView: View {
                 plotMinHeight: 30,
                 plotMaxHeight: nil,
                 extra: AnyView(
-                    vitalsLegend([
-                        ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
-                        ("TILER", "\(Int(metrics.gpuTilerUsage * 100))", Color.primary.opacity(0.45)),
-                        ("MEM", gpuMemory, Color.primary.opacity(0.8))
-                    ])
+                    VStack(alignment: .leading, spacing: 5) {
+                        temperatureHistoryStrip(
+                            title: "GPU \(String("vitals.power.temp".localized))",
+                            current: metrics.gpuTemperatureCelsius,
+                            history: vitals.gpuTemperatureHistory,
+                            grid: gpuBuckets,
+                            tint: gpuColor,
+                            metric: .gpu
+                        )
+                        vitalsLegend([
+                            ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
+                            ("TILER", "\(Int(metrics.gpuTilerUsage * 100))", Color.primary.opacity(0.45)),
+                            ("MEM", gpuMemory, Color.primary.opacity(0.8))
+                        ])
+                    }
                 ),
                 onCycle: { cycleScope(.gpu) },
                 previewHoveredIndex: columnHoverPreviews[.gpu]
@@ -1689,16 +1597,6 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             .frame(height: bandHeights[4], alignment: .topLeading)
-
-            vitalsHairline
-                .frame(height: bandHeights[5])
-
-            computeThermalBand(
-                metrics: metrics,
-                cpuColor: cpuColor,
-                gpuColor: gpuColor
-            )
-            .frame(height: bandHeights[6], alignment: .topLeading)
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -1723,69 +1621,57 @@ public struct HardwareVitalsDrawerView: View {
     /// Natural heights of the three Compute bands at rest: header, plot and
     /// the band's own extra (the CPU core grid, the GPU/RAM legends) plus the
     /// 12pt of vertical padding. They are inputs to the budget, not floors.
-    private static let cpuBandNaturalHeight: CGFloat = 154
-    private static let gpuBandNaturalHeight: CGFloat = 101
+    private static let cpuBandNaturalHeight: CGFloat = 180
+    private static let gpuBandNaturalHeight: CGFloat = 127
     private static let ramBandNaturalHeight: CGFloat = 115
     private static let computeHairlineHeight: CGFloat = 0.6
-    private static let thermalBandNaturalHeight: CGFloat = 48
     private static let computeContentGrowthCap: CGFloat = 220
 
-    private func computeThermalBand(
-        metrics: HardwareVitalsInfo,
-        cpuColor: Color,
-        gpuColor: Color
+    /// A temperature history under a metric band: the same column geometry
+    /// as the chart above, each column coloured by the reading it carries.
+    private func temperatureHistoryStrip(
+        title: String,
+        current: Double?,
+        history: [VitalsHistoryPoint],
+        grid: [VitalsBucket],
+        tint: Color,
+        metric: VitalsMetricType
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("vitals.thermal.title".localized)
-                .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                .foregroundColor(.secondary)
-                .lineLimit(1)
-
-            HStack(spacing: 14) {
-                thermalCell(
-                    icon: "cpu",
-                    label: "CPU",
-                    reading: temperatureText(metrics.cpuTemperatureCelsius),
-                    tint: thermalTint(metrics.cpuTemperatureCelsius, fallback: cpuColor)
-                )
-                thermalCell(
-                    icon: "display",
-                    label: "GPU",
-                    reading: temperatureText(metrics.gpuTemperatureCelsius),
-                    tint: thermalTint(metrics.gpuTemperatureCelsius, fallback: gpuColor)
-                )
-                thermalCell(
-                    icon: "fan.fill",
-                    label: "vitals.thermal.fan".localized,
-                    reading: metrics.fanRPM.map { "\($0) RPM" }
-                        ?? "vitals.thermal.fanless".localized,
-                    tint: Color.secondary
-                )
-                Spacer(minLength: 0)
+        let readings = grid.map { slot -> Double in
+            let samples = history.filter {
+                $0.timestamp >= slot.start && $0.timestamp < slot.end
             }
+            guard !samples.isEmpty else { return 0 }
+            return samples.reduce(0) { $0 + $1.value } / Double(samples.count)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private func thermalCell(
-        icon: String,
-        label: String,
-        reading: String,
-        tint: Color
-    ) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 9))
-                .foregroundColor(.secondary)
-            Text(label)
-                .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                .foregroundColor(.secondary)
-            Text(reading)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundColor(tint)
-                .fixedSize(horizontal: true, vertical: false)
+        let buckets = zip(grid, readings).map { slot, reading in
+            let ratio = min(max((reading - 30.0) / 70.0, 0.03), 1.0)
+            return VitalsBucket(start: slot.start, end: slot.end, mean: ratio)
+        }
+        let colors = readings.map { thermalTint($0, fallback: tint) }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: 8.5, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 2)
+                Text(temperatureText(current))
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundColor(thermalTint(current, fallback: tint))
+                    .lineLimit(1)
+            }
+            VitalsColumnStrip(
+                buckets: buckets,
+                domain: .percentage,
+                tint: tint,
+                bucketColors: colors,
+                metric: metric,
+                thresholds: effectiveThresholds,
+                hoveredIndex: .constant(nil),
+                showsHover: false
+            )
+            .frame(height: 20)
         }
     }
 
@@ -1970,7 +1856,9 @@ public struct HardwareVitalsDrawerView: View {
                     metric: .network,
                     scope: netScope
                 ),
-                headerValue: "",
+                headerValue: formatSpeed(
+                    metrics.networkDownSpeed + metrics.networkUpSpeed
+                ),
                 tint: netColor,
                 rows: [
                     VitalsThroughputBandRow(
@@ -1992,7 +1880,7 @@ public struct HardwareVitalsDrawerView: View {
                 scope: netScope,
                 thresholds: effectiveThresholds,
                 nowLabel: "vitals.range.now".localized,
-                rangeFooter: rangeFooter(.network, scope: netScope),
+                rangeFooter: "",
                 valueFormatter: rateFormatter,
                 extra: nil,
                 onCycle: { cycleScope(.network) }
@@ -2015,10 +1903,7 @@ public struct HardwareVitalsDrawerView: View {
                 metric: .disk,
                 title: "DISK",
                 detail: detailWithRange(
-                    String(
-                        format: "vitals.disk.bootDisk".localized,
-                        compactGB(metrics.diskTotalGB)
-                    ),
+                    "vitals.disk.bootDiskOnly".localized,
                     metric: .disk,
                     scope: diskScope
                 ),
@@ -2044,7 +1929,7 @@ public struct HardwareVitalsDrawerView: View {
                 scope: diskScope,
                 thresholds: effectiveThresholds,
                 nowLabel: "vitals.range.now".localized,
-                rangeFooter: rangeFooter(.disk, scope: diskScope),
+                rangeFooter: "",
                 valueFormatter: rateFormatter,
                 extra: AnyView(
                     VStack(alignment: .leading, spacing: 5) {
@@ -2141,7 +2026,7 @@ public struct HardwareVitalsDrawerView: View {
                     .lineLimit(1)
                 Spacer(minLength: 6)
                 Text(rssiText)
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
                     .foregroundColor(tint)
                     .fixedSize(horizontal: true, vertical: false)
             }
@@ -2357,7 +2242,6 @@ public struct HardwareVitalsDrawerView: View {
     ) -> some View {
         let scope = self.state.scope(for: .power)
         let now = renderNow ?? Date()
-        let rangeLabel = batteryRangeFooter(scope: scope, now: now)
         let ribbonCells = batteryRibbonCells(scope: scope, now: now)
         let hoveredCellIndex = hoveredBatteryCell ?? batteryHoverPreview
         let footerText = VitalsColumnFormatting.batteryRibbonReadout(
@@ -2394,12 +2278,6 @@ public struct HardwareVitalsDrawerView: View {
                     .foregroundColor(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Spacer(minLength: 2)
-                if !rangeLabel.isEmpty {
-                    Text(rangeLabel)
-                        .foregroundColor(.secondary.opacity(0.8))
-                        .lineLimit(1)
-                }
             }
             .font(.system(size: 7.5, design: .monospaced))
         }
@@ -2501,7 +2379,7 @@ public struct HardwareVitalsDrawerView: View {
                 .foregroundColor(.secondary)
                 .lineLimit(1)
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
                 .foregroundColor(tint)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -2554,10 +2432,6 @@ public struct HardwareVitalsDrawerView: View {
         return VStack(alignment: .leading, spacing: 5) {
             vitalsBandHeader(
                 title: "vitals.power.capacityTitle".localized,
-                detail: String(
-                    format: "vitals.power.design".localized,
-                    formatWh(designWh)
-                ),
                 value: "\(formatWh(maxWh)) Wh",
                 tint: powerColor
             )
