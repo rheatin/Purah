@@ -712,7 +712,9 @@ public final class EdgeMouseMonitor {
                 let topY = CGFloat(item.startY)
                 let bottomY = topY + actualOccupiedHeight(for: item, isBreathing: isBreathing)
                 return currentWindowY >= topY && currentWindowY <= bottomY
-            }
+            } ?? ((store.isOnboardingGuideActive && store.onboardingStep == .feelTheEdge) ? layoutItems.min(by: {
+                abs(CGFloat($0.startY + $0.spanH * 0.5) - currentWindowY) < abs(CGFloat($1.startY + $1.spanH * 0.5) - currentWindowY)
+            }) : nil)
             if let matched = matchedItem {
                 cancelInitialDwell()
                 activatePodDrawer(candidate: matched.pod, matched: matched, currentWindowY: currentWindowY, edge: edge)
@@ -990,7 +992,9 @@ public final class EdgeMouseMonitor {
             let topY = CGFloat(item.startY)
             let bottomY = topY + actualOccupiedHeight(for: item, isBreathing: isBreathing)
             return currentWindowY >= topY && currentWindowY <= bottomY
-        }
+        } ?? ((store.isOnboardingGuideActive && store.onboardingStep == .feelTheEdge) ? layoutItems.min(by: {
+            abs(CGFloat($0.startY + $0.spanH * 0.5) - currentWindowY) < abs(CGFloat($1.startY + $1.spanH * 0.5) - currentWindowY)
+        }) : nil)
 
         guard let matched = matchedItem else {
             cancelInitialDwell()

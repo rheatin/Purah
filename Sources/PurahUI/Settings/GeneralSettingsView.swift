@@ -288,7 +288,7 @@ public struct GeneralSettingsView: View {
             isPresented: $showingOnboardingAlert
         ) {
             Button("general.startup.onboarding.button".localized) {
-                store.startInteractiveOnboarding(clearAllPods: true)
+                store.startInteractiveOnboarding(clearAllPods: false)
             }
             Button("Cancel", role: .cancel) {}
         } message: {

@@ -14,7 +14,10 @@ public struct AmbientRailStripView: View {
     }
 
     private var barW: CGFloat {
-        CGFloat(store.railBarWidth)
+        if store.isOnboardingGuideActive && store.onboardingStep == .feelTheEdge {
+            return max(CGFloat(store.railBarWidth), 7.0)
+        }
+        return CGFloat(store.railBarWidth)
     }
 
     public init(edge: MountEdge, store: PurahWorkspaceStore) {
