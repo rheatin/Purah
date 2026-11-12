@@ -98,6 +98,8 @@ public struct MusicPlugin: PurahPodPlugin {
     }
 
     public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        let hasTrack = !state.track.title.isEmpty || !context.store._musicTrack.title.isEmpty
+        guard hasTrack else { return nil }
         let source = state.track.sourceApp
         let bundleId = state.track.sourceBundleId
         let displaySource = Self.normalizedSourceDisplayName(sourceApp: source, bundleId: bundleId)

@@ -1250,6 +1250,7 @@ struct DrawerInteractionUITests {
         // 4. Test MusicPlugin makeHeaderAccessoryView
         let store = PurahWorkspaceStore()
         let musicPlugin = MusicPlugin()
+        musicPlugin.state.track.title = "Song A"
         musicPlugin.state.track.sourceApp = "NetEase Music"
         let context = PurahPluginContext(
             pod: store.pods.first(where: { $0.id == "music" }) ?? SlotPod(
@@ -1394,6 +1395,7 @@ struct DrawerInteractionUITests {
         _ = waveView.body
 
         // 2. ScriptRunwayPlugin adaptiveDrawerWidth
+        store.splitPodFromMajorGroup(id: "scripts")
         let scriptsPlugin = ScriptRunwayPlugin()
         store._isScriptsDecomposed = true
         scriptsPlugin.state.isDecomposed = true
@@ -1404,6 +1406,7 @@ struct DrawerInteractionUITests {
         #expect(scriptsPlugin.adaptiveDrawerWidth(store: store) == 360.0)
 
         // 3. CalendarPlugin adaptiveDrawerWidth (mode authority: isDecomposed)
+        store.splitPodFromMajorGroup(id: "calendar")
         let calPlugin = CalendarPlugin()
         calPlugin.state.isDecomposed = true
         #expect(calPlugin.adaptiveDrawerWidth(store: store) == 310.0)

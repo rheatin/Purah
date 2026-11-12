@@ -465,6 +465,7 @@ extension PurahWorkspaceStore {
         leftRailPage = 0
         rightRailPage = 0
         pinnedDrawerItemIds.removeAll()
+        _musicTrack = .empty
         dismissActiveDrawer()
         invalidateLayoutCache()
     }

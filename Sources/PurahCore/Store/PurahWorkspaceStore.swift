@@ -3321,7 +3321,7 @@ public final class PurahWorkspaceStore {
     // Internal backing storage for compatibility shims / default capability providers
     package var _calendarEvents: [CalendarEventItem] = PurahWorkspaceStore.defaultEvents()
     package var _todos: [TodoItem] = PurahWorkspaceStore.defaultTodos()
-    package var _musicTrack: MusicTrackInfo = .init()
+    package var _musicTrack: MusicTrackInfo = .empty
     package var _shelfFiles: [ShelfFileItem] = []
     package var _quickNote: NoteContent = .init()
     package var _isVitalsDecomposed: Bool {
