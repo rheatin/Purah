@@ -298,8 +298,10 @@ public final class PurahWorkspaceStore {
             externalDragTargetEdge = nil
             externalDragTargetPodId = nil
             if isOnboardingGuideActive {
+                // Leaving the sculptor pauses the guide; it does not finish it.
+                // Esc is the obvious way out of editing mode, so treating that
+                // as "the person read all five steps" lost the guide for good.
                 isOnboardingGuideActive = false
-                hasCompletedOnboarding = true
                 cancelOnboardingRehearsal()
             }
         }
@@ -4177,6 +4179,12 @@ public final class PurahWorkspaceStore {
 
     public func startInteractiveOnboarding(clearAllPods: Bool = false) {
         cancelOnboardingRehearsal()
+        // State that the guide is unfinished, not merely unstarted. The store
+        // saves the pods below, and without this key the launch migration
+        // reads "pods exist, no completion flag" as a pre-guide upgrade and
+        // marks the guide complete — so quitting halfway through the walkthrough
+        // made it disappear on the next launch.
+        hasCompletedOnboarding = false
         userPodsSnapshotBeforeRehearsal = nil
         userDynamicFlagBeforeRehearsal = nil
         isUsingTemporaryDemoSandbox = false

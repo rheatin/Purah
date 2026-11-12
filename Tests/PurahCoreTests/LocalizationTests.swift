@@ -159,7 +159,12 @@ struct LocalizationTests {
             // +10: Vitals gains its fan, Wi-Fi and overview machine-facts
             // labels; +1 for the channel label.
             // +1: the DISK band's size-free "boot disk" label.
-            .traditionalChinese: 1015
+            // +13: the rail callouts the sculptor strip draws during the guide
+            // (decompose prompt and toggle, stack source/target/success badges,
+            // page hints, empty-rail hint and dock drag hint). They had been
+            // referenced by the strip under new key names while only the retired
+            // legacy spellings existed, so the rail showed the raw key.
+            .traditionalChinese: 1028
         ]
 
         for (language, expected) in pinnedCoverage {

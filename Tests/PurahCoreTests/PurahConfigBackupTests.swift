@@ -196,6 +196,55 @@ struct OnboardingAndLaunchAtLoginTests {
         #expect(store.rightRailPage == 0)
     }
 
+    @Test("Quitting the guide halfway and relaunching brings it back")
+    func testRelaunchMidGuideResumesOnboarding() {
+        let suite = "test_onboarding_resume_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let first = PurahWorkspaceStore(userDefaults: defaults)
+        first.startInteractiveOnboarding(clearAllPods: false)
+        #expect(first.hasCompletedOnboarding == false)
+
+        // `startInteractiveOnboarding` saves the pods, so the next launch sees
+        // "pods exist, no completion flag". That profile is a pre-guide upgrade
+        // only when the guide was never started; a started guide must survive.
+        let second = PurahWorkspaceStore(userDefaults: defaults)
+        #expect(second.hasCompletedOnboarding == false)
+    }
+
+    @Test("Leaving the sculptor mid-guide pauses the guide instead of finishing it")
+    func testExitSculptorDoesNotCompleteOnboarding() {
+        let suite = "test_onboarding_esc_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        store.startInteractiveOnboarding(clearAllPods: false)
+        #expect(store.isLiveRailEditingMode == true)
+
+        store.setLiveRailEditingMode(false)
+
+        #expect(store.isOnboardingGuideActive == false)
+        #expect(store.hasCompletedOnboarding == false)
+    }
+
+    @Test("A pre-guide profile with saved pods still skips the guide")
+    func testLegacyProfileSkipsGuide() throws {
+        let suite = "test_onboarding_legacy_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // This is what a profile from before the guide looks like: pods were
+        // saved by a version that had no completion flag at all.
+        let pods = try JSONEncoder().encode(PurahWorkspaceStore.defaultPods())
+        defaults.set(pods, forKey: "purah.pods")
+        #expect(defaults.object(forKey: "purah.hasCompletedOnboarding") == nil)
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        #expect(store.hasCompletedOnboarding == true)
+    }
+
     @Test("Step navigation and rehearsal mechanisms")
     func testStepNavigationAndRehearsals() {
         let suite = "test_onboarding_nav_\(UUID().uuidString)"
