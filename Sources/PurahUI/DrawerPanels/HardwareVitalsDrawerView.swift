@@ -1929,7 +1929,7 @@ public struct HardwareVitalsDrawerView: View {
             vitalsHairline
                 .frame(height: bandHeights[1])
 
-            wifiBand(metrics: metrics, netColor: netColor)
+            wifiBand(metrics: metrics, netColor: netColor, scope: netScope)
                 .frame(height: bandHeights[2], alignment: .topLeading)
 
             vitalsHairline
@@ -2020,7 +2020,8 @@ public struct HardwareVitalsDrawerView: View {
 
     private func wifiBand(
         metrics: HardwareVitalsInfo,
-        netColor: Color
+        netColor: Color,
+        scope: VitalsTimeScope
     ) -> some View {
         // `ssid()` returns nil without Location permission even while the
         // link is associated, so association is judged by the link facts the
@@ -2069,8 +2070,9 @@ public struct HardwareVitalsDrawerView: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
 
-            rssiHistogram(points: vitals.wifiRSSIHistory, height: 24)
+            rssiStrip(points: vitals.wifiRSSIHistory, scope: scope, tint: netColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 24)
 
             HStack(spacing: 10) {
                 wifiStat(label: "vitals.wifi.speed".localized, value: speed)
@@ -2085,28 +2087,34 @@ public struct HardwareVitalsDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func rssiHistogram(
+    private func rssiStrip(
         points: [VitalsHistoryPoint],
-        height: CGFloat = 24
+        scope: VitalsTimeScope,
+        tint: Color
     ) -> some View {
-        let floorDBm = -95.0
-        let ceilingDBm = -30.0
-        return GeometryReader { geo in
-            let barWidth: CGFloat = 3
-            let spacing: CGFloat = 1
-            let count = max(1, Int(geo.size.width / (barWidth + spacing)))
-            let samples = Array(points.suffix(count))
-            HStack(alignment: .bottom, spacing: spacing) {
-                ForEach(Array(samples.enumerated()), id: \.offset) { _, point in
-                    let ratio = min(max((point.value - floorDBm) / (ceilingDBm - floorDBm), 0), 1)
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(wifiTint(Int(point.value), associated: true))
-                        .frame(width: barWidth, height: max(2, height * ratio))
-                }
-            }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottomTrailing)
+        let buckets = VitalsHistoryBuffer.columns(
+            fast: points,
+            scope: scope,
+            fastResolution: vitals.samplingInterval
+        ).map { bucket in
+            let ratio = bucket.mean < 0
+                ? min(max((bucket.mean + 95.0) / 65.0, 0.03), 1.0)
+                : 0
+            return VitalsBucket(start: bucket.start, end: bucket.end, mean: ratio)
         }
-        .frame(height: height)
+        return VitalsColumnStrip(
+            buckets: buckets,
+            domain: .percentage,
+            tint: tint,
+            bucketColors: buckets.map { bucket in
+                let dBm = Int((bucket.mean * 65.0 - 95.0).rounded())
+                return wifiTint(dBm, associated: true)
+            },
+            metric: .network,
+            thresholds: effectiveThresholds,
+            hoveredIndex: .constant(nil),
+            showsHover: false
+        )
     }
 
     private func wifiTint(_ rssi: Int, associated: Bool) -> Color {
