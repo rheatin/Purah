@@ -2069,12 +2069,8 @@ public struct HardwareVitalsDrawerView: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
 
-            HStack(spacing: 6) {
-                rssiHistogram(points: vitals.wifiRSSIHistory, tint: tint)
-                Text("vitals.wifi.rssi".localized)
-                    .font(.system(size: 9))
-                    .foregroundColor(.secondary)
-            }
+            rssiHistogram(points: vitals.wifiRSSIHistory, height: 24)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 10) {
                 wifiStat(label: "vitals.wifi.speed".localized, value: speed)
@@ -2091,21 +2087,26 @@ public struct HardwareVitalsDrawerView: View {
 
     private func rssiHistogram(
         points: [VitalsHistoryPoint],
-        tint: Color,
         height: CGFloat = 24
     ) -> some View {
         let floorDBm = -95.0
         let ceilingDBm = -30.0
-        let samples = Array(points.suffix(40))
-        return HStack(alignment: .bottom, spacing: 1) {
-            ForEach(Array(samples.enumerated()), id: \.offset) { _, point in
-                let ratio = min(max((point.value - floorDBm) / (ceilingDBm - floorDBm), 0), 1)
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(wifiTint(Int(point.value), associated: true))
-                    .frame(width: 3, height: max(2, height * ratio))
+        return GeometryReader { geo in
+            let barWidth: CGFloat = 3
+            let spacing: CGFloat = 1
+            let count = max(1, Int(geo.size.width / (barWidth + spacing)))
+            let samples = Array(points.suffix(count))
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(Array(samples.enumerated()), id: \.offset) { _, point in
+                    let ratio = min(max((point.value - floorDBm) / (ceilingDBm - floorDBm), 0), 1)
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(wifiTint(Int(point.value), associated: true))
+                        .frame(width: barWidth, height: max(2, height * ratio))
+                }
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottomTrailing)
         }
-        .frame(height: height, alignment: .bottom)
+        .frame(height: height)
     }
 
     private func wifiTint(_ rssi: Int, associated: Bool) -> Color {
