@@ -428,6 +428,8 @@ public struct HardwareVitalsInfo: Sendable {
     public var wifiSSID: String
     public var wifiRSSI: Int
     public var wifiTransmitRateMbps: Double
+    public var wifiChannel: Int
+    public var wifiBand: String
     public var wifiLatencyMs: Double?
     public var wifiPacketLossPercent: Double?
 
@@ -499,6 +501,8 @@ public struct HardwareVitalsInfo: Sendable {
         wifiSSID: String = "",
         wifiRSSI: Int = 0,
         wifiTransmitRateMbps: Double = 0.0,
+        wifiChannel: Int = 0,
+        wifiBand: String = "",
         wifiLatencyMs: Double? = nil,
         wifiPacketLossPercent: Double? = nil,
         systemUptimeSeconds: Double = 0.0
@@ -568,6 +572,8 @@ public struct HardwareVitalsInfo: Sendable {
         self.wifiSSID = wifiSSID
         self.wifiRSSI = wifiRSSI
         self.wifiTransmitRateMbps = wifiTransmitRateMbps
+        self.wifiChannel = wifiChannel
+        self.wifiBand = wifiBand
         self.wifiLatencyMs = wifiLatencyMs
         self.wifiPacketLossPercent = wifiPacketLossPercent
         self.systemUptimeSeconds = systemUptimeSeconds
@@ -1308,6 +1314,8 @@ public final class HardwareVitalsService {
             wifiSSID: wifiService.info.ssid,
             wifiRSSI: wifiService.info.rssi,
             wifiTransmitRateMbps: wifiService.info.transmitRateMbps,
+            wifiChannel: wifiService.info.channel,
+            wifiBand: wifiService.info.band,
             wifiLatencyMs: wifiService.info.latencyMs,
             wifiPacketLossPercent: wifiService.info.packetLossPercent,
             systemUptimeSeconds: ProcessInfo.processInfo.systemUptime

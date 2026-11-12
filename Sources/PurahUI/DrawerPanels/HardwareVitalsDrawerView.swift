@@ -940,7 +940,7 @@ public struct HardwareVitalsDrawerView: View {
     private static let overviewNetworkNaturalHeight: CGFloat = 54
     private static let overviewDeepRowNaturalHeight: CGFloat = 21
     private static let overviewHairlineHeight: CGFloat = 0.6
-    private static let overviewSystemInfoHeight: CGFloat = 38
+    private static let overviewSystemInfoHeight: CGFloat = 80
     private static let overviewContentGrowthCap: CGFloat = 200
     /// A list header plus at least one row; below this, the drawer is simply
     /// too short to show a process list and the instruments own the height.
@@ -1236,36 +1236,29 @@ public struct HardwareVitalsDrawerView: View {
             metrics.loadAverage5m,
             metrics.loadAverage15m
         )
+        let hardware = cores > 0
+            ? "\(metrics.chipModelName) · \(String(format: "vitals.overview.cores".localized, cores)) · \(os)"
+            : "\(metrics.chipModelName) · \(os)"
+        let fanLabel = "vitals.thermal.fan".localized
+        let fan = metrics.fanRPM.map { "\(fanLabel) \($0) RPM" }
+            ?? "vitals.thermal.fanless".localized
+        let thermals = "CPU \(temperatureText(metrics.cpuTemperatureCelsius))"
+            + " · GPU \(temperatureText(metrics.gpuTemperatureCelsius))"
+            + " · \(fan)"
 
-        return VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 5) {
-                Text(metrics.chipModelName)
-                Text("·")
-                if cores > 0 {
-                    Text(String(format: "vitals.overview.cores".localized, cores))
-                    Text("·")
-                }
-                Text(os)
-                Spacer(minLength: 0)
-            }
-            HStack(spacing: 5) {
-                Text("\(compactGB(metrics.memoryTotalGB)) GB RAM")
-                Text("·")
-                Text("\(compactGB(metrics.diskTotalGB)) GB SSD")
-                Text("·")
-                Text(uptime)
-                Text("·")
-                Text(load)
-                Spacer(minLength: 0)
-            }
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(hardware)
+            Text("\(compactGB(metrics.memoryTotalGB)) GB RAM · \(compactGB(metrics.diskTotalGB)) GB SSD")
+            Text("\(uptime) · \(load)")
+            Text(thermals)
         }
-        .font(.system(size: 8, design: .monospaced))
+        .font(.system(size: 10, weight: .medium, design: .monospaced))
         .foregroundColor(.secondary)
         .lineLimit(1)
         .minimumScaleFactor(0.75)
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     private func uptimeLabel(_ seconds: Double) -> String {
@@ -1331,7 +1324,7 @@ public struct HardwareVitalsDrawerView: View {
         detail: String = "",
         value: String = "",
         tint: Color,
-        valueSize: CGFloat = 20
+        valueSize: CGFloat = 34
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(title)
@@ -1603,7 +1596,7 @@ public struct HardwareVitalsDrawerView: View {
                             (metrics.memoryCompressedGB, VitalsColorResolver.warningYellow.opacity(0.85)),
                             (metrics.memoryCachedGB, Color.primary.opacity(0.20)),
                             (metrics.memoryFreeGB, Color.primary.opacity(0.08))
-                        ])
+                        ], height: 22)
                         vitalsLegend([
                             ("ACTIVE", compactGB(metrics.memoryActiveGB), ramColor),
                             ("WIRED", compactGB(metrics.memoryWiredGB), Color.primary.opacity(0.55)),
@@ -1654,9 +1647,9 @@ public struct HardwareVitalsDrawerView: View {
     /// Natural heights of the three Compute bands at rest: header, plot and
     /// the band's own extra (the CPU core grid, the GPU/RAM legends) plus the
     /// 12pt of vertical padding. They are inputs to the budget, not floors.
-    private static let cpuBandNaturalHeight: CGFloat = 154
-    private static let gpuBandNaturalHeight: CGFloat = 101
-    private static let ramBandNaturalHeight: CGFloat = 115
+    private static let cpuBandNaturalHeight: CGFloat = 171
+    private static let gpuBandNaturalHeight: CGFloat = 118
+    private static let ramBandNaturalHeight: CGFloat = 138
     private static let computeHairlineHeight: CGFloat = 0.6
     private static let thermalBandNaturalHeight: CGFloat = 48
     private static let computeContentGrowthCap: CGFloat = 220
@@ -2019,10 +2012,10 @@ public struct HardwareVitalsDrawerView: View {
 
     /// Natural heights of the two throughput bands: header, two rows at their
     /// 20pt minimum, the footer, and the disk's composition legend.
-    private static let networkBandNaturalHeight: CGFloat = 122
-    private static let diskBandNaturalHeight: CGFloat = 148
+    private static let networkBandNaturalHeight: CGFloat = 139
+    private static let diskBandNaturalHeight: CGFloat = 165
     private static let ioHairlineHeight: CGFloat = 0.6
-    private static let wifiBandNaturalHeight: CGFloat = 58
+    private static let wifiBandNaturalHeight: CGFloat = 72
     private static let ioContentGrowthCap: CGFloat = 200
 
     private func wifiBand(
@@ -2033,12 +2026,14 @@ public struct HardwareVitalsDrawerView: View {
         // link is associated, so association is judged by the link facts the
         // OS does expose (RSSI / tx rate).
         let associated = metrics.wifiRSSI < 0 || metrics.wifiTransmitRateMbps > 0
-        let signalPercent = associated && metrics.wifiRSSI < 0
-            ? min(max(2 * (metrics.wifiRSSI + 100), 0), 100)
-            : 0
-        let networkName = !metrics.wifiSSID.isEmpty
-            ? metrics.wifiSSID
-            : (associated ? "Wi-Fi" : "vitals.wifi.notConnected".localized)
+        let networkName: String
+        if !metrics.wifiSSID.isEmpty {
+            networkName = "Wi-Fi: \(metrics.wifiSSID)"
+        } else if associated {
+            networkName = "Wi-Fi"
+        } else {
+            networkName = "Wi-Fi: " + "vitals.wifi.notConnected".localized
+        }
         let latency = metrics.wifiLatencyMs.map { value in
             value < 10
                 ? String(format: "%.1f ms", value)
@@ -2049,24 +2044,44 @@ public struct HardwareVitalsDrawerView: View {
         let speed = metrics.wifiTransmitRateMbps > 0
             ? "\(Int(metrics.wifiTransmitRateMbps.rounded())) Mbps"
             : "—"
+        let rssiText = associated && metrics.wifiRSSI < 0
+            ? "\(metrics.wifiRSSI) dBm"
+            : "—"
+        let channel = metrics.wifiChannel > 0
+            ? (metrics.wifiBand.isEmpty
+                ? "\(metrics.wifiChannel)"
+                : "\(metrics.wifiChannel) (\(metrics.wifiBand))")
+            : "—"
+        let tint = wifiTint(metrics.wifiRSSI, associated: associated)
 
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: "wifi")
-                    .font(.system(size: 9))
+                    .font(.system(size: 10))
                     .foregroundColor(associated ? netColor : .secondary)
                 Text(networkName)
-                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .lineLimit(1)
-                Spacer(minLength: 4)
-                wifiSignalBars(percent: signalPercent, tint: netColor)
-                Text("\(signalPercent)%")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                Spacer(minLength: 6)
+                Text(rssiText)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundColor(tint)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+
+            HStack(spacing: 6) {
+                wifiSignalBars(
+                    count: associated ? rssiBarCount(metrics.wifiRSSI) : 0,
+                    tint: tint
+                )
+                Text("vitals.wifi.rssi".localized)
+                    .font(.system(size: 9))
                     .foregroundColor(.secondary)
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 wifiStat(label: "vitals.wifi.speed".localized, value: speed)
+                wifiStat(label: "vitals.wifi.channel".localized, value: channel)
                 wifiStat(label: "vitals.wifi.latency".localized, value: latency)
                 wifiStat(label: "vitals.wifi.loss".localized, value: loss)
                 Spacer(minLength: 0)
@@ -2077,14 +2092,28 @@ public struct HardwareVitalsDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func wifiSignalBars(percent: Int, tint: Color) -> some View {
+    private func wifiSignalBars(count: Int, tint: Color) -> some View {
         HStack(alignment: .bottom, spacing: 2) {
             ForEach(0..<4, id: \.self) { index in
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(percent > index * 25 ? tint : Color.primary.opacity(0.16))
-                    .frame(width: 3, height: CGFloat(4 + index * 2))
+                    .fill(index < count ? tint : Color.primary.opacity(0.16))
+                    .frame(width: 6, height: CGFloat(8 + index * 4))
             }
         }
+    }
+
+    private func rssiBarCount(_ rssi: Int) -> Int {
+        if rssi >= -50 { return 4 }
+        if rssi >= -60 { return 3 }
+        if rssi >= -70 { return 2 }
+        return 1
+    }
+
+    private func wifiTint(_ rssi: Int, associated: Bool) -> Color {
+        guard associated, rssi < 0 else { return .secondary }
+        if rssi >= -50 { return Color(hex: "#30D158") }
+        if rssi >= -70 { return VitalsColorResolver.warningYellow }
+        return palette.dangerAccent
     }
 
     private func wifiStat(label: String, value: String) -> some View {
@@ -2230,9 +2259,9 @@ public struct HardwareVitalsDrawerView: View {
         }
     }
 
-    private static let batteryBandNaturalHeight: CGFloat = 96
-    private static let powerFlowNaturalHeight: CGFloat = 103
-    private static let capacityBandNaturalHeight: CGFloat = 62
+    private static let batteryBandNaturalHeight: CGFloat = 140
+    private static let powerFlowNaturalHeight: CGFloat = 140
+    private static let capacityBandNaturalHeight: CGFloat = 96
     private static let powerDetailNaturalHeight: CGFloat = 30
     private static let powerHairlineHeight: CGFloat = 0.6
     private static let powerContentGrowthCap: CGFloat = 180
@@ -2264,14 +2293,14 @@ public struct HardwareVitalsDrawerView: View {
                     (Double(metrics.batteryLevel) / 100.0, powerColor),
                     (1.0 - Double(metrics.batteryLevel) / 100.0, Color.primary.opacity(0.12))
                 ],
-                height: 16
+                height: 22
             )
             VitalsStateRibbon(
                 cells: ribbonCells,
                 hoveredIndex: $hoveredBatteryCell,
                 previewHoveredIndex: batteryHoverPreview
             )
-                .frame(height: 16)
+                .frame(height: 22)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     cycleScope(.power)
@@ -2330,7 +2359,7 @@ public struct HardwareVitalsDrawerView: View {
                 tint: powerColor
             )
             if !segments.isEmpty {
-                vitalsCompositionBar(segments: segments, height: 16)
+                vitalsCompositionBar(segments: segments, height: 22)
             }
             HStack(alignment: .top, spacing: 10) {
                 powerFlowColumn(
@@ -2449,7 +2478,7 @@ public struct HardwareVitalsDrawerView: View {
                 value: "\(formatWh(maxWh)) Wh",
                 tint: powerColor
             )
-            vitalsCompositionBar(segments: segments, height: 16)
+            vitalsCompositionBar(segments: segments, height: 22)
             vitalsLegend([
                 ("vitals.power.maxLabel".localized, "\(formatWh(maxWh)) Wh", powerColor),
                 ("vitals.power.designLabel".localized, "\(formatWh(designWh)) Wh", Color.primary.opacity(0.35)),

@@ -157,8 +157,8 @@ struct LocalizationTests {
             // -11: the six-step taxonomy (breathing, gate drill, old mount and
             // permission titles) retired with the five task steps.
             // +10: Vitals gains its thermal/fan, Wi-Fi and overview
-            // machine-facts labels.
-            .traditionalChinese: 1014
+            // machine-facts labels; +2 for the RSSI and channel labels.
+            .traditionalChinese: 1016
         ]
 
         for (language, expected) in pinnedCoverage {

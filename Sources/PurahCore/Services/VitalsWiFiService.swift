@@ -5,6 +5,8 @@ public struct VitalsWiFiInfo: Sendable, Equatable {
     public var ssid: String
     public var rssi: Int
     public var transmitRateMbps: Double
+    public var channel: Int
+    public var band: String
     public var latencyMs: Double?
     public var packetLossPercent: Double?
 
@@ -12,12 +14,16 @@ public struct VitalsWiFiInfo: Sendable, Equatable {
         ssid: String = "",
         rssi: Int = 0,
         transmitRateMbps: Double = 0,
+        channel: Int = 0,
+        band: String = "",
         latencyMs: Double? = nil,
         packetLossPercent: Double? = nil
     ) {
         self.ssid = ssid
         self.rssi = rssi
         self.transmitRateMbps = transmitRateMbps
+        self.channel = channel
+        self.band = band
         self.latencyMs = latencyMs
         self.packetLossPercent = packetLossPercent
     }
@@ -63,11 +69,25 @@ public final class VitalsWiFiService {
             info.ssid = ""
             info.rssi = 0
             info.transmitRateMbps = 0
+            info.channel = 0
+            info.band = ""
             return
         }
         info.ssid = interface.ssid() ?? ""
         info.rssi = interface.rssiValue()
         info.transmitRateMbps = interface.transmitRate()
+        if let channel = interface.wlanChannel() {
+            info.channel = channel.channelNumber
+            switch channel.channelBand {
+            case .band2GHz: info.band = "2.4 GHz"
+            case .band5GHz: info.band = "5 GHz"
+            case .band6GHz: info.band = "6 GHz"
+            default: info.band = ""
+            }
+        } else {
+            info.channel = 0
+            info.band = ""
+        }
     }
 
     private func pingOnce() async {
