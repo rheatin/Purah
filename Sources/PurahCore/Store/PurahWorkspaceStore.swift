@@ -72,7 +72,7 @@ public enum OnboardingGuideStep: Int, CaseIterable, Codable, Sendable, Identifia
         case .feelTheEdge:
             return "将鼠标移到屏幕最左或最右侧的彩色轨道条上，感受『贴边即开、移开即收、空白区 100% 穿透』，并通过下方 Meter 微调手感。"
         case .pickOrCustomRig:
-            return "直接选用推荐布局，或展开下方三栏工作台调整每个插件的『上下位置顺序 (↑/↓)』『高矮比例』与『左右归属』。"
+            return "直接选用推荐布局，或展开下方三栏工作台调整每个插件的『上下位置顺序』『高矮比例』与『左右归属』。"
         case .coreGrammar:
             return "轨道有多长，弹出的抽屉就有多高。点击下方 5 张卡片，在两侧轨道实时体验 Purah 的空间折纸技巧！"
         case .appContextSwitch:
@@ -103,10 +103,10 @@ public enum OnboardingRigPreset: String, CaseIterable, Identifiable, Sendable {
 
     public var title: String {
         switch self {
-        case .developer: return "⭐ 推荐默认"
-        case .creator: return "🎨 专注创作"
-        case .minimal: return "🍃 极简主义"
-        case .custom: return "🛠️ 自由自定义"
+        case .developer: return "推荐默认"
+        case .creator: return "专注创作"
+        case .minimal: return "极简主义"
+        case .custom: return "自由自定义"
         }
     }
 
