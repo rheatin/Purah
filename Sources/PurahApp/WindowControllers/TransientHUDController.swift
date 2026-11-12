@@ -35,6 +35,8 @@ public struct TransientHUDCapsuleView: View {
                 .shadow(color: Color.black.opacity(0.35), radius: 10, x: 0, y: 4)
         )
         .padding(8)
+        .fixedSize(horizontal: true, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 }
 
@@ -70,16 +72,7 @@ public final class TransientHUDController {
         hostingView.wantsLayer = true
         panel.contentView = hostingView
 
-        let fittingSize = hostingView.fittingSize
-        let width = max(fittingSize.width, 240)
-        let height = max(fittingSize.height, 48)
-
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            let screenRect = screen.visibleFrame
-            let x = screenRect.midX - width / 2.0
-            let y = screenRect.minY + 90.0
-            panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
-        }
+        positionPanel(panel, hostingView: hostingView, minWidth: 180)
 
         panel.alphaValue = 1.0
         panel.orderFrontRegardless()
@@ -121,16 +114,7 @@ public final class TransientHUDController {
         hostingView.wantsLayer = true
         panel.contentView = hostingView
 
-        let fittingSize = hostingView.fittingSize
-        let width = max(fittingSize.width, 220)
-        let height = max(fittingSize.height, 48)
-
-        if let screen = NSScreen.main ?? NSScreen.screens.first {
-            let screenRect = screen.visibleFrame
-            let x = screenRect.midX - width / 2.0
-            let y = screenRect.minY + 90.0
-            panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
-        }
+        positionPanel(panel, hostingView: hostingView, minWidth: 180)
 
         panel.alphaValue = 1.0
         panel.orderFrontRegardless()
@@ -151,6 +135,24 @@ public final class TransientHUDController {
             if self?.panel === panel {
                 // Done fading
             }
+        }
+    }
+
+    private func positionPanel(_ panel: NSPanel, hostingView: NSView, minWidth: CGFloat = 180) {
+        hostingView.layoutSubtreeIfNeeded()
+        let fittingSize = hostingView.fittingSize
+        let width = ceil(max(fittingSize.width, minWidth))
+        let height = ceil(max(fittingSize.height, 48))
+
+        let mouseLoc = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+
+        if let screen {
+            let x = round(screen.frame.midX - width * 0.5)
+            let y = round(screen.visibleFrame.minY + 90.0)
+            panel.setFrame(NSRect(x: x, y: y, width: width, height: height), display: true)
         }
     }
 

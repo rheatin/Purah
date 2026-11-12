@@ -35,6 +35,32 @@ struct MusicSyncTests {
         #expect(abs(store._musicTrack.playbackProgress - 0.5) < 0.05)
     }
 
+    @Test("Fresh install starts with empty track, not sample placeholder")
+    func testFreshInstallHasEmptyTrack() {
+        let store = PurahWorkspaceStore()
+        #expect(store._musicTrack.title.isEmpty)
+        #expect(store._musicTrack.artist.isEmpty)
+        #expect(store._musicTrack.isPlaying == false)
+
+        let suiteName = "test_music_fresh_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let state = MusicPluginState(
+            storage: ScopedPluginStorage(pluginId: "music", defaults: defaults)
+        )
+        #expect(state.track.title.isEmpty)
+        #expect(state.track.isPlaying == false)
+        #expect(state.track.isSamplePlaceholder == false)
+
+        // Storing a fake sample placeholder must be purged on reload
+        let placeholder = MusicTrackInfo(title: "Zelda's Lullaby", artist: "Purah OST")
+        state.track = placeholder
+        state.save()
+        state.load()
+        #expect(state.track.title.isEmpty)
+    }
+
     @Test("Toggles play pause in-memory fallback")
     func testPlayPauseFallback() {
         let store = PurahWorkspaceStore()

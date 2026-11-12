@@ -42,6 +42,25 @@ public struct MusicTrackInfo: Codable, Sendable {
     ♪ Zelda's Lullaby — Purah Symphonic Mix ♪
     """
 
+    public static let empty = MusicTrackInfo(
+        title: "",
+        artist: "",
+        album: "",
+        isPlaying: false,
+        playbackProgress: 0.0,
+        currentPositionSeconds: 0.0,
+        durationSeconds: 0.0,
+        playbackRate: 0.0,
+        waveformSamples: [],
+        sourceApp: "",
+        sourceBundleId: ""
+    )
+
+    public var isSamplePlaceholder: Bool {
+        (title == "Zelda's Lullaby" && artist == "Purah OST")
+            || (title == "Midnight City" && lyrics == Self.defaultSamplePlainLyrics)
+    }
+
     public init(
         title: String = "Zelda's Lullaby",
         artist: String = "Purah OST",

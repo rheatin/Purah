@@ -170,7 +170,7 @@ public struct OnboardingWorkbenchView: View {
 
     private func toastFeedbackBadge(_ text: String, color: Color) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: "sparkles")
+            Image(systemName: "checkmark.circle.fill")
                 .foregroundColor(color)
                 .font(.system(size: 9.5))
             Text(text)
@@ -366,7 +366,7 @@ public struct OnboardingWorkbenchView: View {
             return meterStatusText
         }
         if store.onboardingGateState == .suppressedFling {
-            return "🚫 [防误触拦截生效] 检测到贴边高速划过 (\(store.onboardingGateCurrentValue) pt/s)，已自动屏蔽！"
+            return "[防误触拦截生效] 检测到贴边高速划过 (\(store.onboardingGateCurrentValue) pt/s)，已自动屏蔽"
         }
         if isMistouchBlockedAlert && store.activeDrawerPodId == nil && store.onboardingGateState == .idle {
             return meterStatusText
@@ -376,21 +376,21 @@ public struct OnboardingWorkbenchView: View {
             let modeDesc = (store.edgeTriggerMode == .hoverDwell)
                 ? "\(Int(store.customInitialDwellMs))ms 悬停达标"
                 : "\(Int(store.customPushResistanceBarrier))px 推压突破"
-            return "✅ 已唤醒『\(pod.name)』(\(modeDesc) · 100%) — 移开光标即自动收起"
+            return "已唤醒『\(pod.name)』(\(modeDesc) · 100%) — 移开光标即自动收起"
         }
         switch store.onboardingGateState {
         case .dwelling:
             let pct = Int(min(max(store.onboardingGateProgress, 0.0), 1.0) * 100)
             let target = max(store.onboardingGateTargetValue, Int(store.customInitialDwellMs))
-            return "⏳ 正在边缘悬停蓄力：\(store.onboardingGateCurrentValue) / \(target) ms (\(pct)%)"
+            return "正在边缘悬停蓄力：\(store.onboardingGateCurrentValue) / \(target) ms (\(pct)%)"
         case .pushing:
             let pct = Int(min(max(store.onboardingGateProgress, 0.0), 1.0) * 100)
             let target = max(store.onboardingGateTargetValue, Int(store.customPushResistanceBarrier))
-            return "🛡️ 正在推压边缘阻力墙：\(store.onboardingGateCurrentValue) / \(target) px (\(pct)%)"
+            return "正在推压边缘阻力墙：\(store.onboardingGateCurrentValue) / \(target) px (\(pct)%)"
         case .opened:
-            return "✅ 达到触发阈值 (100%)，边缘抽屉已解锁滑出！"
+            return "达到触发阈值 (100%)，边缘抽屉已解锁滑出"
         case .suppressedFling:
-            return "🚫 [防误触拦截生效] 检测到贴边高速划过 (\(store.onboardingGateCurrentValue) pt/s)，已自动屏蔽！"
+            return "[防误触拦截生效] 检测到贴边高速划过 (\(store.onboardingGateCurrentValue) pt/s)，已自动屏蔽"
         case .idle:
             if store.edgeTriggerMode == .hoverDwell {
                 return "已就绪 (\(Int(store.customInitialDwellMs))ms 悬停唤醒 · \(Int(store.customExitGraceMs))ms 宽限期) · 请将光标移至左右屏幕边缘触发"
@@ -495,13 +495,17 @@ public struct OnboardingWorkbenchView: View {
 
                         HStack {
                             Spacer()
-                            Text(activeCharge >= 1.0 ? "🔓 已展开 (100%)" : "🔒 触发线 100%")
-                                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                                .foregroundColor(activeCharge >= 1.0 ? .green : .white.opacity(0.55))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.black.opacity(0.75))
-                                .cornerRadius(3)
+                            HStack(spacing: 3) {
+                                Image(systemName: activeCharge >= 1.0 ? "lock.open.fill" : "lock.fill")
+                                    .font(.system(size: 7))
+                                Text(activeCharge >= 1.0 ? "已展开 (100%)" : "触发线 100%")
+                                    .font(.system(size: 7.5, weight: .bold, design: .monospaced))
+                            }
+                            .foregroundColor(activeCharge >= 1.0 ? .green : .white.opacity(0.55))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.black.opacity(0.75))
+                            .cornerRadius(3)
                         }
                     }
                 }
@@ -536,10 +540,10 @@ public struct OnboardingWorkbenchView: View {
     private var hoverTimeMeterCard: some View {
         let norm = CGFloat((store.customInitialDwellMs - 50.0) / 350.0)
         let speedLabel: String = {
-            if store.customInitialDwellMs <= 90 { return "⚡ 极速响应" }
-            if store.customInitialDwellMs <= 180 { return "🎯 黄金均衡" }
-            if store.customInitialDwellMs <= 280 { return "🛡️ 沉稳防抖" }
-            return "🔒 强力防误触"
+            if store.customInitialDwellMs <= 90 { return "极速响应" }
+            if store.customInitialDwellMs <= 180 { return "黄金均衡" }
+            if store.customInitialDwellMs <= 280 { return "沉稳防抖" }
+            return "强力防误触"
         }()
 
         return VStack(alignment: .leading, spacing: 5) {
@@ -553,13 +557,17 @@ public struct OnboardingWorkbenchView: View {
                         .foregroundColor(.white)
                 }
                 Spacer()
-                Text("\(Int(store.customInitialDwellMs)) ms · \(speedLabel)")
-                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(palette.primaryAccent)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(palette.primaryAccent.opacity(0.15))
-                    .cornerRadius(4)
+                HStack(spacing: 3) {
+                    Image(systemName: store.customInitialDwellMs <= 90 ? "bolt.fill" : (store.customInitialDwellMs <= 180 ? "target" : "shield.fill"))
+                        .font(.system(size: 7.5))
+                    Text("\(Int(store.customInitialDwellMs)) ms · \(speedLabel)")
+                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                }
+                .foregroundColor(palette.primaryAccent)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(palette.primaryAccent.opacity(0.15))
+                .cornerRadius(4)
             }
 
             VStack(spacing: 2) {
@@ -652,10 +660,10 @@ public struct OnboardingWorkbenchView: View {
     private var antiMistouchMeterCard: some View {
         let norm = CGFloat((store.customPushResistanceBarrier - 16.0) / 56.0)
         let armorLabel: String = {
-            if store.customPushResistanceBarrier <= 22 { return "🪶 轻触级" }
-            if store.customPushResistanceBarrier <= 40 { return "⚖️ 黄金阻尼" }
-            if store.customPushResistanceBarrier <= 56 { return "🛡️ 强防误触" }
-            return "🏰 重装锁定"
+            if store.customPushResistanceBarrier <= 22 { return "轻触级" }
+            if store.customPushResistanceBarrier <= 40 { return "标准阻尼" }
+            if store.customPushResistanceBarrier <= 56 { return "强防误触" }
+            return "重装锁定"
         }()
 
         return VStack(alignment: .leading, spacing: 5) {
@@ -669,13 +677,17 @@ public struct OnboardingWorkbenchView: View {
                         .foregroundColor(.white)
                 }
                 Spacer()
-                Text("\(Int(store.customPushResistanceBarrier)) px · \(armorLabel)")
-                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1.5)
-                    .background(Color.orange.opacity(0.16))
-                    .cornerRadius(4)
+                HStack(spacing: 3) {
+                    Image(systemName: store.customPushResistanceBarrier <= 22 ? "wind" : (store.customPushResistanceBarrier <= 40 ? "scalemass.fill" : "shield.fill"))
+                        .font(.system(size: 7.5))
+                    Text("\(Int(store.customPushResistanceBarrier)) px · \(armorLabel)")
+                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                }
+                .foregroundColor(.orange)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1.5)
+                .background(Color.orange.opacity(0.16))
+                .cornerRadius(4)
             }
 
             VStack(spacing: 2) {
@@ -770,8 +782,8 @@ public struct OnboardingWorkbenchView: View {
         let increment = CGFloat(stepMs / totalMs)
 
         meterStatusText = (store.edgeTriggerMode == .hoverDwell)
-            ? "⏳ 正在边缘悬停蓄力 (0 / \(Int(totalMs)) ms)…"
-            : "🛡️ 正在推压边缘阻力墙 (0 / \(Int(store.customPushResistanceBarrier)) px)…"
+            ? "正在边缘悬停蓄力 (0 / \(Int(totalMs)) ms)…"
+            : "正在推压边缘阻力墙 (0 / \(Int(store.customPushResistanceBarrier)) px)…"
 
         chargeTimer = Timer.scheduledTimer(withTimeInterval: stepMs / 1000.0, repeats: true) { timer in
             Task { @MainActor in
@@ -780,11 +792,11 @@ public struct OnboardingWorkbenchView: View {
                 self.livePushCharge = next
                 if next < 1.0 {
                     let elapsed = Int(Double(next) * totalMs)
-                    self.meterStatusText = "⏳ 蓄力中：\(elapsed) / \(Int(totalMs)) ms (\(Int(next * 100))%)"
+                    self.meterStatusText = "蓄力中：\(elapsed) / \(Int(totalMs)) ms (\(Int(next * 100))%)"
                 } else {
                     self.chargeTimer?.invalidate()
                     self.chargeTimer = nil
-                    self.meterStatusText = "✅ 达到阈值，抽屉已解锁滑出！"
+                    self.meterStatusText = "达到阈值，抽屉已解锁滑出"
                     withAnimation(PurahMotionPolicy.drawerEntrance) {
                         self.store.onboardingDidTriggerEdgeDrawer = true
                         if let firstRight = self.store.pods.first(where: { $0.edge == .right && $0.isEnabled }) {
@@ -803,7 +815,7 @@ public struct OnboardingWorkbenchView: View {
         isMistouchBlockedAlert = true
         liveHoverCharge = 0.20
         livePushCharge = 0.25
-        meterStatusText = "🚫 [防误触拦截生效] 检测到快速甩动光标，驻留不足 \(Int(store.customInitialDwellMs))ms，已自动屏蔽！"
+        meterStatusText = "[防误触拦截生效] 检测到快速甩动光标，驻留不足 \(Int(store.customInitialDwellMs))ms，已自动屏蔽"
     }
 
     // MARK: - Act 2: 预设与位置调整 (Presets & Progressive 3-Column Position/Height Workbench)
@@ -825,7 +837,7 @@ public struct OnboardingWorkbenchView: View {
                     Image(systemName: "slider.vertical.3")
                         .font(.system(size: 9.5, weight: .bold))
                         .foregroundColor(palette.primaryAccent)
-                    Text("三栏位置与高矮工作台：点击 ↑/↓ 调整上下顺序，点击百分比调节高度，点击 ⇄ 切换左右边缘")
+                    Text("三栏位置与高矮工作台：点击上下箭头调整顺序，点击百分比调节高度，点击切换按钮调整左右归属")
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundColor(.white.opacity(0.82))
                     Spacer()
@@ -879,9 +891,14 @@ public struct OnboardingWorkbenchView: View {
             }
 
             HStack {
-                Text("💡 想要调整某个插件的上下顺序、高矮比例，或增删模块？")
-                    .font(.system(size: 9.5, design: .rounded))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 5) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 9.5))
+                        .foregroundColor(palette.primaryAccent)
+                    Text("想要调整某个插件的上下顺序、高矮比例，或增删模块？")
+                        .font(.system(size: 9.5, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
 
                 Spacer()
 
@@ -891,11 +908,13 @@ public struct OnboardingWorkbenchView: View {
                         store.triggerControlHaptic(.alignment)
                     }
                 } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.up.and.down.text.horizontal")
+                    HStack(spacing: 4) {
+                        Image(systemName: "slider.horizontal.3")
                             .font(.system(size: 9.5, weight: .bold))
-                        Text("🛠️ 展开三栏工作台：调整每个插件位置与高矮 ▾")
+                        Text("展开三栏工作台：调整位置与高矮")
                             .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 8, weight: .bold))
                     }
                     .foregroundColor(.black)
                     .padding(.horizontal, 11)
@@ -953,10 +972,10 @@ public struct OnboardingWorkbenchView: View {
                 selectedRigMode = preset
                 if preset == .custom {
                     isCustomWorkbenchExpanded = true
-                    positionActionFeedback = "🛠️ 已展开自由自定义工作台，可按需调整每个插件的上下顺序、高矮与左右归属"
+                    positionActionFeedback = "已展开自由自定义工作台，可按需调整每个插件的上下顺序、高矮与左右归属"
                 } else {
                     store.applyOnboardingRigPreset(preset)
-                    positionActionFeedback = "✅ 已套用「\(preset.title)」预设"
+                    positionActionFeedback = "已套用「\(preset.title)」预设"
                 }
                 store.triggerControlHaptic(.alignment)
             }
@@ -1004,7 +1023,7 @@ public struct OnboardingWorkbenchView: View {
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundColor(accent)
                 Spacer()
-                Text("↑↓换位 · 百分比调高")
+                Text("换位 · 调节高度")
                     .font(.system(size: 8, design: .rounded))
                     .foregroundColor(.secondary)
             }
@@ -1055,7 +1074,7 @@ public struct OnboardingWorkbenchView: View {
                 withAnimation(PurahMotionPolicy.surface) {
                     selectedRigMode = .custom
                     store.movePodInOrder(id: pod.id, direction: -1)
-                    positionActionFeedback = "✅ 已将「\(pod.name)」上移"
+                    positionActionFeedback = "已将「\(pod.name)」上移"
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
@@ -1075,7 +1094,7 @@ public struct OnboardingWorkbenchView: View {
                 withAnimation(PurahMotionPolicy.surface) {
                     selectedRigMode = .custom
                     store.movePodInOrder(id: pod.id, direction: 1)
-                    positionActionFeedback = "✅ 已将「\(pod.name)」下移"
+                    positionActionFeedback = "已将「\(pod.name)」下移"
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
@@ -1096,7 +1115,7 @@ public struct OnboardingWorkbenchView: View {
                     selectedRigMode = .custom
                     let delta = (pod.range.length >= 0.32) ? -0.08 : 0.06
                     store.adjustPodLength(id: pod.id, delta: delta)
-                    positionActionFeedback = "📐 已调整「\(pod.name)」高度占比为 \(Int(pod.range.length * 100))%"
+                    positionActionFeedback = "已调整「\(pod.name)」高度占比为 \(Int(pod.range.length * 100))%"
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
@@ -1116,7 +1135,7 @@ public struct OnboardingWorkbenchView: View {
                 withAnimation(PurahMotionPolicy.surface) {
                     selectedRigMode = .custom
                     store.flipPodEdge(id: pod.id)
-                    positionActionFeedback = "⇄ 已将「\(pod.name)」换至另一侧轨道"
+                    positionActionFeedback = "已将「\(pod.name)」换至另一侧轨道"
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
@@ -1135,7 +1154,7 @@ public struct OnboardingWorkbenchView: View {
                 withAnimation(PurahMotionPolicy.surface) {
                     selectedRigMode = .custom
                     store.unmountPod(id: pod.id)
-                    positionActionFeedback = "➖ 已收起「\(pod.name)」至待命库"
+                    positionActionFeedback = "已收起「\(pod.name)」至待命库"
                     store.triggerControlHaptic(.alignment)
                 }
             } label: {
@@ -1162,20 +1181,28 @@ public struct OnboardingWorkbenchView: View {
 
         return VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("📦 待命模块库")
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "tray.full.fill")
+                        .font(.system(size: 9, weight: .bold))
+                    Text("待命模块库")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(.secondary)
                 Spacer()
                 Button {
                     withAnimation(PurahMotionPolicy.surface) {
                         store.autoLayoutAll()
-                        positionActionFeedback = "✨ 已执行人体工学智能排布！"
+                        positionActionFeedback = "已执行人体工学智能排布"
                         store.triggerControlHaptic(.alignment)
                     }
                 } label: {
-                    Text("✨ 智能排布")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
-                        .foregroundColor(.yellow)
+                    HStack(spacing: 3) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 8, weight: .bold))
+                        Text("智能排布")
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.yellow)
                 }
                 .buttonStyle(.plain)
             }
@@ -1201,7 +1228,7 @@ public struct OnboardingWorkbenchView: View {
                             withAnimation(PurahMotionPolicy.surface) {
                                 selectedRigMode = .custom
                                 store.mountPod(id: pod.id, to: .left)
-                                positionActionFeedback = "➕ 已将「\(pod.name)」挂载至左轨"
+                                positionActionFeedback = "已将「\(pod.name)」挂载至左轨"
                                 store.triggerControlHaptic(.alignment)
                             }
                         } label: {
@@ -1219,7 +1246,7 @@ public struct OnboardingWorkbenchView: View {
                             withAnimation(PurahMotionPolicy.surface) {
                                 selectedRigMode = .custom
                                 store.mountPod(id: pod.id, to: .right)
-                                positionActionFeedback = "➕ 已将「\(pod.name)」挂载至右轨"
+                                positionActionFeedback = "已将「\(pod.name)」挂载至右轨"
                                 store.triggerControlHaptic(.alignment)
                             }
                         } label: {
@@ -1405,13 +1432,17 @@ public struct OnboardingWorkbenchView: View {
                         store.triggerControlHaptic(.alignment)
                     }
                 } label: {
-                    Text("⇅ 演示换位")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.yellow)
-                        .cornerRadius(5)
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.up.and.down")
+                            .font(.system(size: 8, weight: .bold))
+                        Text("换位演示")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.black)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.yellow)
+                    .cornerRadius(5)
                 }
                 .buttonStyle(.plain)
 
@@ -1423,13 +1454,17 @@ public struct OnboardingWorkbenchView: View {
                         store.triggerControlHaptic(.alignment)
                     }
                 } label: {
-                    Text("⇕ 演示拉高")
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundColor(.yellow)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.yellow.opacity(0.18))
-                        .cornerRadius(5)
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.up.and.down.and.sparkles")
+                            .font(.system(size: 8, weight: .bold))
+                        Text("拉高演示")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.yellow)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color.yellow.opacity(0.18))
+                    .cornerRadius(5)
                 }
                 .buttonStyle(.plain)
             }
@@ -1604,7 +1639,7 @@ public struct OnboardingWorkbenchView: View {
                         withAnimation(PurahMotionPolicy.surface) {
                             simulatedFrontmostApp = app
                             applySimulatedAppProfile(app)
-                            appSwitchBannerText = "🎯 正在预览「\(app.profileName)」(离开此步将自动恢复你的第 2 步默认布局)"
+                            appSwitchBannerText = "正在预览「\(app.profileName)」(离开此步将自动恢复默认布局)"
                             store.triggerControlHaptic(.alignment)
                         }
                     } label: {
@@ -1665,7 +1700,7 @@ public struct OnboardingWorkbenchView: View {
                     Button {
                         withAnimation(PurahMotionPolicy.surface) {
                             store.restoreUserLayoutSnapshotIfNeeded()
-                            appSwitchBannerText = "✅ 已恢复你在第 2 步设好的默认布局"
+                            appSwitchBannerText = "已恢复你在第 2 步设好的默认布局"
                             store.triggerControlHaptic(.alignment)
                         }
                     } label: {
@@ -1799,13 +1834,19 @@ public struct OnboardingWorkbenchView: View {
                             }
                         }
                     } label: {
-                        Text(isGranted ? "✓ 已授权" : "授权")
-                            .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                            .foregroundColor(isGranted ? .green : .black)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 3.5)
-                            .background(isGranted ? Color.green.opacity(0.16) : palette.primaryAccent)
-                            .cornerRadius(5)
+                        HStack(spacing: 3) {
+                            if isGranted {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            Text(isGranted ? "已授权" : "授权")
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                        }
+                        .foregroundColor(isGranted ? .green : .black)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3.5)
+                        .background(isGranted ? Color.green.opacity(0.16) : palette.primaryAccent)
+                        .cornerRadius(5)
                     }
                     .buttonStyle(.plain)
                 }

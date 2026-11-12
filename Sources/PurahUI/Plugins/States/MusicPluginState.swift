@@ -38,14 +38,17 @@ public final class MusicPluginState: Sendable {
         self.dynamicSubStyle = storage.codable(forKey: "dynamicSubStyle", as: DynamicWaveformSubStyle.self) ?? .neonVUTower
         self.rhythmOffsetMs = max(storage.double(forKey: "rhythmOffsetMs"), 0.0)
         self.isWaveformAnimationEnabled = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) ?? true
-        var loadedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) ?? MusicTrackInfo()
-        loadedTrack.isPlaying = false
-        loadedTrack.playbackRate = 0.0
-        if (loadedTrack.title == "Zelda's Lullaby" || loadedTrack.title == "Midnight City") && loadedTrack.lyrics == nil && loadedTrack.syncedLyrics == nil {
-            loadedTrack.lyrics = MusicTrackInfo.defaultSamplePlainLyrics
-            loadedTrack.syncedLyrics = MusicTrackInfo.defaultSampleSyncedLyrics
+        if let loadedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self),
+           !loadedTrack.isSamplePlaceholder,
+           !loadedTrack.title.isEmpty {
+            var track = loadedTrack
+            track.isPlaying = false
+            track.playbackRate = 0.0
+            self.track = track
+        } else {
+            storage.removeObject(forKey: "lastTrack")
+            self.track = .empty
         }
-        self.track = loadedTrack
     }
 
     public func load() {
@@ -59,14 +62,18 @@ public final class MusicPluginState: Sendable {
         if let anim = storage.codable(forKey: "isWaveformAnimationEnabled", as: Bool.self) {
             self.isWaveformAnimationEnabled = anim
         }
-        if var savedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) {
-            savedTrack.isPlaying = false
-            savedTrack.playbackRate = 0.0
-            if (savedTrack.title == "Zelda's Lullaby" || savedTrack.title == "Midnight City") && savedTrack.lyrics == nil && savedTrack.syncedLyrics == nil {
-                savedTrack.lyrics = MusicTrackInfo.defaultSamplePlainLyrics
-                savedTrack.syncedLyrics = MusicTrackInfo.defaultSampleSyncedLyrics
+        if let savedTrack = storage.codable(forKey: "lastTrack", as: MusicTrackInfo.self) {
+            if savedTrack.isSamplePlaceholder || savedTrack.title.isEmpty {
+                storage.removeObject(forKey: "lastTrack")
+                self.track = .empty
+            } else {
+                var loaded = savedTrack
+                loaded.isPlaying = false
+                loaded.playbackRate = 0.0
+                self.track = loaded
             }
-            self.track = savedTrack
+        } else {
+            self.track = .empty
         }
     }
 
@@ -75,7 +82,11 @@ public final class MusicPluginState: Sendable {
         storage.setCodable(dynamicSubStyle, forKey: "dynamicSubStyle")
         storage.set(rhythmOffsetMs, forKey: "rhythmOffsetMs")
         storage.setCodable(isWaveformAnimationEnabled, forKey: "isWaveformAnimationEnabled")
-        storage.setCodable(track, forKey: "lastTrack")
+        if !track.title.isEmpty && !track.isSamplePlaceholder {
+            storage.setCodable(track, forKey: "lastTrack")
+        } else {
+            storage.removeObject(forKey: "lastTrack")
+        }
     }
 
     public func togglePlayPause(store: PurahWorkspaceStore? = nil) {
@@ -151,29 +162,31 @@ public final class MusicPluginState: Sendable {
         let currentTitle = self.track.title
         let currentArtist = self.track.artist
         let currentAlbum = self.track.album
-        if self.track.artworkData == nil {
-            Task { [weak self] in
-                if let art = await SystemMusicSyncService.shared.fetchArtwork(title: currentTitle, artist: currentArtist, album: currentAlbum) {
-                    await MainActor.run {
-                        if self?.track.title == currentTitle,
-                           self?.track.artist == currentArtist {
-                            self?.track.artworkData = art
-                            self?.boundStore?._musicTrack.artworkData = art
+        if !currentTitle.isEmpty {
+            if self.track.artworkData == nil {
+                Task { [weak self] in
+                    if let art = await SystemMusicSyncService.shared.fetchArtwork(title: currentTitle, artist: currentArtist, album: currentAlbum) {
+                        await MainActor.run {
+                            if self?.track.title == currentTitle,
+                               self?.track.artist == currentArtist {
+                                self?.track.artworkData = art
+                                self?.boundStore?._musicTrack.artworkData = art
+                            }
                         }
                     }
                 }
             }
-        }
-        if self.track.lyrics == nil && self.track.syncedLyrics == nil {
-            Task { [weak self] in
-                if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
-                    await MainActor.run {
-                        if self?.track.title == currentTitle,
-                           self?.track.artist == currentArtist {
-                            self?.track.lyrics = lyrResult.plainLyrics
-                            self?.track.syncedLyrics = lyrResult.syncedLyrics
-                            self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
-                            self?.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
+            if self.track.lyrics == nil && self.track.syncedLyrics == nil {
+                Task { [weak self] in
+                    if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
+                        await MainActor.run {
+                            if self?.track.title == currentTitle,
+                               self?.track.artist == currentArtist {
+                                self?.track.lyrics = lyrResult.plainLyrics
+                                self?.track.syncedLyrics = lyrResult.syncedLyrics
+                                self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
+                                self?.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
+                            }
                         }
                     }
                 }
