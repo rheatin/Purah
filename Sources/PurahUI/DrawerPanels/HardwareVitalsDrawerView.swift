@@ -1864,7 +1864,7 @@ public struct HardwareVitalsDrawerView: View {
             vitalsHairline
                 .frame(height: Self.ioHairlineHeight)
 
-            wifiBand(metrics: metrics, netColor: netColor, scope: netScope)
+            wifiBand(metrics: metrics, netColor: netColor, grid: downBuckets)
                 .frame(height: Self.wifiBandNaturalHeight, alignment: .topLeading)
 
             vitalsHairline
@@ -1957,7 +1957,7 @@ public struct HardwareVitalsDrawerView: View {
     private func wifiBand(
         metrics: HardwareVitalsInfo,
         netColor: Color,
-        scope: VitalsTimeScope
+        grid: [VitalsBucket]
     ) -> some View {
         // `ssid()` returns nil without Location permission even while the
         // link is associated, so association is judged by the link facts the
@@ -2006,7 +2006,7 @@ public struct HardwareVitalsDrawerView: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
 
-            rssiStrip(points: vitals.wifiRSSIHistory, scope: scope, tint: netColor)
+            rssiStrip(points: vitals.wifiRSSIHistory, grid: grid, tint: netColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: 24)
 
@@ -2023,28 +2023,29 @@ public struct HardwareVitalsDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
+    /// RSSI on the network chart's own buckets. A grid built from the RSSI
+    /// buffer alone covers only as much time as the drawer has been open, so
+    /// its columns came out wider than the plot's for the first minute.
     private func rssiStrip(
         points: [VitalsHistoryPoint],
-        scope: VitalsTimeScope,
+        grid: [VitalsBucket],
         tint: Color
     ) -> some View {
-        let buckets = VitalsHistoryBuffer.columns(
-            fast: points,
-            scope: scope,
-            fastResolution: vitals.samplingInterval
-        ).map { bucket in
-            let ratio = bucket.mean < 0
-                ? min(max((bucket.mean + 95.0) / 65.0, 0.03), 1.0)
-                : 0
-            return VitalsBucket(start: bucket.start, end: bucket.end, mean: ratio)
+        // -95 dBm is the bottom of the scale and -30 the top.
+        let readings = VitalsHistoryBuffer.means(for: grid, points: points)
+        let buckets = zip(grid, readings).map { slot, dBm in
+            VitalsBucket(
+                start: slot.start,
+                end: slot.end,
+                mean: dBm < 0 ? min(max((dBm + 95.0) / 65.0, 0.03), 1.0) : 0
+            )
         }
         return VitalsColumnStrip(
             buckets: buckets,
             domain: .percentage,
             tint: tint,
-            bucketColors: buckets.map { bucket in
-                let dBm = Int((bucket.mean * 65.0 - 95.0).rounded())
-                return wifiTint(dBm, associated: true)
+            bucketColors: readings.map { reading in
+                wifiTint(Int(reading.rounded()), associated: reading < 0)
             },
             metric: .network,
             thresholds: effectiveThresholds,
