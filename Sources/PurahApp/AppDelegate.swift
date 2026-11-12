@@ -61,6 +61,9 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
         store.onCapacityWarningToast = { message in
             TransientHUDController.shared.showWarning(message: message)
         }
+        store.onToast = { message, icon in
+            TransientHUDController.shared.showWarning(message: message, icon: icon)
+        }
         store.onAlertToast = { message, icon in
             TransientHUDController.shared.showWarning(message: message, icon: icon, playsSound: false)
         }
