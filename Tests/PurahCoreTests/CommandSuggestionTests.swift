@@ -796,3 +796,18 @@ struct ZshEnvironmentCollectionTests {
         #expect(output.contains("DONE"))
     }
 }
+
+@Suite("OS version name")
+struct OperatingSystemVersionNameTests {
+    @Test("The patch is kept when the release has one")
+    func keepsPatch() {
+        let version = OperatingSystemVersion(majorVersion: 27, minorVersion: 2, patchVersion: 1)
+        #expect(version.macOSName == "27.2.1")
+    }
+
+    @Test("A zero patch is not printed as .0")
+    func dropsZeroPatch() {
+        let version = OperatingSystemVersion(majorVersion: 15, minorVersion: 6, patchVersion: 0)
+        #expect(version.macOSName == "15.6")
+    }
+}

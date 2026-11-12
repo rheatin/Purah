@@ -1188,8 +1188,7 @@ public struct HardwareVitalsDrawerView: View {
     /// fixed instrument zone; the process list below is what grows.
     private func overviewSystemInfoRow(metrics: HardwareVitalsInfo) -> some View {
         let cores = metrics.performanceCoreCount + metrics.efficiencyCoreCount
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        let os = "macOS \(version.majorVersion).\(version.minorVersion)"
+        let os = "macOS " + ProcessInfo.processInfo.operatingSystemVersion.macOSName
         let uptime = String(
             format: "vitals.overview.uptime".localized,
             uptimeLabel(metrics.systemUptimeSeconds)

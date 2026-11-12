@@ -314,8 +314,7 @@ public enum CommandSuggestionPrompt {
 
     /// "macOS 27.0" for the machine Purah is running on.
     public static var currentOSVersion: String {
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        return "macOS \(version.majorVersion).\(version.minorVersion)"
+        return "macOS " + ProcessInfo.processInfo.operatingSystemVersion.macOSName
     }
 
     /// Longest alias list forwarded. `alias -L` is capped in the shell too; this
