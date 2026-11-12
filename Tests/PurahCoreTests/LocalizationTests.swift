@@ -156,10 +156,10 @@ struct LocalizationTests {
             // +1: "Hover here" for the two hover targets.
             // -11: the six-step taxonomy (breathing, gate drill, old mount and
             // permission titles) retired with the five task steps.
-            // +10: Vitals gains its thermal/fan, Wi-Fi and overview
-            // machine-facts labels; +1 for the channel label.
+            // +10: Vitals gains its fan, Wi-Fi and overview machine-facts
+            // labels; +1 for the channel label.
             // +1: the DISK band's size-free "boot disk" label.
-            .traditionalChinese: 1016
+            .traditionalChinese: 1015
         ]
 
         for (language, expected) in pinnedCoverage {

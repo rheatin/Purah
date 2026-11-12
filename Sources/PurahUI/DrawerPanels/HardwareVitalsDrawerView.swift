@@ -769,8 +769,8 @@ public struct HardwareVitalsDrawerView: View {
         netColor: Color
     ) -> some View {
         // The instruments keep their natural size: the two cell rows, the
-        // network band and the deep-telemetry line never stretch with the
-        // drawer. Everything above that zone is a process list, so a tall
+        // network band and the machine-facts grid never stretch with the
+        // drawer. Everything outside that zone is a process list, so a tall
         // drawer shows more processes instead of taller charts.
         let bands: [VitalsBandBudget.Band] = [
             .fixed(Self.overviewCellNaturalHeight),

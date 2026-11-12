@@ -684,8 +684,6 @@ public final class HardwareVitalsService {
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
     @ObservationIgnored private let buffer = CpuTelemetryBuffer()
     @ObservationIgnored private let wifiService = VitalsWiFiService.shared
-    @ObservationIgnored private var thermalCache:
-        (date: Date, cpu: Double?, gpu: Double?, fanRPM: Int?)?
     @ObservationIgnored private let hostPort: mach_port_t = mach_host_self()
     @ObservationIgnored private var saveThrottleCounter = 0
     @ObservationIgnored private let processNetworkSampler: ProcessNetworkSampler
@@ -866,8 +864,6 @@ public final class HardwareVitalsService {
         diskReadBuffer.setFastCapacity(capacity)
         diskWriteBuffer.setFastCapacity(capacity)
         wifiRSSIBuffer.setFastCapacity(capacity)
-        cpuTemperatureBuffer.setFastCapacity(capacity)
-        gpuTemperatureBuffer.setFastCapacity(capacity)
         cpuTemperatureBuffer.setFastCapacity(capacity)
         gpuTemperatureBuffer.setFastCapacity(capacity)
     }
@@ -1248,16 +1244,23 @@ public final class HardwareVitalsService {
             )
         let net = readNetworkThroughputDetailed()
         let thermal = readThermalStateLabel()
-        let sensors: (cpu: Double?, gpu: Double?, fanRPM: Int?) = {
-            if let cached = thermalCache,
-               Date().timeIntervalSince(cached.date) < 5 {
-                return (cached.cpu, cached.gpu, cached.fanRPM)
-            }
-            let readings = HardwareSMCReader.thermalReadings()
-            thermalCache = (Date(), readings.cpu, readings.gpu, readings.fanRPM)
-            return readings
-        }()
-        wifiService.refreshLink()
+        // One full SMC read is 21 keys and about 5ms of IOKit round-trips,
+        // and the temperature is a drawer-only fact, so it is sampled while
+        // someone can see it. Short of that the last reading is carried, so
+        // the rail never pays for a sensor nobody is looking at.
+        let sensors: (cpu: Double?, gpu: Double?, fanRPM: Int?) = isDrawerVisible
+            ? HardwareSMCReader.thermalReadings()
+            : (
+                metrics.cpuTemperatureCelsius,
+                metrics.gpuTemperatureCelsius,
+                metrics.fanRPM
+            )
+        // Wi-Fi link facts are a drawer-only detail and one refresh is a few
+        // milliseconds of CoreWLAN work, so they follow the drawer. The ping
+        // probe is already gated the same way by `start()`/`stop()`.
+        if isDrawerVisible {
+            wifiService.refreshLink()
+        }
 
         metrics = HardwareVitalsInfo(
             cpuUsage: cpuBreakdown.totalUsage,
@@ -1333,12 +1336,6 @@ public final class HardwareVitalsService {
         )
 
         let now = Date()
-        if let cpuTemperature = sensors.cpu, cpuTemperature > 0 {
-            cpuTemperatureBuffer.append(VitalsHistoryPoint(timestamp: now, value: cpuTemperature))
-        }
-        if let gpuTemperature = sensors.gpu, gpuTemperature > 0 {
-            gpuTemperatureBuffer.append(VitalsHistoryPoint(timestamp: now, value: gpuTemperature))
-        }
         cpuBuffer.append(VitalsHistoryPoint(timestamp: now, value: cpuBreakdown.totalUsage))
         gpuBuffer.append(VitalsHistoryPoint(timestamp: now, value: gpu))
         ramBuffer.append(VitalsHistoryPoint(timestamp: now, value: mem.usage))
@@ -1358,20 +1355,21 @@ public final class HardwareVitalsService {
             timestamp: now,
             value: diskIO.writeBytesPerSec
         ))
-        // RSSI is only meaningful while the link is associated.
-        if wifiService.info.rssi < 0 {
+        // RSSI is only meaningful while the link is associated, and a closed
+        // drawer would otherwise replay the last known value as a flat line.
+        if isDrawerVisible, wifiService.info.rssi < 0 {
             wifiRSSIBuffer.append(VitalsHistoryPoint(
                 timestamp: now,
                 value: Double(wifiService.info.rssi)
             ))
         }
-        if let cpuTemperature = sensors.cpu, cpuTemperature > 0 {
+        if isDrawerVisible, let cpuTemperature = sensors.cpu, cpuTemperature > 0 {
             cpuTemperatureBuffer.append(VitalsHistoryPoint(
                 timestamp: now,
                 value: cpuTemperature
             ))
         }
-        if let gpuTemperature = sensors.gpu, gpuTemperature > 0 {
+        if isDrawerVisible, let gpuTemperature = sensors.gpu, gpuTemperature > 0 {
             gpuTemperatureBuffer.append(VitalsHistoryPoint(
                 timestamp: now,
                 value: gpuTemperature

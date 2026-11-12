@@ -27,12 +27,6 @@ public struct VitalsWiFiInfo: Sendable, Equatable {
         self.latencyMs = latencyMs
         self.packetLossPercent = packetLossPercent
     }
-
-    /// `rssi` is dBm (-100…0); the familiar four-bar scale maps it to 0…100.
-    public var signalPercent: Int {
-        guard rssi < 0 else { return 0 }
-        return min(max(2 * (rssi + 100), 0), 100)
-    }
 }
 
 /// Wi-Fi link facts and a light reachability probe.

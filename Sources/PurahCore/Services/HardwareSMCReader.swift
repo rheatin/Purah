@@ -16,7 +16,9 @@ enum HardwareSMCReader {
         "Tg0e", "Tg0f", "Tg0m", "Tg0n", "Tg0q", "Tg0r",
         "TG0P", "TG0D"
     ]
-    private static let fanKeys = ["F0Ac", "F1Ac", "F0Mn"]
+    // Actual fan speeds only: `F0Mn` is the fan's minimum, and reporting it as
+    // the current speed would show a permanently idle fan.
+    private static let fanKeys = ["F0Ac", "F1Ac"]
 
     static func thermalReadings() -> (cpu: Double?, gpu: Double?, fanRPM: Int?) {
         let cpu = hottest(cpuKeys)
