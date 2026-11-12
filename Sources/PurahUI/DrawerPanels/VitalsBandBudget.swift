@@ -1,129 +1,15 @@
 // Sources/PurahUI/DrawerPanels/VitalsBandBudget.swift
 import CoreGraphics
 
-/// Splits a drawer tab's height between its bands.
-///
-/// One rule, applied to every tab: a chart grows up to twice its natural
-/// height, and every remaining point goes to a list-like band. A tab that is
-/// shorter than its content shrinks every band by the same share instead of
-/// keeping a hardcoded floor, and the returned heights always add up to the
-/// available height, so no band can leave a void at the bottom of the drawer.
-public enum VitalsBandBudget {
-    public struct Band: Equatable, Sendable {
-        /// The height the band needs to draw its content once.
-        public var natural: CGFloat
-        /// Share of the surplus. Zero pins the band at its natural height
-        /// (a hairline, a footer that must not move).
-        public var weight: CGFloat
-        /// A chart stops at 2× its natural height. `nil` marks a list-like
-        /// band, which absorbs the rest.
-        public var maxHeight: CGFloat?
-
-        public init(natural: CGFloat, weight: CGFloat = 1, maxHeight: CGFloat? = nil) {
-            self.natural = natural
-            self.weight = weight
-            self.maxHeight = maxHeight
-        }
-
-        /// A plot: it earns the zoom, but only up to twice its natural size.
-        public static func chart(natural: CGFloat, weight: CGFloat = 1) -> Band {
-            Band(natural: natural, weight: weight, maxHeight: max(natural, 0) * 2)
-        }
-
-        /// A list or a text band: uncapped, because the extra points have to go
-        /// somewhere and this is the band that can use them.
-        public static func list(natural: CGFloat, weight: CGFloat = 1) -> Band {
-            Band(natural: natural, weight: weight, maxHeight: nil)
-        }
-
-        /// A separator or a band pinned to its natural height.
-        public static func fixed(_ height: CGFloat) -> Band {
-            Band(natural: height, weight: 0, maxHeight: height)
-        }
-    }
-
-    /// Returns one height per band. The heights sum to `available` (up to
-    /// floating-point error) for any non-empty input.
-    public static func allocate(available: CGFloat, bands: [Band]) -> [CGFloat] {
-        guard !bands.isEmpty else { return [] }
-        let total = max(available, 0)
-        let naturals = bands.map { max($0.natural, 0) }
-        let naturalSum = naturals.reduce(0, +)
-
-        guard naturalSum > 0 else {
-            return bands.map { _ in total / CGFloat(bands.count) }
-        }
-
-        // Short drawer: every band gives up the same share of itself. No band
-        // keeps a floor, so the content scrolls as one piece instead of one
-        // band staying fat while another collapses.
-        if total <= naturalSum {
-            return naturals.map { total * $0 / naturalSum }
-        }
-
-        var heights = naturals
-        var surplus = total - naturalSum
-        var open = bands.indices.filter { bands[$0].weight > 0 }
-
-        func limit(_ index: Int) -> CGFloat {
-            bands[index].maxHeight ?? .infinity
-        }
-
-        // Grow by weight, redistributing whatever a capped chart could not
-        // take. A list band (uncapped) ends the loop with nothing left over.
-        while surplus > 0.0001, !open.isEmpty {
-            let weightSum = open.reduce(CGFloat.zero) { $0 + bands[$1].weight }
-            guard weightSum > 0 else { break }
-
-            var spent: CGFloat = 0
-            var additions: [(Int, CGFloat)] = []
-            for index in open {
-                let share = surplus * bands[index].weight / weightSum
-                let room = max(limit(index) - heights[index], 0)
-                let addition = min(share, room)
-                additions.append((index, addition))
-                spent += addition
-            }
-            for (index, addition) in additions {
-                heights[index] += addition
-            }
-            surplus -= spent
-            open = open.filter { heights[$0] < limit($0) - 0.0001 }
-            if spent <= 0.0001 { break }
-        }
-
-        // Every flexible band hit its cap (a tab of nothing but charts, taller
-        // than 2× their sum). Spreading the rest by natural size is the only
-        // way to honour "no void" without inventing a new band.
-        if surplus > 0.0001 {
-            for index in heights.indices {
-                heights[index] += surplus * naturals[index] / naturalSum
-            }
-        }
-
-        return heights
-    }
-
-    /// The height a tab draws: the drawer body when it is tall enough, or the
-    /// bands' natural content when it is not.
-    ///
-    /// A band's views have an intrinsic minimum (a plot, a value line, a row of
-    /// text); squashing them below it makes the content paint over itself
-    /// instead of shrinking. So a body shorter than its content keeps the
-    /// natural height and the host's scroll view scrolls the tab, rather than
-    /// pretending a 60pt card can hold a 250pt sheet.
-    public static func drawingHeight(available: CGFloat, bands: [Band]) -> CGFloat {
-        max(max(available, 0), bands.reduce(0) { $0 + max($1.natural, 0) })
-    }
-}
-
 /// Splits a tab into the part that draws its instruments and the part that
 /// lists processes.
 ///
-/// The instrument zone never grows past its growth cap (and never shrinks
-/// below what its bands need to draw once), so a taller drawer cannot stretch
-/// a chart, a bar or a ribbon. Every point above that zone belongs to the
-/// process list, which is the one band that can use any height.
+/// Every band on a Vitals tab is drawn at its natural height. A taller drawer
+/// therefore cannot stretch a chart, a bar or a ribbon: the instruments keep
+/// the size they were designed at, and every point above that zone belongs to
+/// the process list, which is the one band that can use any height. A drawer
+/// shorter than its instruments keeps them at natural height and the host
+/// scrolls the tab instead of squashing the content.
 public enum VitalsTabLayout {
     public struct Split: Equatable, Sendable {
         public let content: CGFloat
@@ -137,14 +23,10 @@ public enum VitalsTabLayout {
 
     public static func split(
         available: CGFloat,
-        naturalContent: CGFloat,
-        growthCap: CGFloat
+        naturalContent: CGFloat
     ) -> Split {
-        let available = max(available, 0)
         let natural = max(naturalContent, 0)
-        let cap = max(natural, growthCap)
-        let content = max(natural, min(available, cap))
-        return Split(content: content, list: max(available - content, 0))
+        return Split(content: natural, list: max(max(available, 0) - natural, 0))
     }
 }
 

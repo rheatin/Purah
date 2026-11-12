@@ -259,22 +259,47 @@ public struct VitalsHistoryBuffer: Sendable {
         let count = min(max(Int((span / cadence).rounded(.down)), 1), limit)
         let width = span / Double(count)
         let gridStart = now.addingTimeInterval(-span)
+        let grid = (0..<count).map { index in
+            let start = gridStart.addingTimeInterval(Double(index) * width)
+            let end = min(start.addingTimeInterval(width), now)
+            return VitalsBucket(start: start, end: end, mean: 0)
+        }
+        let means = means(for: grid, points: source.points)
+        return grid.enumerated().map { index, bucket in
+            VitalsBucket(start: bucket.start, end: bucket.end, mean: means[index])
+        }
+    }
 
-        var sums = [Double](repeating: 0, count: count)
-        var counts = [Int](repeating: 0, count: count)
-        for point in source.points {
-            let offset = point.timestamp.timeIntervalSince(gridStart)
+    /// The mean of `points` inside each bucket's time slot; a slot with no
+    /// samples reads as 0.
+    ///
+    /// This is for a series that is sampled by someone else and has to land on
+    /// a grid it did not build — the temperatures, which only exist while the
+    /// drawer is open, borrow the chart's own buckets so their columns are the
+    /// same width as the plot above them. Building a second grid for them
+    /// would move the bars whenever the two series had different history.
+    public static func means(
+        for grid: [VitalsBucket],
+        points: [VitalsHistoryPoint]
+    ) -> [Double] {
+        guard let first = grid.first else { return [] }
+        let width: Double = grid.count > 1
+            ? grid[1].start.timeIntervalSince(first.start)
+            : first.end.timeIntervalSince(first.start)
+        let span = width * Double(grid.count)
+        guard span > 0 else { return [Double](repeating: 0, count: grid.count) }
+
+        var sums = [Double](repeating: 0, count: grid.count)
+        var counts = [Int](repeating: 0, count: grid.count)
+        for point in points {
+            let offset = point.timestamp.timeIntervalSince(first.start)
             guard offset >= -0.5, offset <= span + 0.5 else { continue }
-            let index = min(max(Int(offset / width), 0), count - 1)
+            let index = min(max(Int(offset / width), 0), grid.count - 1)
             sums[index] += point.value
             counts[index] += 1
         }
-
-        return (0..<count).map { index in
-            let start = gridStart.addingTimeInterval(Double(index) * width)
-            let end = min(start.addingTimeInterval(width), now)
-            let mean = counts[index] > 0 ? sums[index] / Double(counts[index]) : 0
-            return VitalsBucket(start: start, end: end, mean: mean)
+        return grid.indices.map { index in
+            counts[index] > 0 ? sums[index] / Double(counts[index]) : 0
         }
     }
 

@@ -93,6 +93,24 @@ struct VitalsHistoryTests {
         #expect(abs(width - 60) < 0.001)
     }
 
+    @Test("A borrowed grid averages only the samples that fall in each slot")
+    func meansLandOnABorrowedGrid() {
+        let grid = (0..<3).map { index in
+            VitalsBucket(
+                start: base.addingTimeInterval(Double(index)),
+                end: base.addingTimeInterval(Double(index + 1)),
+                mean: 0
+            )
+        }
+        let points = [point(0.2, 10), point(0.8, 20), point(2.5, 30)]
+
+        let means = VitalsHistoryBuffer.means(for: grid, points: points)
+
+        #expect(abs(means[0] - 15) < 0.001)
+        #expect(means[1] == 0, "an empty slot reads as zero")
+        #expect(abs(means[2] - 30) < 0.001)
+    }
+
     @Test("An empty series produces no buckets")
     func emptySeriesHasNoColumns() {
         let buckets = VitalsHistoryBuffer.columns(

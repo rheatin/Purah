@@ -772,22 +772,10 @@ public struct HardwareVitalsDrawerView: View {
         // network band and the machine-facts grid never stretch with the
         // drawer. Everything outside that zone is a process list, so a tall
         // drawer shows more processes instead of taller charts.
-        let bands: [VitalsBandBudget.Band] = [
-            .fixed(Self.overviewCellNaturalHeight),
-            .fixed(Self.overviewHairlineHeight),
-            .fixed(Self.overviewCellNaturalHeight),
-            .fixed(Self.overviewHairlineHeight),
-            .fixed(Self.overviewNetworkNaturalHeight),
-            .fixed(Self.overviewHairlineHeight),
-            .fixed(Self.overviewSystemInfoHeight)
-        ]
-        let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
         let split = VitalsTabLayout.split(
             available: availableHeight - 4,
-            naturalContent: naturalContent,
-            growthCap: Self.overviewContentGrowthCap
+            naturalContent: Self.overviewContentNaturalHeight
         )
-        let heights = VitalsBandBudget.allocate(available: split.content, bands: bands)
         let cpuBuckets = columnBuckets(.cpu, scope: .realTime30s, maximumColumns: 30)
         let gpuBuckets = columnBuckets(.gpu, scope: .realTime30s, maximumColumns: 30)
         let ramBuckets = columnBuckets(.ram, scope: .realTime30s, maximumColumns: 30)
@@ -831,10 +819,10 @@ public struct HardwareVitalsDrawerView: View {
                     )
                 )
             }
-            .frame(height: heights[0])
+            .frame(height: Self.overviewCellNaturalHeight)
 
             overviewHairline
-                .frame(height: heights[1])
+                .frame(height: Self.overviewHairlineHeight)
 
             HStack(spacing: 0) {
                 overviewCell(
@@ -872,19 +860,19 @@ public struct HardwareVitalsDrawerView: View {
                     )
                 )
             }
-            .frame(height: heights[2])
+            .frame(height: Self.overviewCellNaturalHeight)
 
             overviewHairline
-                .frame(height: heights[3])
+                .frame(height: Self.overviewHairlineHeight)
 
             overviewNetworkBand(metrics: metrics)
-                .frame(height: heights[4])
+                .frame(height: Self.overviewNetworkNaturalHeight)
 
             overviewHairline
-                .frame(height: heights[5])
+                .frame(height: Self.overviewHairlineHeight)
 
             overviewSystemInfoRow(metrics: metrics)
-                .frame(height: heights[6], alignment: .topLeading)
+                .frame(height: Self.overviewSystemInfoHeight, alignment: .topLeading)
 
         }
         .padding(.horizontal, 2)
@@ -911,7 +899,13 @@ public struct HardwareVitalsDrawerView: View {
     private static let overviewNetworkNaturalHeight: CGFloat = 54
     private static let overviewHairlineHeight: CGFloat = 0.6
     private static let overviewSystemInfoHeight: CGFloat = 80
-    private static let overviewContentGrowthCap: CGFloat = 200
+    /// The two cell rows, the network band, the three hairlines and the
+    /// machine-facts grid: what the tab draws before the process list starts.
+    private static let overviewContentNaturalHeight: CGFloat =
+        overviewCellNaturalHeight * 2
+        + overviewNetworkNaturalHeight
+        + overviewSystemInfoHeight
+        + overviewHairlineHeight * 3
     /// A list header plus at least one row; below this, the drawer is simply
     /// too short to show a process list and the instruments own the height.
     private static let processListMinimumHeight: CGFloat =
@@ -1425,20 +1419,10 @@ public struct HardwareVitalsDrawerView: View {
         let gpuBuckets = columnBuckets(.gpu, scope: gpuScope)
         // The three bands draw at their natural height; the drawer's surplus
         // belongs to the process list below them.
-        let bands: [VitalsBandBudget.Band] = [
-            .fixed(Self.cpuBandNaturalHeight),
-            .fixed(Self.computeHairlineHeight),
-            .fixed(Self.gpuBandNaturalHeight),
-            .fixed(Self.computeHairlineHeight),
-            .fixed(Self.ramBandNaturalHeight)
-        ]
-        let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
         let split = VitalsTabLayout.split(
             available: availableHeight - 4,
-            naturalContent: naturalContent,
-            growthCap: Self.computeContentGrowthCap
+            naturalContent: Self.computeContentNaturalHeight
         )
-        let bandHeights = VitalsBandBudget.allocate(available: split.content, bands: bands)
 
         let instruments = VStack(spacing: 0) {
             VitalsMetricColumnBand(
@@ -1496,10 +1480,10 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .frame(height: bandHeights[0], alignment: .topLeading)
+            .frame(height: Self.cpuBandNaturalHeight, alignment: .topLeading)
 
             vitalsHairline
-                .frame(height: bandHeights[1])
+                .frame(height: Self.computeHairlineHeight)
 
             VitalsMetricColumnBand(
                 metric: .gpu,
@@ -1542,10 +1526,10 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .frame(height: bandHeights[2], alignment: .topLeading)
+            .frame(height: Self.gpuBandNaturalHeight, alignment: .topLeading)
 
             vitalsHairline
-                .frame(height: bandHeights[3])
+                .frame(height: Self.computeHairlineHeight)
 
             VitalsMetricColumnBand(
                 metric: .ram,
@@ -1596,7 +1580,7 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .frame(height: bandHeights[4], alignment: .topLeading)
+            .frame(height: Self.ramBandNaturalHeight, alignment: .topLeading)
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -1625,10 +1609,14 @@ public struct HardwareVitalsDrawerView: View {
     private static let gpuBandNaturalHeight: CGFloat = 127
     private static let ramBandNaturalHeight: CGFloat = 115
     private static let computeHairlineHeight: CGFloat = 0.6
-    private static let computeContentGrowthCap: CGFloat = 220
+    private static let computeContentNaturalHeight: CGFloat =
+        cpuBandNaturalHeight
+        + gpuBandNaturalHeight
+        + ramBandNaturalHeight
+        + computeHairlineHeight * 2
 
-    /// A temperature history under a metric band: the same column geometry
-    /// as the chart above, each column coloured by the reading it carries.
+    /// A temperature history under a metric band: it borrows the band's own
+    /// buckets, so every column is exactly as wide as the plot above it.
     private func temperatureHistoryStrip(
         title: String,
         current: Double?,
@@ -1637,13 +1625,7 @@ public struct HardwareVitalsDrawerView: View {
         tint: Color,
         metric: VitalsMetricType
     ) -> some View {
-        let readings = grid.map { slot -> Double in
-            let samples = history.filter {
-                $0.timestamp >= slot.start && $0.timestamp < slot.end
-            }
-            guard !samples.isEmpty else { return 0 }
-            return samples.reduce(0) { $0 + $1.value } / Double(samples.count)
-        }
+        let readings = VitalsHistoryBuffer.means(for: grid, points: history)
         let buckets = zip(grid, readings).map { slot, reading in
             let ratio = min(max((reading - 30.0) / 70.0, 0.03), 1.0)
             return VitalsBucket(start: slot.start, end: slot.end, mean: ratio)
@@ -1832,20 +1814,10 @@ public struct HardwareVitalsDrawerView: View {
         let rateFormatter: (Double) -> String = { formatSpeed($0) }
         // The plots keep their natural height; surplus height goes to the
         // network process list below them.
-        let bands: [VitalsBandBudget.Band] = [
-            .fixed(Self.networkBandNaturalHeight),
-            .fixed(Self.ioHairlineHeight),
-            .fixed(Self.wifiBandNaturalHeight),
-            .fixed(Self.ioHairlineHeight),
-            .fixed(Self.diskBandNaturalHeight)
-        ]
-        let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
         let split = VitalsTabLayout.split(
             available: availableHeight - 4,
-            naturalContent: naturalContent,
-            growthCap: Self.ioContentGrowthCap
+            naturalContent: Self.ioContentNaturalHeight
         )
-        let bandHeights = VitalsBandBudget.allocate(available: split.content, bands: bands)
 
         let instruments = VStack(spacing: 0) {
             VitalsThroughputBand(
@@ -1888,16 +1860,16 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .frame(height: bandHeights[0], alignment: .topLeading)
+            .frame(height: Self.networkBandNaturalHeight, alignment: .topLeading)
 
             vitalsHairline
-                .frame(height: bandHeights[1])
+                .frame(height: Self.ioHairlineHeight)
 
             wifiBand(metrics: metrics, netColor: netColor, scope: netScope)
-                .frame(height: bandHeights[2], alignment: .topLeading)
+                .frame(height: Self.wifiBandNaturalHeight, alignment: .topLeading)
 
             vitalsHairline
-                .frame(height: bandHeights[3])
+                .frame(height: Self.ioHairlineHeight)
 
             VitalsThroughputBand(
                 metric: .disk,
@@ -1949,7 +1921,7 @@ public struct HardwareVitalsDrawerView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
-            .frame(height: bandHeights[4], alignment: .topLeading)
+            .frame(height: Self.diskBandNaturalHeight, alignment: .topLeading)
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -1977,7 +1949,11 @@ public struct HardwareVitalsDrawerView: View {
     private static let diskBandNaturalHeight: CGFloat = 148
     private static let ioHairlineHeight: CGFloat = 0.6
     private static let wifiBandNaturalHeight: CGFloat = 72
-    private static let ioContentGrowthCap: CGFloat = 200
+    private static let ioContentNaturalHeight: CGFloat =
+        networkBandNaturalHeight
+        + wifiBandNaturalHeight
+        + diskBandNaturalHeight
+        + ioHairlineHeight * 2
 
     private func wifiBand(
         metrics: HardwareVitalsInfo,
@@ -2141,46 +2117,23 @@ public struct HardwareVitalsDrawerView: View {
         // The battery instruments are fixed: bars, the ribbon, the flow
         // columns and CAPACITY keep their natural height at every drawer
         // size. The extra height belongs to the energy process list.
-        var bands: [VitalsBandBudget.Band] = [
-            .fixed(Self.batteryBandNaturalHeight)
-        ]
-        if showsFlow {
-            bands.append(.fixed(Self.powerHairlineHeight))
-            bands.append(.fixed(Self.powerFlowNaturalHeight))
-        }
-        if capacity != nil {
-            bands.append(.fixed(Self.powerHairlineHeight))
-            bands.append(.fixed(Self.capacityBandNaturalHeight))
-        }
-        bands.append(.fixed(Self.powerHairlineHeight))
-        bands.append(.fixed(Self.powerDetailNaturalHeight))
-        let naturalContent = bands.reduce(CGFloat.zero) { $0 + $1.natural }
+        let naturalContent = Self.batteryBandNaturalHeight
+            + Self.powerDetailNaturalHeight
+            + Self.powerHairlineHeight
+            + (showsFlow
+                ? Self.powerFlowNaturalHeight + Self.powerHairlineHeight
+                : 0)
+            + (capacity != nil
+                ? Self.capacityBandNaturalHeight + Self.powerHairlineHeight
+                : 0)
         let split = VitalsTabLayout.split(
             available: availableHeight - 4,
-            naturalContent: naturalContent,
-            growthCap: Self.powerContentGrowthCap
+            naturalContent: naturalContent
         )
-        let heights = VitalsBandBudget.allocate(available: split.content, bands: bands)
-        var cursor = 0
-        let batteryHeight = heights[cursor]
-        cursor += 1
-        var flowHeight: CGFloat = 0
-        if showsFlow {
-            cursor += 1
-            flowHeight = heights[cursor]
-            cursor += 1
-        }
-        var capacityHeight: CGFloat = 0
-        if capacity != nil {
-            cursor += 1
-            capacityHeight = heights[cursor]
-            cursor += 1
-        }
-        let detailHeight = heights[cursor + 1]
 
         let instruments = VStack(spacing: 0) {
             batteryBand(metrics: metrics, state: state, powerColor: powerColor)
-                .frame(height: batteryHeight)
+                .frame(height: Self.batteryBandNaturalHeight)
 
             if showsFlow {
                 vitalsHairline
@@ -2188,7 +2141,7 @@ public struct HardwareVitalsDrawerView: View {
                     metrics: metrics,
                     powerColor: powerColor
                 )
-                .frame(height: flowHeight)
+                .frame(height: Self.powerFlowNaturalHeight)
             }
 
             if let capacity {
@@ -2199,7 +2152,7 @@ public struct HardwareVitalsDrawerView: View {
                     designWh: capacity.design,
                     powerColor: powerColor
                 )
-                .frame(height: capacityHeight)
+                .frame(height: Self.capacityBandNaturalHeight)
             }
 
             vitalsHairline
@@ -2207,7 +2160,7 @@ public struct HardwareVitalsDrawerView: View {
             vitalsDetailCells(powerDetailCells(metrics))
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .frame(height: detailHeight)
+            .frame(height: Self.powerDetailNaturalHeight)
         }
         .frame(height: split.content, alignment: .top)
 
@@ -2233,7 +2186,6 @@ public struct HardwareVitalsDrawerView: View {
     private static let capacityBandNaturalHeight: CGFloat = 62
     private static let powerDetailNaturalHeight: CGFloat = 30
     private static let powerHairlineHeight: CGFloat = 0.6
-    private static let powerContentGrowthCap: CGFloat = 180
 
     private func batteryBand(
         metrics: HardwareVitalsInfo,
