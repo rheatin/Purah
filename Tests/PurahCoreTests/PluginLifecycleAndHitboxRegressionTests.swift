@@ -64,6 +64,7 @@ struct PluginLifecycleAndHitboxRegressionTests {
                 store.pods[index].isEnabled = true
             }
         }
+        store.splitPodFromMajorGroup(id: "calendar")
         store.invalidateLayoutCache()
 
         let edge: MountEdge = .right

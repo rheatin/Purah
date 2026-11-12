@@ -83,9 +83,10 @@ struct MultiDrawerFloorTests {
     func testHoveredDrawerOutranksIdle() throws {
         let store = makeStore()
         store.resetMajorGroups(for: .left)
-        for pod in store.pods where pod.edge == .left && !pod.isEnabled {
-            store.togglePodEnabled(id: pod.id)
+        for pod in store.pods {
+            store.mountPod(id: pod.id, to: .left)
         }
+        store.adjustPodLength(id: "vitals", delta: -0.12)
 
         let totalHeight = 900.0
         let idle = store.resolvedPhysicalLayout(for: .left, totalHeight: totalHeight)

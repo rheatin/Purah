@@ -181,7 +181,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
         if !store.hasCompletedOnboarding && !PurahWorkspaceStore.isTestingEnvironment {
             DispatchQueue.main.async {
-                self.store.startInteractiveOnboarding(clearAllPods: true)
+                self.store.startInteractiveOnboarding(clearAllPods: false)
             }
         }
     }

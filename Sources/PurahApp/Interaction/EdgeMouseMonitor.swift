@@ -1223,9 +1223,13 @@ public final class EdgeMouseMonitor {
 
     public func activatePodDrawer(candidate: SlotPod, matched: ResolvedPodLayoutItem, currentWindowY: CGFloat, edge: MountEdge) {
         if store.isGateTelemetryTrackingEnabled {
+            let targetVal = (store.edgeTriggerMode == .hoverDwell)
+                ? max(Int(store.activeInitialDwellSeconds * 1000), 1)
+                : max(Int(store.activePushResistanceBarrier), 1)
+            store.onboardingGateTargetValue = targetVal
+            store.onboardingGateCurrentValue = targetVal
             store.onboardingGateState = .opened
             store.onboardingGateProgress = 1.0
-            store.onboardingGateCurrentValue = store.onboardingGateTargetValue
         }
 
         // Ensure window canvas is ready and interactive BEFORE triggering drawer spring animation

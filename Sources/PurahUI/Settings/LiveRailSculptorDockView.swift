@@ -30,16 +30,16 @@ public struct LiveRailSculptorDockView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if store.isOnboardingGuideActive {
-                onboardingCoachHUD
+                OnboardingWorkbenchView(store: store)
             } else {
                 dockHeader
+
+                Divider()
+                    .background(Color.white.opacity(0.15))
+
+                // Row 2: Plugin Add / Unmounted Dock
+                unmountedDock
             }
-
-            Divider()
-                .background(Color.white.opacity(0.15))
-
-            // Row 2: Plugin Add / Unmounted Dock
-            unmountedDock
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -650,11 +650,11 @@ public struct LiveRailSculptorDockView: View {
     private var onboardingStepBodyCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             switch store.onboardingStep {
-            case .firstPod: firstPodStepBody
-            case .edgeUse: edgeUseStepBody
-            case .stack: stackStepBody
-            case .decomposeDemo: decomposeDemoStepBody
-            case .handAndPermissions: handAndPermissionsStepBody
+            case .feelTheEdge: antiTouchCalibrationStepBody
+            case .pickOrCustomRig: mountPodsStepBody
+            case .coreGrammar: decomposeDemoStepBody
+            case .appContextSwitch: pageDemoStepBody
+            case .permissions: permissionsStepBody
             }
         }
         .padding(.horizontal, 10)

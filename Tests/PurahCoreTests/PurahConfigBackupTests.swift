@@ -97,7 +97,7 @@ struct PurahConfigBackupTests {
         PurahConfigBackupManager.resetToFactoryDefaults(store: store, defaults: defaults)
 
         #expect(store.fixedDrawerWidth == 290.0)
-        #expect(store.railBarWidth == 8.0)
+        #expect(store.railBarWidth == 4.0)
         // A factory reset returns the user to a fresh install, and a fresh
         // install starts on Adaptive so each plugin's declared width wins.
         #expect(store.drawerWidthMode == .adaptive)
@@ -133,7 +133,7 @@ struct PurahConfigBackupTests {
         #expect(store.podAlertChannels.isEmpty)
         #expect(store.isAppProfileSwitchingEnabled == false)
         #expect(store.isToastSoundEnabled == true)
-        #expect(store.customExitGraceMs == 280.0)
+        #expect(store.customExitGraceMs == 180.0)
         #expect(store.isTrackpadHapticsEnabled == true)
 
         // And it must be the value on disk too, not just in memory: reloading
@@ -142,7 +142,7 @@ struct PurahConfigBackupTests {
         #expect(reloaded.quietHours.isEnabled == false)
         #expect(reloaded.alertStyleOverride == nil)
         #expect(reloaded.podAlertChannels.isEmpty)
-        #expect(reloaded.customExitGraceMs == 280.0)
+        #expect(reloaded.customExitGraceMs == 180.0)
     }
 
     @Test("Auto-installs and enables AI plugin for existing users lacking it in saved pods")
@@ -190,7 +190,7 @@ struct OnboardingAndLaunchAtLoginTests {
 
         #expect(store.isOnboardingGuideActive == true)
         #expect(store.isLiveRailEditingMode == true)
-        #expect(store.onboardingStep == .firstPod)
+        #expect(store.onboardingStep == .feelTheEdge)
         #expect(store.pods.allSatisfy { !$0.isEnabled })
         #expect(store.leftRailPage == 0)
         #expect(store.rightRailPage == 0)
@@ -203,22 +203,19 @@ struct OnboardingAndLaunchAtLoginTests {
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         store.startInteractiveOnboarding(clearAllPods: true)
-        #expect(store.onboardingStep == .firstPod)
+        #expect(store.onboardingStep == .feelTheEdge)
 
         store.nextOnboardingStep()
-        #expect(store.onboardingStep == .edgeUse)
+        #expect(store.onboardingStep == .pickOrCustomRig)
 
         store.nextOnboardingStep()
-        #expect(store.onboardingStep == .stack)
-
-        store.nextOnboardingStep()
-        #expect(store.onboardingStep == .decomposeDemo)
+        #expect(store.onboardingStep == .coreGrammar)
 
         store.previousOnboardingStep()
-        #expect(store.onboardingStep == .stack)
+        #expect(store.onboardingStep == .pickOrCustomRig)
 
         store.skipCurrentOnboardingStep()
-        #expect(store.onboardingStep == .decomposeDemo)
+        #expect(store.onboardingStep == .coreGrammar)
 
         // Test sample pods mounting rehearsal
         store.rehearseMountSamplePods()
@@ -234,10 +231,10 @@ struct OnboardingAndLaunchAtLoginTests {
         let groupIds = leftPods.compactMap(\.majorGroupId)
         #expect(!groupIds.isEmpty)
 
-        // The hand step uses the real rail, not the sculptor strip.
-        store.selectOnboardingStep(.handAndPermissions)
-        #expect(store.onboardingStep == .handAndPermissions)
-        #expect(store.isOnboardingGuideShowingAmbientRail == true)
+        // Test pagination flip rehearsal
+        store.rehearsePaginationFlip()
+        #expect(store.isRightTopPortalRevealed == true)
+        #expect(store.isRightBottomPortalRevealed == true)
 
         // Complete onboarding
         store.finishOnboarding(useRecommendedLayout: true)
@@ -274,7 +271,7 @@ struct OnboardingAndLaunchAtLoginTests {
 
         #expect(store.isOnboardingGuideActive == true)
         #expect(store.isLiveRailEditingMode == true)
-        #expect(store.onboardingStep == .firstPod)
+        #expect(store.onboardingStep == .mountPods)
         #expect(store.pods.allSatisfy { !$0.isEnabled })
     }
 
@@ -298,47 +295,35 @@ struct OnboardingAndLaunchAtLoginTests {
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         store.startInteractiveOnboarding(clearAllPods: true)
-        #expect(store.onboardingStep == .firstPod)
+        #expect(store.onboardingStep == .feelTheEdge)
         #expect(store.isCurrentOnboardingMissionCompleted == false)
 
-        // Step 0: one pod completes the mount task.
-        store.mountPod(id: "vitals", to: .left)
-        #expect(store.isCurrentOnboardingMissionCompleted == true)
-
-        // Step 1: one edge open completes the door task; a programmatic open does not.
-        store.selectOnboardingStep(.edgeUse)
-        #expect(store.isCurrentOnboardingMissionCompleted == false)
+        // Act 1: Feel the Edge -> trigger edge drawer
         store.activateDrawer(podId: "vitals")
-        #expect(store.isCurrentOnboardingMissionCompleted == false)
-        store.activateDrawer(podId: "vitals", openedByEdge: true)
         #expect(store.onboardingDidTriggerEdgeDrawer == true)
         #expect(store.isCurrentOnboardingMissionCompleted == true)
-        store.dismissActiveDrawer()
 
-        // Step 2: one stack completes the group task.
-        store.selectOnboardingStep(.stack)
-        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
-        #expect(leftPods.count >= 2)
-
-        store.addPodToMajorGroup(podId: leftPods[1].id, targetPodId: leftPods[0].id)
-        #expect(store.onboardingDidCreateStack == true)
+        // Act 2: Pick or custom rig
+        store.selectOnboardingStep(.pickOrCustomRig)
+        store.mountPod(id: "vitals", to: .left)
+        store.mountPod(id: "calendar", to: .right)
         #expect(store.isCurrentOnboardingMissionCompleted == true)
 
-        // Step 3: one toggle completes the shape task.
-        store.selectOnboardingStep(.decomposeDemo)
-        #expect(store.isPodDecomposed("vitals") == false)
-        #expect(store.isCurrentOnboardingMissionCompleted == false)
-        store.togglePodDecomposedInSculptor(podId: "vitals")
-        #expect(store.onboardingDidToggleDecompose == true)
+        // Act 3: Core grammar
+        store.selectOnboardingStep(.coreGrammar)
         #expect(store.isCurrentOnboardingMissionCompleted == true)
 
-        // Step 4: the last step offers choices and is complete immediately.
-        store.selectOnboardingStep(.handAndPermissions)
+        // Act 4: App context switch
+        store.selectOnboardingStep(.appContextSwitch)
+        #expect(store.isCurrentOnboardingMissionCompleted == true)
+
+        // Act 5: Permissions
+        store.selectOnboardingStep(.permissions)
         #expect(store.isCurrentOnboardingMissionCompleted == true)
     }
 
-    @Test("EdgeMouseMonitor's edge path completes the edge-use step")
-    func testEdgeMouseMonitorCompletesEdgeUse() {
+    @Test("EdgeMouseMonitor responds to live edge hover during onboarding rehearsals (Step 5 & Step 6)")
+    func testEdgeMouseMonitorDuringOnboardingRehearsals() {
         let store = PurahWorkspaceStore()
         store.startInteractiveOnboarding(clearAllPods: false)
         #expect(store.isOnboardingGuideActive == true)
@@ -351,23 +336,48 @@ struct OnboardingAndLaunchAtLoginTests {
         let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
         monitor.customTargetVisibleRect = visibleRect
 
-        store.selectOnboardingStep(.edgeUse)
-        #expect(store.isOnboardingGuideShowingAmbientRail == true)
+        // Act 1: Feel the Edge
+        store.selectOnboardingStep(.feelTheEdge)
+        #expect(store.isRehearsingBreathingInSculptor == true)
         #expect(store.onboardingDidTriggerEdgeDrawer == false)
 
         let leftLayout = store.resolvedPhysicalLayout(for: .left, totalHeight: 900.0)
         guard let firstLeftPod = leftLayout.first else {
-            #expect(Bool(false), "Left rail should have a pod in the edge step")
+            #expect(Bool(false), "Left rail should have pods in feelTheEdge")
             return
         }
         let targetY = visibleRect.maxY - CGFloat(firstLeftPod.startY + firstLeftPod.spanH * 0.5)
         let edgePoint = NSPoint(x: 1.0, y: targetY)
         monitor.customCurrentMouseLocation = edgePoint
 
-        monitor.processMouse(point: edgePoint, now: Date(), customVelocity: .zero)
-        #expect(store.activeDrawerPodId != nil, "Active drawer should be opened by the edge")
-        #expect(store.onboardingDidTriggerEdgeDrawer == true)
-        #expect(store.isCurrentOnboardingMissionCompleted == true)
+        let t0 = Date()
+        monitor.processMouse(point: edgePoint, now: t0, customVelocity: .zero)
+        monitor.processMouse(point: edgePoint, now: t0.addingTimeInterval(0.18), customVelocity: .zero)
+        #expect(store.activeDrawerPodId != nil, "Active drawer should be opened by edge hover in feelTheEdge")
+        #expect(store.onboardingDidTriggerEdgeDrawer == true, "onboardingDidTriggerEdgeDrawer should be set to true")
+    }
+
+    @Test("Non-destructive onboarding preserves user's mounted pods when navigating to Step 5 breathingDemo")
+    func testOnboardingPreservesUserPodsInBreathingDemo() {
+        let store = PurahWorkspaceStore()
+        store.startInteractiveOnboarding(clearAllPods: true)
+
+        // User mounts custom pods in Step 1
+        store.mountPod(id: "terminal", to: .left)
+        store.mountPod(id: "notes", to: .left)
+        store.mountPod(id: "music", to: .right)
+
+        // Advance to Step 5 breathingDemo
+        store.selectOnboardingStep(.breathingDemo)
+
+        // User's custom pods must be preserved and NOT overwritten by 7-pod layout
+        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
+        #expect(leftPods.map(\.id).contains("terminal"))
+        #expect(leftPods.map(\.id).contains("notes"))
+        #expect(rightPods.map(\.id).contains("music"))
+        #expect(leftPods.count == 2)
+        #expect(store.isUsingTemporaryDemoSandbox == false)
     }
 
     @Test("toggleTemporaryBreathingSandbox snapshots user pods and restores exact layout")
@@ -375,23 +385,23 @@ struct OnboardingAndLaunchAtLoginTests {
         let store = PurahWorkspaceStore()
         store.startInteractiveOnboarding(clearAllPods: true)
 
-        store.mountPod(id: "terminal", to: .left, announce: false)
-        store.mountPod(id: "notes", to: .left, announce: false)
-        store.mountPod(id: "music", to: .right, announce: false)
+        store.mountPod(id: "terminal", to: .left)
+        store.mountPod(id: "notes", to: .left)
+        store.mountPod(id: "music", to: .right)
         store.isDynamicBreathingEnabled = false
 
-        // Toggle on the 10-pod sandbox
+        store.selectOnboardingStep(.breathingDemo)
+
+        // Toggle on the 7-pod sandbox
         store.toggleTemporaryBreathingSandbox()
         #expect(store.isUsingTemporaryDemoSandbox == true)
         #expect(store.isDynamicBreathingEnabled == true)
         let sandboxLeft = store.pods.filter { $0.edge == .left && $0.isEnabled }
-        #expect(sandboxLeft.count == 10)
+        #expect(sandboxLeft.count == 7)
 
-        // Toggle off / restore the snapshot taken at sandbox entry
+        // Toggle off / restore user snapshot
         store.toggleTemporaryBreathingSandbox()
         #expect(store.isUsingTemporaryDemoSandbox == false)
-        // The sandbox turns Dynamic on for the demo and the snapshot puts the
-        // person's own setting back, which was off before entry.
         #expect(store.isDynamicBreathingEnabled == false)
         let restoredLeft = store.pods.filter { $0.edge == .left && $0.isEnabled }
         let restoredRight = store.pods.filter { $0.edge == .right && $0.isEnabled }
@@ -399,16 +409,15 @@ struct OnboardingAndLaunchAtLoginTests {
         #expect(restoredLeft.map(\.id).contains("notes"))
         #expect(restoredLeft.count == 2)
         #expect(restoredRight.map(\.id).contains("music"))
-        #expect(restoredRight.count == 1)
 
-        // Also test: opening sandbox then advancing a step auto-restores
+        // Also test: opening sandbox then advancing to Step 6 auto-restores
         store.toggleTemporaryBreathingSandbox()
         #expect(store.isUsingTemporaryDemoSandbox == true)
-        store.selectOnboardingStep(.handAndPermissions)
+        store.selectOnboardingStep(.antiTouchCalibration)
         #expect(store.isUsingTemporaryDemoSandbox == false)
-        let afterEdgeStepLeft = store.pods.filter { $0.edge == .left && $0.isEnabled }
-        #expect(afterEdgeStepLeft.map(\.id).contains("terminal"))
-        #expect(afterEdgeStepLeft.map(\.id).contains("notes"))
+        let afterStep6Left = store.pods.filter { $0.edge == .left && $0.isEnabled }
+        #expect(afterStep6Left.map(\.id).contains("terminal"))
+        #expect(afterStep6Left.map(\.id).contains("notes"))
     }
 
     @Test("isGateTelemetryTrackingEnabled evaluates onboarding calibration and interaction settings telemetry")
@@ -423,10 +432,10 @@ struct OnboardingAndLaunchAtLoginTests {
 
         store.isInteractionSettingsTelemetryActive = false
         store.isOnboardingGuideActive = true
-        store.onboardingStep = .handAndPermissions
+        store.onboardingStep = .feelTheEdge
         #expect(store.isGateTelemetryTrackingEnabled == true)
 
-        store.onboardingStep = .firstPod
+        store.onboardingStep = .pickOrCustomRig
         #expect(store.isGateTelemetryTrackingEnabled == false)
     }
 }

@@ -558,6 +558,7 @@ struct VitalsAndScriptTests {
     @Test("PurahWorkspaceStore scripts decomposition state and dynamic height")
     func testScriptsDecompositionState() {
         let store = PurahWorkspaceStore()
+        store.splitPodFromMajorGroup(id: "scripts")
         store._isScriptsDecomposed = true
         store._scriptsEnabledActionIds = ["a1", "a2", "a3"]
 
@@ -569,6 +570,7 @@ struct VitalsAndScriptTests {
         // Test persistence roundtrip
         store.savePersistentState()
         let reloaded = PurahWorkspaceStore()
+        reloaded.splitPodFromMajorGroup(id: "scripts")
         #expect(reloaded._isScriptsDecomposed == true)
         #expect(reloaded._scriptsEnabledActionIds == ["a1", "a2", "a3"])
 
@@ -764,6 +766,7 @@ struct VitalsAndScriptTests {
     @Test("Decomposed script rail chips enforce minimum 56pt height per action")
     func testDecomposedScriptsHeightCalculation() {
         let store = PurahWorkspaceStore()
+        store.splitPodFromMajorGroup(id: "scripts")
         store._isScriptsDecomposed = true
 
         let allActions = ScriptRunwayService.shared.actions
@@ -795,9 +798,11 @@ struct VitalsAndScriptTests {
     /// "outside the card" probe land back inside it after the `max(_, 10)`
     /// clamp. The product is fine; the fixture has to own its state.
     private func isolatedStore() -> PurahWorkspaceStore {
-        PurahWorkspaceStore(
+        let s = PurahWorkspaceStore(
             userDefaults: UserDefaults(suiteName: "test_scripts_hit_\(UUID().uuidString)")!
         )
+        s.splitPodFromMajorGroup(id: "scripts")
+        return s
     }
 
     @Test("PassThroughHostingView 2D hit-testing accurately captures decomposed script drawer")
@@ -855,6 +860,9 @@ struct VitalsAndScriptTests {
     @Test("Decomposed script drawer enables click-through on transparent areas of inactive sibling actions")
     func testDecomposedScriptTransparentClickThrough() {
         let store = isolatedStore()
+        for idx in store.pods.indices {
+            if store.pods[idx].id != "scripts" { store.pods[idx].isEnabled = false }
+        }
         store.mountPod(id: "scripts", to: .left)
         store._isScriptsDecomposed = true
         let actions = store.scriptsEnabledActions

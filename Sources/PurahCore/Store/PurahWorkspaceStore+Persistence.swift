@@ -325,7 +325,7 @@ extension PurahWorkspaceStore {
         if barrier >= 15.0 && barrier <= 150.0 {
             self.customPushResistanceBarrier = barrier
         } else {
-            self.customPushResistanceBarrier = 40.0
+            self.customPushResistanceBarrier = 24.0
         }
 
         if let soundStr = defaults.string(forKey: "purah.toastNotificationSound"),
@@ -433,7 +433,7 @@ extension PurahWorkspaceStore {
         customPodColors = [:]
         drawerWidthMode = .adaptive
         fixedDrawerWidth = 290.0
-        railBarWidth = 8.0
+        railBarWidth = 4.0
         isDynamicBreathingEnabled = true
         hotKeyShortcut = .defaultShortcut
         sculptorHotKeyShortcut = .defaultSculptorShortcut
@@ -456,11 +456,11 @@ extension PurahWorkspaceStore {
         isDrawerPopHapticEnabled = true
         isControlHapticEnabled = true
         edgeTriggerSensitivity = .balanced
-        customInitialDwellMs = 150.0
-        customExitGraceMs = 280.0
+        customInitialDwellMs = 80.0
+        customExitGraceMs = 180.0
         customCatchCorridorPt = 50.0
         customPushForceThreshold = 380.0
-        customPushResistanceBarrier = 40.0
+        customPushResistanceBarrier = 24.0
 
         leftRailPage = 0
         rightRailPage = 0

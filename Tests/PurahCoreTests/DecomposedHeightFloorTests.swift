@@ -25,6 +25,7 @@ struct DecomposedHeightFloorTests {
     func testTodoDecomposedExceedsComposite() {
         let plugin = TodoPlugin(state: makeState((0..<6).map { todo("t\($0)") }))
         let store = PurahWorkspaceStore()
+        store.splitPodFromMajorGroup(id: "todo")
         plugin.setDecomposed(true, store: store)
 
         // 6 on-rail chips × 48 + 5 × 2.5 spacing = 300.5 > composite 130.
@@ -77,6 +78,7 @@ struct DecomposedHeightFloorTests {
 
         let plugin = CalendarPlugin(state: state)
         let store = PurahWorkspaceStore()
+        store.splitPodFromMajorGroup(id: "calendar")
         plugin.onMount(store: store)
 
         // `onMount` → `syncEvents` replaces the fixture with `defaultEvents`

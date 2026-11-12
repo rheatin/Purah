@@ -35,6 +35,7 @@ struct CalendarMergedOverviewTests {
         state.events = events
 
         let plugin = CalendarPlugin(state: state)
+        store.splitPodFromMajorGroup(id: "calendar")
         store.registerCapabilityProvider(plugin)
         plugin.onMount(store: store)
 
