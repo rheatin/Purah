@@ -648,6 +648,7 @@ public struct AISlashSuggestionsPopupView: View {
     @Bindable public var state: AIAssistantPluginState
     public let palette: ThemePalette
     public let onSelect: (AISlashCommandItem) -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(
         state: AIAssistantPluginState,
@@ -659,6 +660,9 @@ public struct AISlashSuggestionsPopupView: View {
         self.onSelect = onSelect
     }
 
+    private var isDark: Bool { colorScheme == .dark }
+    private var ink: Color { isDark ? .white : .primary }
+
     public var body: some View {
         let commands = state.filteredSlashCommands
         VStack(alignment: .leading, spacing: 0) {
@@ -669,11 +673,11 @@ public struct AISlashSuggestionsPopupView: View {
                     .foregroundColor(palette.primaryAccent)
                 Text("ai.drawer.commandsAndSkills".localized)
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.78))
+                    .foregroundColor(ink.opacity(0.78))
                 Spacer()
                 Text("ai.drawer.navHint".localized)
                     .font(.system(size: 7.5, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.55))
+                    .foregroundColor(ink.opacity(0.55))
             }
             .padding(.horizontal, 10)
             .padding(.top, 7)
@@ -718,13 +722,13 @@ public struct AISlashSuggestionsPopupView: View {
         // floating.
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(hex: "#10131A"))
+                .fill(isDark ? Color(hex: "#10131A") : Color(nsColor: .windowBackgroundColor))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1.0)
+                .stroke(ink.opacity(isDark ? 0.22 : 0.14), lineWidth: 1.0)
         )
-        .shadow(color: Color.black.opacity(0.55), radius: 14, x: 0, y: -4)
+        .shadow(color: Color.black.opacity(isDark ? 0.55 : 0.16), radius: 14, x: 0, y: -4)
     }
 
     private func suggestionRow(item: AISlashCommandItem, isSelected: Bool) -> some View {
@@ -748,7 +752,7 @@ public struct AISlashSuggestionsPopupView: View {
                     HStack(spacing: 5) {
                         Text(item.title)
                             .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(isSelected ? .white : Color.white.opacity(0.90))
+                            .foregroundColor(isSelected ? ink : ink.opacity(0.90))
 
                         Text("/\(item.trigger)")
                             .font(.system(size: 9.5, weight: .semibold, design: .monospaced))
@@ -770,7 +774,7 @@ public struct AISlashSuggestionsPopupView: View {
                         case .skill(let skill):
                             Text(skill.source.displayName.uppercased())
                                 .font(.system(size: 7.5, weight: .bold))
-                                .foregroundColor(Color(hex: "#34D399").opacity(0.90))
+                                .foregroundColor(Color(hex: isDark ? "#34D399" : "#059669").opacity(0.90))
                                 .padding(.horizontal, 4)
                                 .padding(.vertical, 1.5)
                                 .background(
@@ -782,7 +786,7 @@ public struct AISlashSuggestionsPopupView: View {
                     if !item.subtitle.isEmpty {
                         Text(item.subtitle)
                             .font(.system(size: 9.5))
-                            .foregroundColor(Color.white.opacity(isSelected ? 0.75 : 0.55))
+                            .foregroundColor(ink.opacity(isSelected ? 0.75 : 0.55))
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -813,11 +817,15 @@ public struct AISessionHistoryManagerView: View {
     @State private var filterStarredOnly: Bool = false
     @State private var renamingSessionId: String? = nil
     @State private var renameDraft: String = ""
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(state: AIAssistantPluginState, store: PurahWorkspaceStore) {
         self.state = state
         self.store = store
     }
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var ink: Color { isDark ? .white : .primary }
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -864,7 +872,7 @@ public struct AISessionHistoryManagerView: View {
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 4)
-                .background(Color.white.opacity(0.06))
+                .background(ink.opacity(0.06))
                 .cornerRadius(6)
 
                 // Filter Pill [All | ★ Starred]
@@ -876,8 +884,8 @@ public struct AISessionHistoryManagerView: View {
                             .font(.system(size: 9.5, weight: !filterStarredOnly ? .bold : .medium))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2.5)
-                            .background(!filterStarredOnly ? Color.white.opacity(0.18) : Color.clear)
-                            .foregroundColor(!filterStarredOnly ? .white : .secondary)
+                            .background(!filterStarredOnly ? ink.opacity(0.14) : Color.clear)
+                            .foregroundColor(!filterStarredOnly ? ink : .secondary)
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
@@ -890,13 +898,13 @@ public struct AISessionHistoryManagerView: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2.5)
                             .background(filterStarredOnly ? Color.yellow.opacity(0.24) : Color.clear)
-                            .foregroundColor(filterStarredOnly ? .yellow : .secondary)
+                            .foregroundColor(filterStarredOnly ? (isDark ? .yellow : .orange) : .secondary)
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
                 }
                 .padding(2)
-                .background(Color.white.opacity(0.06))
+                .background(ink.opacity(0.06))
                 .cornerRadius(6)
 
                 // + New Button
@@ -908,9 +916,9 @@ public struct AISessionHistoryManagerView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundColor(ink)
                         .padding(5)
-                        .background(Color.white.opacity(0.08))
+                        .background(ink.opacity(0.08))
                         .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
@@ -948,13 +956,13 @@ public struct AISessionHistoryManagerView: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(hex: "#161922").opacity(0.98))
+                .fill(isDark ? Color(hex: "#161922").opacity(0.98) : Color(nsColor: .windowBackgroundColor).opacity(0.97))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                .stroke(ink.opacity(0.14), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.5), radius: 10, x: 0, y: 4)
+        .shadow(color: Color.black.opacity(isDark ? 0.5 : 0.16), radius: 10, x: 0, y: 4)
     }
 
     @ViewBuilder
@@ -968,7 +976,7 @@ public struct AISessionHistoryManagerView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 10.5, weight: .bold))
                     .padding(4)
-                    .background(Color.white.opacity(0.1))
+                    .background(ink.opacity(0.1))
                     .cornerRadius(4)
                     .onSubmit {
                         commitRename(session.id)
@@ -993,7 +1001,7 @@ public struct AISessionHistoryManagerView: View {
                         }
                         Text(session.title)
                             .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .rounded))
-                            .foregroundColor(isSelected ? palette.primaryAccent : .white)
+                            .foregroundColor(isSelected ? palette.primaryAccent : ink)
                             .lineLimit(1)
                     }
 
@@ -1022,7 +1030,7 @@ public struct AISessionHistoryManagerView: View {
                             .font(.system(size: 9.5))
                             .foregroundColor(.secondary)
                             .frame(width: 20, height: 20)
-                            .background(Color.white.opacity(0.04))
+                            .background(ink.opacity(0.04))
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
@@ -1037,7 +1045,7 @@ public struct AISessionHistoryManagerView: View {
                             .font(.system(size: 9.5))
                             .foregroundColor(session.isFavorite ? .yellow : .secondary)
                             .frame(width: 20, height: 20)
-                            .background(Color.white.opacity(0.04))
+                            .background(ink.opacity(0.04))
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
@@ -1050,9 +1058,9 @@ public struct AISessionHistoryManagerView: View {
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 9))
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(ink.opacity(0.8))
                             .frame(width: 20, height: 20)
-                            .background(Color.white.opacity(0.04))
+                            .background(ink.opacity(0.04))
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
@@ -1067,7 +1075,7 @@ public struct AISessionHistoryManagerView: View {
                             .font(.system(size: 9))
                             .foregroundColor(.red.opacity(0.8))
                             .frame(width: 20, height: 20)
-                            .background(Color.white.opacity(0.04))
+                            .background(ink.opacity(0.04))
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
@@ -1079,7 +1087,7 @@ public struct AISessionHistoryManagerView: View {
         .padding(6)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(isSelected ? palette.primaryAccent.opacity(0.12) : Color.white.opacity(0.03))
+                .fill(isSelected ? palette.primaryAccent.opacity(0.12) : ink.opacity(0.03))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
@@ -1141,10 +1149,14 @@ public struct AISessionHistoryManagerView: View {
 // MARK: - Single Line Shimmer Skeleton View
 struct AIShimmerSingleLineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     let roleColor: Color
     /// Share of the proposed width the bar fills. 0.72 suits the composite
     /// drawer; a chip line wants the whole column.
     var widthFraction: CGFloat = 0.72
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var ink: Color { isDark ? .white : .primary }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
@@ -1155,7 +1167,7 @@ struct AIShimmerSingleLineView: View {
                 let w = geo.size.width * widthFraction
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
+                        .fill(ink.opacity(0.08))
 
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(
@@ -1163,7 +1175,7 @@ struct AIShimmerSingleLineView: View {
                                 stops: [
                                     .init(color: .clear, location: max(0, phase - 0.25)),
                                     .init(color: roleColor.opacity(0.40), location: phase),
-                                    .init(color: .white.opacity(0.60), location: min(1, phase + 0.1)),
+                                    .init(color: (isDark ? Color.white : roleColor).opacity(0.65), location: min(1, phase + 0.1)),
                                     .init(color: roleColor.opacity(0.40), location: min(1, phase + 0.2)),
                                     .init(color: .clear, location: min(1, phase + 0.4))
                                 ],
@@ -1205,6 +1217,7 @@ struct InDrawerDropdown<Trigger: View>: View {
     var triggerHeight: CGFloat = 22
     var panelWidth: CGFloat = 152
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isExpanded = false
     @State private var hoveringOptionID: String? = nil
     @State private var isHoveringTrigger = false
@@ -1213,6 +1226,9 @@ struct InDrawerDropdown<Trigger: View>: View {
     @State private var panelSize: CGSize = .zero
     @State private var hoverExitTask: Task<Void, Never>?
     @State private var clickOutsideMonitor: Any?
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var ink: Color { isDark ? .white : .primary }
 
     init(
         expandsUpward: Bool = false,
@@ -1314,13 +1330,14 @@ struct InDrawerDropdown<Trigger: View>: View {
 
     private func optionRow(_ option: InDrawerDropdownOption) -> some View {
         let titleFont = Font.system(size: 9.5, weight: option.isSelected ? .bold : .regular, design: .rounded)
-        let titleColor = Color.white.opacity(option.isSelected ? 1.0 : 0.82)
-        let rowBackground = hoveringOptionID == option.id ? Color.white.opacity(0.08) : Color.clear
+        let titleColor = ink.opacity(option.isSelected ? 1.0 : 0.82)
+        let rowBackground = hoveringOptionID == option.id ? ink.opacity(0.08) : Color.clear
 
         return HStack(spacing: 5) {
             if let icon = option.systemIcon {
                 Image(systemName: icon)
                     .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(ink.opacity(0.75))
                     .frame(width: 12)
             }
             Text(option.title)
@@ -1331,7 +1348,7 @@ struct InDrawerDropdown<Trigger: View>: View {
             if option.isSelected {
                 Image(systemName: "checkmark")
                     .font(.system(size: 8.5, weight: .bold))
-                    .foregroundColor(Color(hex: "#A78BFA"))
+                    .foregroundColor(Color(hex: isDark ? "#A78BFA" : "#7C3AED"))
             }
         }
         .padding(.horizontal, 7)
@@ -1345,17 +1362,17 @@ struct InDrawerDropdown<Trigger: View>: View {
             .frame(width: panelWidth)
             .frame(maxHeight: 190)
             .background(panelBackground)
-            .shadow(color: Color.black.opacity(0.45), radius: 10, x: 0, y: 3)
+            .shadow(color: Color.black.opacity(isDark ? 0.45 : 0.16), radius: 10, x: 0, y: 3)
             // Anchor the panel flush against the trigger's outer edge, growing into the card.
             .offset(y: expandsUpward ? -(triggerHeight + 2) : triggerHeight + 2)
     }
 
     private var panelBackground: some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(Color(hex: "#10131A").opacity(0.97))
+            .fill(isDark ? Color(hex: "#10131A").opacity(0.97) : Color(nsColor: .windowBackgroundColor).opacity(0.98))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.white.opacity(0.16), lineWidth: 0.8)
+                    .stroke(ink.opacity(0.16), lineWidth: 0.8)
             )
     }
 

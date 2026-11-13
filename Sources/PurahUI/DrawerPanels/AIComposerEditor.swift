@@ -211,11 +211,11 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainerInset = NSSize(width: 1, height: 2)
         textView.font = .systemFont(ofSize: fontSize)
-        textView.textColor = .white
-        textView.insertionPointColor = .white
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .labelColor
         textView.typingAttributes = [
             .font: NSFont.systemFont(ofSize: fontSize),
-            .foregroundColor: NSColor.white
+            .foregroundColor: NSColor.labelColor
         ]
         textView.string = text
         textView.onSubmit = onSubmit
@@ -248,6 +248,8 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
         if textView.font?.pointSize != fontSize {
             textView.font = .systemFont(ofSize: fontSize)
         }
+        textView.textColor = .labelColor
+        textView.insertionPointColor = .labelColor
         if textView.string != text, !textView.hasMarkedText() {
             let savedRanges = textView.selectedRanges
             textView.string = text
@@ -263,7 +265,7 @@ public struct PurahAIComposerEditor: NSViewRepresentable {
             }
             textView.typingAttributes = [
                 .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.white
+                .foregroundColor: NSColor.labelColor
             ]
         }
 
