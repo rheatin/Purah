@@ -1441,16 +1441,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 2)
             } else {
-                // This composition has an intrinsic floor of ~130pt: two 8pt
-                // spacers, a progress row, a two-line caption and the stop
-                // pill. The drawer body of a minimum-height pod is ~218pt and
-                // the Edit Source card takes 118 of it, so the full stack did
-                // not fit — the parent `VStack` centred the overflow and the
-                // host card clipped it, cutting "Edit Source → Done" off the
-                // top and the action bar off the bottom. Below the threshold
-                // the same facts are told in one row, which always fits.
                 GeometryReader { generatingGeo in
-                    if generatingGeo.size.height >= 132 {
+                    if generatingGeo.size.height >= 92 {
                         generatingFullLayout
                     } else {
                         generatingCompactLayout
@@ -1470,10 +1462,10 @@ public struct AIAssistantRoleWorkbenchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// The full "waiting" composition, for a card with room to spare.
+    /// The full "waiting" composition, centered vertically with tight spacing so standard stacked pods fit it cleanly.
     private var generatingFullLayout: some View {
-        VStack(spacing: 12) {
-            Spacer(minLength: 8)
+        VStack(spacing: 8) {
+            Spacer(minLength: 0)
 
             HStack(spacing: 8) {
                 ProgressView()
@@ -1485,7 +1477,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .symbolEffect(.variableColor.iterative.reversing, options: .repeating)
             }
 
-            VStack(spacing: 3) {
+            VStack(spacing: 2.5) {
                 Text("ai.drawer.waitingForModel".localized)
                     .font(.system(size: 11.5, weight: .semibold, design: .rounded))
                     .foregroundColor(Color.white.opacity(0.90))
@@ -1497,29 +1489,29 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             stopGenerationButton
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Same two facts in a single row: this is the variant that survives a card
-    /// too short for the full composition.
+    /// Compact single-row composition when `Edit Source` or `Refine` leaves < 92pt:
+    /// keeps the spinner, waiting label, and Stop button grouped together in the center.
     private var generatingCompactLayout: some View {
-        HStack(spacing: 6) {
-            ProgressView()
-                .controlSize(.mini)
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.mini)
 
-            Text("ai.drawer.waitingForModel".localized)
-                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                .foregroundColor(Color.white.opacity(0.85))
-                .lineLimit(1)
-
-            Spacer(minLength: 2)
+                Text("ai.drawer.waitingForModel".localized)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundColor(Color.white.opacity(0.88))
+                    .lineLimit(1)
+            }
 
             stopGenerationButton
         }
-        .padding(.horizontal, 6)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var generatingSubtitle: String {
