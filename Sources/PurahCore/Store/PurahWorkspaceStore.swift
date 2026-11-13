@@ -4177,6 +4177,21 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
+    public func applyDefaultStackGroups() {
+        for idx in pods.indices {
+            let id = pods[idx].id
+            if id == "shelf" || id == "clipboard" || id == "notes" {
+                pods[idx].majorGroupId = "major_left_default"
+            } else if id == "calendar" || id == "todo" {
+                pods[idx].majorGroupId = "major_right_top"
+            } else if id == "terminal" || id == "music" || id == "scripts" {
+                pods[idx].majorGroupId = "major_right_bottom"
+            } else {
+                pods[idx].majorGroupId = nil
+            }
+        }
+    }
+
     public func startInteractiveOnboarding(clearAllPods: Bool = false) {
         cancelOnboardingRehearsal()
         // State that the guide is unfinished, not merely unstarted. The store
@@ -4215,6 +4230,11 @@ public final class PurahWorkspaceStore {
                 autoLayoutAll()
                 for pod in pods where pod.isEnabled {
                     onPodEnabledChanged?(pod.id, true)
+                }
+            } else {
+                let hasManualGroups = userDefaults.bool(forKey: "purah.didSeedMajorGroups.left") || userDefaults.bool(forKey: "purah.didSeedMajorGroups.right")
+                if !hasManualGroups && pods.allSatisfy({ $0.majorGroupId == nil }) {
+                    applyDefaultStackGroups()
                 }
             }
         }

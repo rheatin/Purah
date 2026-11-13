@@ -1015,6 +1015,7 @@ struct DrawerInteractionUITests {
     func testPolymorphicEdgeMouseMonitorActivation() throws {
         let isolated = UserDefaults(suiteName: "test_polymorphic")!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.splitPodFromMajorGroup(id: "todo")
         let monitor = EdgeMouseMonitor(store: store)
 
         // 1. Decomposed pod (e.g. todo)

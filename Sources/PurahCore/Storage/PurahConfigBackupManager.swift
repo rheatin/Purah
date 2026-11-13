@@ -250,7 +250,7 @@ public enum PurahConfigBackupManager {
         store.onWindowsRebuildNeeded?()
 
         if triggerOnboarding {
-            store.startInteractiveOnboarding(clearAllPods: true)
+            store.startInteractiveOnboarding(clearAllPods: false)
         }
     }
 

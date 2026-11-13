@@ -208,8 +208,6 @@ public struct LiveRailSculptorDockView: View {
     private func unmountedPodChip(_ pod: SlotPod) -> some View {
         let podColor = palette.podColor(for: pod.id, store: store)
         let isBeingDragged = (store.externalDraggedPodId == pod.id)
-        let isOnboardingDockPulse = store.isOnboardingGuideActive
-            && (store.onboardingStep == .mountPods || store.onboardingStep == .stackDemo)
 
         return HStack(spacing: 5) {
             Image(systemName: pod.systemIcon)
@@ -256,16 +254,6 @@ public struct LiveRailSculptorDockView: View {
             .buttonStyle(.tactile)
             .help(String(format: "help.mountRightRail".localized, pod.name))
             .accessibilityLabel(String(format: "help.mountRightRail".localized, pod.name))
-
-            if isOnboardingDockPulse {
-                Text("onboarding.dock.dragHint".localized)
-                    .font(.system(size: 8, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.primaryAccent)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1.5)
-                    .background(palette.primaryAccent.opacity(0.18))
-                    .cornerRadius(3)
-            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -275,8 +263,8 @@ public struct LiveRailSculptorDockView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .stroke(
-                            isBeingDragged ? Color.orange : (isOnboardingDockPulse ? palette.primaryAccent.opacity(0.85) : podColor.opacity(0.45)),
-                            lineWidth: (isBeingDragged || isOnboardingDockPulse) ? 1.6 : 1.0
+                            isBeingDragged ? Color.orange : podColor.opacity(0.45),
+                            lineWidth: isBeingDragged ? 1.6 : 1.0
                         )
                 )
         )

@@ -320,13 +320,24 @@ struct OnboardingAndLaunchAtLoginTests {
 
         #expect(store.isOnboardingGuideActive == true)
         #expect(store.isLiveRailEditingMode == true)
-        #expect(store.onboardingStep == .mountPods)
-        #expect(store.pods.allSatisfy { !$0.isEnabled })
+        #expect(store.onboardingStep == .feelTheEdge)
+        #expect(store.pods.contains(where: { $0.isEnabled }))
+        #expect(store.pods.filter { $0.majorGroupId == "major_left_default" }.count == 3)
+        #expect(store.pods.filter { $0.majorGroupId == "major_right_top" }.count == 2)
+        #expect(store.pods.filter { $0.majorGroupId == "major_right_bottom" }.count == 3)
     }
 
     @Test("LaunchAtLoginService sets and saves preference")
     func testLaunchAtLoginService() {
         let service = LaunchAtLoginService.shared
+        let original = UserDefaults.standard.object(forKey: "purah.launchAtLogin")
+        defer {
+            if let original {
+                UserDefaults.standard.set(original, forKey: "purah.launchAtLogin")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "purah.launchAtLogin")
+            }
+        }
 
         service.setEnabled(true)
         #expect(service.isEnabled == true)
@@ -335,6 +346,33 @@ struct OnboardingAndLaunchAtLoginTests {
         service.setEnabled(false)
         #expect(service.isEnabled == false)
         #expect(UserDefaults.standard.bool(forKey: "purah.launchAtLogin") == false)
+    }
+
+    @Test("Upgrading from v0.7.22 restores default stack groups if unstacked and no manual groups seeded")
+    func testRestoreDefaultStacksMigration() throws {
+        let suite = "test_restore_stacks_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        // Simulate v0.7.22 store where all pods were unstacked (majorGroupId == nil)
+        var unstackedPods = PurahWorkspaceStore.defaultPods()
+        for i in unstackedPods.indices {
+            unstackedPods[i].majorGroupId = nil
+        }
+        let data = try JSONEncoder().encode(unstackedPods)
+        defaults.set(data, forKey: "purah.pods")
+        defaults.set(false, forKey: "purah.didRestoreDefaultStacks_v0723")
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        store.loadPersistentState()
+
+        #expect(defaults.bool(forKey: "purah.didRestoreDefaultStacks_v0723") == true)
+        let leftDefaultPods = store.pods.filter { $0.majorGroupId == "major_left_default" }
+        #expect(leftDefaultPods.count == 3)
+        let rightTopPods = store.pods.filter { $0.majorGroupId == "major_right_top" }
+        #expect(rightTopPods.count == 2)
+        let rightBottomPods = store.pods.filter { $0.majorGroupId == "major_right_bottom" }
+        #expect(rightBottomPods.count == 3)
     }
 
     @Test("Hands-on interactive mission completion flags and prerequisite staging")

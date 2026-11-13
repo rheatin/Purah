@@ -71,6 +71,15 @@ extension PurahWorkspaceStore {
             didRepairPods = true
         }
 
+        if !defaults.bool(forKey: "purah.didRestoreDefaultStacks_v0723") {
+            let hasManualGroups = defaults.bool(forKey: "purah.didSeedMajorGroups.left") || defaults.bool(forKey: "purah.didSeedMajorGroups.right")
+            if !hasManualGroups && self.pods.allSatisfy({ $0.majorGroupId == nil }) {
+                applyDefaultStackGroups()
+                didRepairPods = true
+            }
+            defaults.set(true, forKey: "purah.didRestoreDefaultStacks_v0723")
+        }
+
         for edge in [MountEdge.left, MountEdge.right] {
             let edgePods = self.pods.filter { $0.edge == edge && $0.isEnabled }
             let groupedByPage = Dictionary(grouping: edgePods, by: { max(0, $0.pageIndex) })

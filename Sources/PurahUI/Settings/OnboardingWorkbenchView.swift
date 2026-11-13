@@ -1974,6 +1974,19 @@ private struct FlowLayoutPodsPreview: View {
                                 .font(.system(size: 8.5, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
+
+                            if pod.majorGroupId != nil {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "square.stack.3d.up.fill")
+                                        .font(.system(size: 6.5, weight: .bold))
+                                    Text("Stack")
+                                        .font(.system(size: 7, weight: .bold, design: .rounded))
+                                }
+                                .foregroundColor(podColor)
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(podColor.opacity(0.18)))
+                            }
                         }
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3.5)
