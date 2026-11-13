@@ -64,7 +64,12 @@ struct PluginLifecycleAndHitboxRegressionTests {
                 store.pods[index].isEnabled = true
             }
         }
-        store.splitPodFromMajorGroup(id: "calendar")
+        if let calIdx = store.pods.firstIndex(where: { $0.id == "calendar" }) {
+            store.pods[calIdx].range = NormalizedRange(start: 0.05, length: 0.20)
+        }
+        if let todoIdx = store.pods.firstIndex(where: { $0.id == "todo" }) {
+            store.pods[todoIdx].range = NormalizedRange(start: 0.45, length: 0.20)
+        }
         store.invalidateLayoutCache()
 
         let edge: MountEdge = .right

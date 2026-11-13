@@ -377,6 +377,13 @@ struct VitalsAndScriptTests {
     @Test("Hardware Vitals time-series history accumulates and feeds VitalsTimeSeriesGraphView dynamically")
     func testVitalsHistoryAccumulationAndGraph() {
         let service = HardwareVitalsService.shared
+        let originalScope = service.selectedTimeScope
+        service.selectedTimeScope = .realTime30s
+        service.isDrawerVisible = true
+        defer {
+            service.isDrawerVisible = false
+            service.selectedTimeScope = originalScope
+        }
         service.refreshMetrics(includeProcesses: false)
         service.refreshMetrics(includeProcesses: false)
 
