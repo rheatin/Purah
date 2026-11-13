@@ -22,9 +22,13 @@ struct AIActionDraftCard: View {
 
     /// Writable destinations, default first. Read once when the card appears:
     /// EventKit is not meant to be asked on every body evaluation.
+    @Environment(\.colorScheme) private var colorScheme
     @State private var containers: [String] = []
     @State private var chosen: String?
     @State private var errorText: String?
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var ink: Color { isDark ? .white : .primary }
 
     private var target: String? {
         chosen ?? draft.container ?? containers.first
@@ -38,7 +42,7 @@ struct AIActionDraftCard: View {
                     .foregroundColor(accentColor)
                 Text(draft.title)
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.92))
+                    .foregroundColor(ink.opacity(0.92))
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 trailingControl
@@ -47,14 +51,14 @@ struct AIActionDraftCard: View {
             HStack(spacing: 4) {
                 Text(timeText)
                     .font(.system(size: 8.5, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.60))
+                    .foregroundColor(ink.opacity(0.60))
                     .lineLimit(1)
                 if !isSaved {
                     destinationControl
                 } else if let target {
                     Text(target)
                         .font(.system(size: 8.5, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.45))
+                        .foregroundColor(ink.opacity(0.45))
                         .lineLimit(1)
                 }
             }
@@ -62,7 +66,7 @@ struct AIActionDraftCard: View {
             if let errorText {
                 Text(errorText)
                     .font(.system(size: 8))
-                    .foregroundColor(Color(hex: "#F87171"))
+                    .foregroundColor(Color(hex: isDark ? "#F87171" : "#DC2626"))
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -93,7 +97,7 @@ struct AIActionDraftCard: View {
                 Text("ai.draft.saved".localized)
                     .font(.system(size: 9, weight: .semibold, design: .rounded))
             }
-            .foregroundColor(Color(hex: "#34D399"))
+            .foregroundColor(Color(hex: isDark ? "#34D399" : "#059669"))
         } else {
             Button {
                 errorText = onSave(target)
@@ -144,7 +148,7 @@ struct AIActionDraftCard: View {
         } else if let target {
             Text(target)
                 .font(.system(size: 8.5, design: .monospaced))
-                .foregroundColor(Color.white.opacity(0.60))
+                .foregroundColor(ink.opacity(0.60))
                 .lineLimit(1)
         }
     }

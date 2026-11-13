@@ -59,6 +59,37 @@ public struct AIAssistantRoleWorkbenchView: View {
         self.onTogglePin = onTogglePin
     }
 
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isDark: Bool {
+        colorScheme == .dark
+    }
+
+    /// Adaptive primary ink: crisp white on dark surfaces, primary label ink on light surfaces.
+    private var ink: Color {
+        isDark ? .white : .primary
+    }
+
+    /// Outer card fill for the Stage 1 input card, Edit Source card, and Follow-up Refine card.
+    private var composerCardSurface: Color {
+        isDark ? Color(hex: "#141720") : Color.white.opacity(0.76)
+    }
+
+    /// Recessed inner text well for composers, waiting stage, and reasoning blocks.
+    private var composerWellSurface: Color {
+        isDark ? Color.black.opacity(0.32) : Color.primary.opacity(0.045)
+    }
+
+    /// Warm amber-tinted surface for permission banners.
+    private var permissionBannerSurface: Color {
+        isDark ? Color(hex: "#1F1B12").opacity(0.96) : Color(hex: "#FEF3C7").opacity(0.92)
+    }
+
+    /// Floating tooltip / popover surface.
+    private var floatingTooltipSurface: Color {
+        isDark ? Color(hex: "#10131A").opacity(0.95) : Color(nsColor: .windowBackgroundColor).opacity(0.96)
+    }
+
     private var roleColor: Color {
         Color(hex: role.colorHex)
     }
@@ -149,7 +180,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             Group {
                 if !showRoleSwitcher {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color(hex: "#181B24").opacity(0.96))
+                        .fill(isDark ? Color(hex: "#181B24").opacity(0.96) : Color(nsColor: .windowBackgroundColor).opacity(0.94))
                 }
             }
         )
@@ -157,11 +188,11 @@ public struct AIAssistantRoleWorkbenchView: View {
             Group {
                 if !showRoleSwitcher {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1.0)
+                        .stroke(ink.opacity(0.12), lineWidth: 1.0)
                 }
             }
         )
-        .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(0.45), radius: 14, x: 0, y: 5)
+        .shadow(color: showRoleSwitcher ? .clear : Color.black.opacity(isDark ? 0.45 : 0.14), radius: 14, x: 0, y: 5)
         .overlay {
             // Decoration only: the single drop target lives on the card so the overlay can never
             // steal the drag session or cancel the parent target.
@@ -232,7 +263,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                 Text("\("ai.permission.requestTitle".localized) \(req.paths.map { ($0 as NSString).lastPathComponent }.joined(separator: ", "))")
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(ink)
                     .lineLimit(1)
 
                 Spacer()
@@ -240,7 +271,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             Text(req.paths.joined(separator: ", "))
                 .font(.system(size: 8.5, design: .monospaced))
-                .foregroundColor(Color.white.opacity(0.60))
+                .foregroundColor(ink.opacity(0.60))
                 .lineLimit(1)
 
             HStack(spacing: 5) {
@@ -262,10 +293,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                 } label: {
                     Text("ai.permission.allowFolder".localized)
                         .font(.system(size: 9, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white)
+                        .foregroundColor(ink)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.12))
+                        .background(ink.opacity(0.12))
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
@@ -275,10 +306,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                 } label: {
                     Text("ai.permission.deny".localized)
                         .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundColor(Color.white.opacity(0.65))
+                        .foregroundColor(ink.opacity(0.65))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.06))
+                        .background(ink.opacity(0.06))
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
@@ -287,7 +318,7 @@ public struct AIAssistantRoleWorkbenchView: View {
         .padding(6)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(hex: "#1F1B12").opacity(0.96))
+                .fill(permissionBannerSurface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -310,7 +341,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                 Text(req.toolName)
                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(ink)
                     .lineLimit(1)
 
                 Spacer()
@@ -326,14 +357,14 @@ public struct AIAssistantRoleWorkbenchView: View {
 
             Text(req.commandPreview)
                 .font(.system(size: 8.5, design: .monospaced))
-                .foregroundColor(Color.white.opacity(0.80))
+                .foregroundColor(ink.opacity(0.80))
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let context = req.context {
                 Text(context)
                     .font(.system(size: 8.5))
-                    .foregroundColor(Color.white.opacity(0.50))
+                    .foregroundColor(ink.opacity(0.50))
                     .lineLimit(1)
             }
 
@@ -357,11 +388,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                     } label: {
                         Text(String(format: "ai.permission.alwaysAllow".localized, scope))
                             .font(.system(size: 9, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
+                            .foregroundColor(ink)
                             .lineLimit(1)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.12))
+                            .background(ink.opacity(0.12))
                             .cornerRadius(4)
                     }
                     .buttonStyle(.plain)
@@ -374,10 +405,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                 } label: {
                     Text("ai.permission.deny".localized)
                         .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundColor(Color.white.opacity(0.65))
+                        .foregroundColor(ink.opacity(0.65))
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
-                        .background(Color.white.opacity(0.06))
+                        .background(ink.opacity(0.06))
                         .cornerRadius(4)
                 }
                 .buttonStyle(.plain)
@@ -386,7 +417,7 @@ public struct AIAssistantRoleWorkbenchView: View {
         .padding(6)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(hex: "#1F1B12").opacity(0.96))
+                .fill(permissionBannerSurface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -409,7 +440,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .foregroundColor(roleColor)
                 Text("ai.drop.activeHint".localized)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(ink)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
             }
@@ -439,7 +470,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             )
         }
         .padding(6)
-        .background(Color.black.opacity(0.60))
+        .background(isDark ? Color.black.opacity(0.60) : Color.white.opacity(0.75))
         .cornerRadius(showRoleSwitcher ? 10 : 14)
         .allowsHitTesting(false)
     }
@@ -448,20 +479,20 @@ public struct AIAssistantRoleWorkbenchView: View {
     private func dropZoneBox(isTargeted: Bool, icon: String, titleKey: String) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
-                .fill(isTargeted ? roleColor.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+                .fill(isTargeted ? roleColor.opacity(0.28) : floatingTooltipSurface)
             RoundedRectangle(cornerRadius: showRoleSwitcher ? 8 : 10, style: .continuous)
                 .strokeBorder(
                     style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.2, dash: [6, 4])
                 )
-                .foregroundColor(isTargeted ? roleColor : Color.white.opacity(0.35))
+                .foregroundColor(isTargeted ? roleColor : ink.opacity(0.35))
 
             VStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(isTargeted ? roleColor : Color.white.opacity(0.85))
+                    .foregroundColor(isTargeted ? roleColor : ink.opacity(0.85))
                 Text(titleKey.localized)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
+                    .foregroundColor(ink)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 12)
             }
@@ -473,13 +504,13 @@ public struct AIAssistantRoleWorkbenchView: View {
         HStack(spacing: 5) {
             Image(systemName: "bolt.fill")
                 .font(.system(size: 8.5, weight: .bold))
-                .foregroundColor(Color(hex: "#34D399"))
+                .foregroundColor(Color(hex: isDark ? "#34D399" : "#059669"))
             Text(skill.name)
                 .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .foregroundColor(Color.white.opacity(0.95))
+                .foregroundColor(ink.opacity(0.95))
             Text("/\(skill.trigger)")
                 .font(.system(size: 8.5, weight: .medium, design: .monospaced))
-                .foregroundColor(Color(hex: "#34D399").opacity(0.85))
+                .foregroundColor(Color(hex: isDark ? "#34D399" : "#059669").opacity(0.85))
 
             Button {
                 withAnimation(.spring(response: 0.20, dampingFraction: 0.85)) {
@@ -488,9 +519,9 @@ public struct AIAssistantRoleWorkbenchView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 7.5, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.60))
+                    .foregroundColor(ink.opacity(0.60))
                     .padding(2)
-                    .background(Circle().fill(Color.white.opacity(0.12)))
+                    .background(Circle().fill(ink.opacity(0.12)))
             }
             .buttonStyle(.plain)
             .help("help.removeActiveSkill".localized)
@@ -558,10 +589,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                         VStack(spacing: 5) {
                             Image(systemName: "square.and.pencil")
                                 .font(.system(size: 15))
-                                .foregroundColor(Color.white.opacity(0.40))
+                                .foregroundColor(ink.opacity(0.40))
                             Text("ai.source.dropOrTypeHint".localized)
                                 .font(.system(size: 10.5, weight: .medium, design: .rounded))
-                                .foregroundColor(Color.white.opacity(0.50))
+                                .foregroundColor(ink.opacity(0.50))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 16)
                         }
@@ -571,14 +602,14 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(Color.black.opacity(0.35))
+                        .fill(composerWellSurface)
                 )
 
                 // Bottom status row inside card
                 HStack(spacing: 5) {
                     Text("ai.composer.enterToSend".localized)
                         .font(.system(size: 8.5))
-                        .foregroundColor(Color.white.opacity(0.45))
+                        .foregroundColor(ink.opacity(0.45))
                     Spacer()
 
                     if !state.currentInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.activeSkill != nil {
@@ -612,7 +643,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             .padding(6)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(hex: "#141720"))
+                    .fill(composerCardSurface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -644,7 +675,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("ai.stage1.availableRoles".localized)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.55))
+                    .foregroundColor(ink.opacity(0.55))
                     .padding(.horizontal, 1)
 
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -669,13 +700,13 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .padding(.vertical, 3)
                                 .background(
                                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(isSelected ? pillColor.opacity(0.30) : Color.white.opacity(0.08))
+                                        .fill(isSelected ? pillColor.opacity(0.30) : ink.opacity(0.08))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .stroke(isSelected ? pillColor : Color.white.opacity(0.12), lineWidth: 0.8)
+                                        .stroke(isSelected ? pillColor : ink.opacity(0.12), lineWidth: 0.8)
                                 )
-                                .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.85))
+                                .foregroundColor(isSelected ? pillColor : ink.opacity(0.85))
                             }
                             .buttonStyle(.plain)
                         }
@@ -685,10 +716,10 @@ public struct AIAssistantRoleWorkbenchView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 9, weight: .bold))
-                                .foregroundColor(Color.white.opacity(0.65))
+                                .foregroundColor(ink.opacity(0.65))
                                 .frame(width: 22, height: 22)
                                 .background(
-                                    Circle().fill(Color.white.opacity(0.08))
+                                    Circle().fill(ink.opacity(0.08))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -832,9 +863,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                         .padding(.vertical, 2.5)
                         .background(
                             RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                                .fill(Color.white.opacity(0.12))
+                                .fill(ink.opacity(0.12))
                         )
-                        .foregroundColor(Color.white.opacity(0.85))
+                        .foregroundColor(ink.opacity(0.85))
                     }
                     .buttonStyle(.plain)
                     .help("help.collapseSourceEditor".localized)
@@ -887,7 +918,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .padding(4)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.black.opacity(0.30))
+                        .fill(composerWellSurface)
                 )
                 .overlay(alignment: .topLeading) {
                     // Rewriting the original prompt is where a skill is most
@@ -946,13 +977,13 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .padding(.vertical, 2.5)
                                 .background(
                                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(isSelected ? pillColor.opacity(0.25) : Color.white.opacity(0.08))
+                                        .fill(isSelected ? pillColor.opacity(0.25) : ink.opacity(0.08))
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                                         .stroke(isSelected ? pillColor.opacity(0.65) : Color.clear, lineWidth: 1.0)
                                 )
-                                .foregroundColor(isSelected ? pillColor : Color.white.opacity(0.70))
+                                .foregroundColor(isSelected ? pillColor : ink.opacity(0.70))
                             }
                             .buttonStyle(.plain)
                         }
@@ -962,7 +993,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             .padding(6)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color(hex: "#141720"))
+                    .fill(composerCardSurface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -1076,18 +1107,18 @@ public struct AIAssistantRoleWorkbenchView: View {
                                 .frame(width: 2, height: 10)
                             Text(sourceText.replacingOccurrences(of: "\n", with: " "))
                                 .font(.system(size: 8.5))
-                                .foregroundColor(Color.white.opacity(0.70))
+                                .foregroundColor(ink.opacity(0.70))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                             Image(systemName: "pencil")
                                 .font(.system(size: 7.5))
-                                .foregroundColor(Color.white.opacity(0.55))
+                                .foregroundColor(ink.opacity(0.55))
                         }
                         .padding(.horizontal, 6)
                         .frame(height: 22)
                         .background(
                             RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
+                                .fill(ink.opacity(0.06))
                         )
                     }
                     .buttonStyle(.plain)
@@ -1107,7 +1138,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         } label: {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 7.5, weight: .bold))
-                                .foregroundColor(state.effectiveStepIndex > 0 ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
+                                .foregroundColor(state.effectiveStepIndex > 0 ? ink.opacity(0.85) : ink.opacity(0.25))
                                 .frame(width: 14, height: 22)
                         }
                         .buttonStyle(.plain)
@@ -1116,7 +1147,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                         Text("\(state.effectiveStepIndex + 1)/\(state.totalStepsCount)")
                             .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.75))
+                            .foregroundColor(ink.opacity(0.75))
 
                         Button {
                             withAnimation(PurahMotionPolicy.surfaceSoft) {
@@ -1125,7 +1156,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         } label: {
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 7.5, weight: .bold))
-                                .foregroundColor(state.effectiveStepIndex < state.totalStepsCount - 1 ? Color.white.opacity(0.85) : Color.white.opacity(0.25))
+                                .foregroundColor(state.effectiveStepIndex < state.totalStepsCount - 1 ? ink.opacity(0.85) : ink.opacity(0.25))
                                 .frame(width: 14, height: 22)
                         }
                         .buttonStyle(.plain)
@@ -1136,7 +1167,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .frame(height: 22)
                     .background(
                         RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
+                            .fill(ink.opacity(0.06))
                     )
                 }
 
@@ -1148,11 +1179,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                     } label: {
                         Image(systemName: "doc.on.doc")
                             .font(.system(size: 9))
-                            .foregroundColor(Color.white.opacity(0.75))
+                            .foregroundColor(ink.opacity(0.75))
                             .frame(width: 22, height: 22)
                             .background(
                                 RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
+                                    .fill(ink.opacity(0.06))
                             )
                     }
                     .buttonStyle(.plain)
@@ -1199,7 +1230,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1.5)
                                     .background(isDiffMode ? roleColor.opacity(0.25) : Color.clear)
-                                    .foregroundColor(isDiffMode ? roleColor : Color.white.opacity(0.6))
+                                    .foregroundColor(isDiffMode ? roleColor : ink.opacity(0.6))
                                     .cornerRadius(3)
                             }
                             .buttonStyle(.plain)
@@ -1212,13 +1243,13 @@ public struct AIAssistantRoleWorkbenchView: View {
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 1.5)
                                     .background(!isDiffMode ? roleColor.opacity(0.25) : Color.clear)
-                                    .foregroundColor(!isDiffMode ? roleColor : Color.white.opacity(0.6))
+                                    .foregroundColor(!isDiffMode ? roleColor : ink.opacity(0.6))
                                     .cornerRadius(3)
                             }
                             .buttonStyle(.plain)
                         }
                         .padding(2)
-                        .background(Color.white.opacity(0.06))
+                        .background(ink.opacity(0.06))
                         .cornerRadius(5)
                     }
 
@@ -1338,7 +1369,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             .font(.system(size: 9.5))
                         Text("ai.thought.process".localized)
                             .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                            .foregroundColor(Color.white.opacity(0.85))
+                            .foregroundColor(ink.opacity(0.85))
                         ProgressView()
                             .controlSize(.mini)
                     }
@@ -1352,7 +1383,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                     VStack(alignment: .leading, spacing: 0) {
                                         Text(reasoning)
                                             .font(.system(size: 9.5, design: .monospaced))
-                                            .foregroundColor(Color.white.opacity(0.70))
+                                            .foregroundColor(ink.opacity(0.70))
                                             .lineSpacing(2)
                                             .textSelection(.enabled)
                                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1428,7 +1459,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                             }
                         }
                     }
-                    .background(Color.black.opacity(0.35))
+                    .background(composerWellSurface)
                     .cornerRadius(6)
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -1451,7 +1482,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.black.opacity(0.25))
+                        .fill(composerWellSurface)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -1480,11 +1511,11 @@ public struct AIAssistantRoleWorkbenchView: View {
             VStack(spacing: 2.5) {
                 Text("ai.drawer.waitingForModel".localized)
                     .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.90))
+                    .foregroundColor(ink.opacity(0.90))
 
                 Text(generatingSubtitle)
                     .font(.system(size: 9.5, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.55))
+                    .foregroundColor(ink.opacity(0.55))
             }
 
             stopGenerationButton
@@ -1504,7 +1535,7 @@ public struct AIAssistantRoleWorkbenchView: View {
 
                 Text("ai.drawer.waitingForModel".localized)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundColor(Color.white.opacity(0.88))
+                    .foregroundColor(ink.opacity(0.88))
                     .lineLimit(1)
             }
 
@@ -1531,7 +1562,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .font(.system(size: 10, weight: .bold, design: .rounded))
                     .lineLimit(1)
             }
-            .foregroundColor(Color(hex: "#FCA5A5"))
+            .foregroundColor(Color(hex: isDark ? "#FCA5A5" : "#DC2626"))
             .padding(.horizontal, 10)
             .padding(.vertical, 4.5)
             .background(
@@ -1567,8 +1598,8 @@ public struct AIAssistantRoleWorkbenchView: View {
                 }
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2.5)
-                .background(Color.white.opacity(0.08))
-                .foregroundColor(Color.white.opacity(0.75))
+                .background(ink.opacity(0.08))
+                .foregroundColor(ink.opacity(0.75))
                 .cornerRadius(6)
             }
             .buttonStyle(.plain)
@@ -1577,13 +1608,13 @@ public struct AIAssistantRoleWorkbenchView: View {
                 PurahScrollableBody {
                     Text(reasoning)
                         .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.65))
+                        .foregroundColor(ink.opacity(0.65))
                         .textSelection(.enabled)
                         .padding(6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 100)
-                .background(Color.black.opacity(0.25))
+                .background(composerWellSurface)
                 .cornerRadius(6)
             }
         }
@@ -1650,7 +1681,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     if state.refineInputText.isEmpty {
                         Text("ai.composer.refinePlaceholder".localized)
                             .font(.system(size: 10.5))
-                            .foregroundColor(Color.white.opacity(0.35))
+                            .foregroundColor(ink.opacity(0.40))
                             .padding(.top, 4)
                             .padding(.leading, 4)
                             .allowsHitTesting(false)
@@ -1659,14 +1690,14 @@ public struct AIAssistantRoleWorkbenchView: View {
                 .padding(4)
                 .background(
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.black.opacity(0.30))
+                        .fill(composerWellSurface)
                 )
 
                 // Bottom row (20pt)
                 HStack(spacing: 5) {
                     Text("ai.composer.refineHint".localized)
                         .font(.system(size: 8.5))
-                        .foregroundColor(Color.white.opacity(0.45))
+                        .foregroundColor(ink.opacity(0.45))
 
                     Spacer()
 
@@ -1680,11 +1711,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 8.5, weight: .bold))
-                            .foregroundColor(Color.white.opacity(0.60))
+                            .foregroundColor(ink.opacity(0.60))
                             .frame(width: 18, height: 18)
                             .background(
                                 RoundedRectangle(cornerRadius: 4.5, style: .continuous)
-                                    .fill(Color.white.opacity(0.09))
+                                    .fill(ink.opacity(0.09))
                             )
                     }
                     .buttonStyle(.plain)
@@ -1715,7 +1746,7 @@ public struct AIAssistantRoleWorkbenchView: View {
             .padding(6)
             .background(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color(hex: "#141720"))
+                    .fill(composerCardSurface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -1764,7 +1795,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                         }
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        .foregroundColor(Color(hex: "#FCA5A5"))
+                        .foregroundColor(Color(hex: isDark ? "#FCA5A5" : "#DC2626"))
                         .padding(.horizontal, 8)
                         .frame(height: 24)
                         .background(
@@ -1835,9 +1866,9 @@ public struct AIAssistantRoleWorkbenchView: View {
                     .frame(height: 24)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.white.opacity(0.08))
+                            .fill(ink.opacity(0.08))
                     )
-                    .foregroundColor(Color.white.opacity(0.85))
+                    .foregroundColor(ink.opacity(0.85))
                 }
 
                 // 3. Save to Quick Notes
@@ -1846,11 +1877,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                 } label: {
                     Image(systemName: "note.text.badge.plus")
                         .font(.system(size: 9))
-                        .foregroundColor(Color.white.opacity(0.80))
+                        .foregroundColor(ink.opacity(0.80))
                         .frame(width: 24, height: 24)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isHoveringSaveNotes ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
+                                .fill(isHoveringSaveNotes ? ink.opacity(0.12) : ink.opacity(0.07))
                         )
                 }
                 .buttonStyle(.plain)
@@ -1865,16 +1896,16 @@ public struct AIAssistantRoleWorkbenchView: View {
                     if isHoveringSaveNotes {
                         Text("ai.tooltip.saveNote".localized)
                             .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
+                            .foregroundColor(ink)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2.5)
                             .background(
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(Color(hex: "#10131A").opacity(0.95))
+                                    .fill(floatingTooltipSurface)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                                    .stroke(ink.opacity(0.18), lineWidth: 0.8)
                             )
                             .fixedSize()
                             .offset(y: -26)
@@ -1891,11 +1922,11 @@ public struct AIAssistantRoleWorkbenchView: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 9))
-                        .foregroundColor(Color.white.opacity(0.80))
+                        .foregroundColor(ink.opacity(0.80))
                         .frame(width: 24, height: 24)
                         .background(
                             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(isHoveringRetry ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
+                                .fill(isHoveringRetry ? ink.opacity(0.12) : ink.opacity(0.07))
                         )
                 }
                 .buttonStyle(.plain)
@@ -1910,16 +1941,16 @@ public struct AIAssistantRoleWorkbenchView: View {
                     if isHoveringRetry {
                         Text("ai.tooltip.retry".localized)
                             .font(.system(size: 8.5, weight: .semibold, design: .rounded))
-                            .foregroundColor(.white)
+                            .foregroundColor(ink)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2.5)
                             .background(
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .fill(Color(hex: "#10131A").opacity(0.95))
+                                    .fill(floatingTooltipSurface)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                                    .stroke(ink.opacity(0.18), lineWidth: 0.8)
                             )
                             .fixedSize()
                             .offset(y: -26)
@@ -1941,22 +1972,22 @@ public struct AIAssistantRoleWorkbenchView: View {
                     HStack(spacing: 4) {
                         Text("ai.composer.refineTrigger".localized)
                             .font(.system(size: 9.5, weight: .regular))
-                            .foregroundColor(Color.white.opacity(0.38))
+                            .foregroundColor(ink.opacity(isDark ? 0.38 : 0.48))
                             .lineLimit(1)
                         Spacer(minLength: 2)
                         Image(systemName: "return")
                             .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.28))
+                            .foregroundColor(ink.opacity(isDark ? 0.28 : 0.38))
                     }
                     .padding(.horizontal, 8)
                     .frame(maxWidth: .infinity, minHeight: 24, maxHeight: 24)
                     .background(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(Color.black.opacity(0.45))
+                            .fill(isDark ? Color.black.opacity(0.45) : composerCardSurface)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .stroke(Color.white.opacity(0.14), lineWidth: 0.9)
+                            .stroke(ink.opacity(0.14), lineWidth: 0.9)
                     )
                 }
                 .buttonStyle(.plain)
@@ -2114,14 +2145,14 @@ public struct AIAssistantRoleWorkbenchView: View {
             var part = AttributedString(token.text)
             switch token.kind {
             case .equal:
-                part.foregroundColor = NSColor(Color.white.opacity(0.92))
+                part.foregroundColor = NSColor(ink.opacity(0.92))
             case .removed:
-                part.foregroundColor = NSColor(Color.white.opacity(0.42))
+                part.foregroundColor = NSColor(ink.opacity(0.42))
                 part.strikethroughStyle = .single
-                part.strikethroughColor = NSColor(Color.white.opacity(0.42))
+                part.strikethroughColor = NSColor(ink.opacity(0.42))
             case .added:
-                part.foregroundColor = NSColor(Color(hex: "#6EE7B7"))
-                part.backgroundColor = NSColor(Color(hex: "#143D33"))
+                part.foregroundColor = NSColor(Color(hex: isDark ? "#6EE7B7" : "#047857"))
+                part.backgroundColor = NSColor(Color(hex: isDark ? "#143D33" : "#D1FAE5"))
                 part.inlinePresentationIntent = .stronglyEmphasized
             }
             result.append(part)
