@@ -387,8 +387,8 @@ struct VitalsAndScriptTests {
         service.refreshMetrics(includeProcesses: false)
         service.refreshMetrics(includeProcesses: false)
 
-        let netHistory = service.history(for: .network)
-        let cpuHistory = service.history(for: .cpu)
+        let netHistory = service.networkDownHistory
+        let cpuHistory = service.cpuHistory
 
         #expect(!netHistory.isEmpty)
         #expect(!cpuHistory.isEmpty)
