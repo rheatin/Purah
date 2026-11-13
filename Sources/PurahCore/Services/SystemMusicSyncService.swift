@@ -2,6 +2,7 @@
 @preconcurrency import Foundation
 import AppKit
 import Observation
+import Darwin
 
 // MARK: - Online Lyrics Data Structure
 public struct OnlineLyricsResult: Sendable {
@@ -464,9 +465,9 @@ public final class SystemMusicSyncService {
 
         var appName = "Media Player"
         var bundleId = ""
-        if pid > 0, let app = NSRunningApplication(processIdentifier: pid) {
-            appName = app.localizedName ?? appName
-            bundleId = app.bundleIdentifier ?? ""
+        if pid > 0, let resolved = Self.resolveHostApplication(for: pid) {
+            appName = resolved.name
+            bundleId = resolved.bundleId
         } else if let isMusicApp = dict["kMRMediaRemoteNowPlayingInfoIsMusicApp"] as? Bool, isMusicApp {
             appName = "Apple Music"
             bundleId = "com.apple.Music"
@@ -962,5 +963,198 @@ public final class SystemMusicSyncService {
         var errorInfo: NSDictionary?
         appleScript.executeAndReturnError(&errorInfo)
         return errorInfo == nil
+    }
+
+    // MARK: - Host Application & Browser Tab Resolution
+
+    public static func normalizeBundleIdentifier(_ bundleId: String) -> String {
+        var id = bundleId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let range = id.range(of: ".helper", options: .caseInsensitive) {
+            id = String(id[..<range.lowerBound])
+        }
+        return id
+    }
+
+    public static let knownMediaAppBundleIds: [String] = [
+        "com.apple.Music",
+        "com.spotify.client",
+        "com.netease.163music",
+        "com.tencent.QQMusicMac",
+        "com.google.Chrome",
+        "company.thebrowser.Browser", // Arc
+        "com.apple.Safari",
+        "com.brave.Browser",
+        "com.microsoft.edgemac"
+    ]
+
+    public static func resolveRunningMediaAppFallback() -> (name: String, bundleId: String)? {
+        for bundleId in knownMediaAppBundleIds {
+            if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first(where: { !$0.isTerminated }) {
+                let name = app.localizedName ?? ""
+                return (name: name.isEmpty ? "Media Player" : name, bundleId: bundleId)
+            }
+        }
+        return nil
+    }
+
+    public static func resolveHostApplication(for pid: pid_t) -> (name: String, bundleId: String)? {
+        guard pid > 0 else { return resolveRunningMediaAppFallback() }
+
+        var curPid = pid
+        for _ in 0..<8 {
+            if let app = NSRunningApplication(processIdentifier: curPid) {
+                let rawBundleId = app.bundleIdentifier ?? ""
+                let normalizedId = normalizeBundleIdentifier(rawBundleId)
+                let name = app.localizedName ?? app.bundleURL?.deletingPathExtension().lastPathComponent ?? ""
+
+                if app.activationPolicy == .regular && !normalizedId.isEmpty {
+                    return (name: name.isEmpty ? "Media Player" : name, bundleId: normalizedId)
+                }
+
+                if !normalizedId.isEmpty && !rawBundleId.isEmpty && normalizedId != rawBundleId {
+                    if let mainApp = NSRunningApplication.runningApplications(withBundleIdentifier: normalizedId).first {
+                        let mainName = mainApp.localizedName ?? name
+                        return (name: mainName.isEmpty ? "Media Player" : mainName, bundleId: normalizedId)
+                    }
+                    return (name: name.isEmpty ? "Media Player" : name, bundleId: normalizedId)
+                }
+            }
+
+            var info = proc_bsdinfo()
+            let size = proc_pidinfo(
+                curPid,
+                PROC_PIDTBSDINFO,
+                0,
+                &info,
+                Int32(MemoryLayout<proc_bsdinfo>.size)
+            )
+            guard size == Int32(MemoryLayout<proc_bsdinfo>.size) else { break }
+            let parentPid = pid_t(info.pbi_ppid)
+            guard parentPid > 1 && parentPid != curPid else { break }
+            curPid = parentPid
+        }
+
+        return resolveRunningMediaAppFallback()
+    }
+
+    public static func browserAppName(for bundleId: String) -> String? {
+        switch bundleId {
+        case "com.google.Chrome": return "Google Chrome"
+        case "com.brave.Browser": return "Brave Browser"
+        case "com.microsoft.edgemac": return "Microsoft Edge"
+        case "company.thebrowser.Browser": return "Arc"
+        case "com.apple.Safari": return "Safari"
+        default:
+            if bundleId.contains("Chrome") { return "Google Chrome" }
+            return nil
+        }
+    }
+
+    public static func buildBrowserTabActivationScript(
+        appName: String,
+        isSafari: Bool,
+        trackTitle: String
+    ) -> String {
+        let escapedTitle = trackTitle
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let cleanTitle = String(escapedTitle.prefix(40))
+
+        let urlCondition = "tabURL contains \"bilibili.com\" or tabURL contains \"youtube.com\" or tabURL contains \"music.163.com\" or tabURL contains \"y.qq.com\" or tabURL contains \"music.youtube.com\" or tabURL contains \"open.spotify.com\" or tabURL contains \"soundcloud.com\" or tabURL contains \"podcasts.apple.com\""
+
+        if isSafari {
+            let matchClause = cleanTitle.isEmpty
+                ? urlCondition
+                : "tabTitle contains \"\(cleanTitle)\" or \(urlCondition)"
+            return """
+            tell application "Safari"
+                activate
+                set foundTab to false
+                repeat with w in (every window)
+                    repeat with t in (every tab of w)
+                        set tabTitle to name of t
+                        set tabURL to URL of t
+                        if \(matchClause) then
+                            set current tab of w to t
+                            set index of w to 1
+                            set foundTab to true
+                            exit repeat
+                        end if
+                    end repeat
+                    if foundTab then exit repeat
+                end repeat
+            end tell
+            """
+        } else {
+            let matchClause = cleanTitle.isEmpty
+                ? urlCondition
+                : "tabTitle contains \"\(cleanTitle)\" or \(urlCondition)"
+            return """
+            tell application "\(appName)"
+                activate
+                set foundTab to false
+                repeat with w in (every window)
+                    set tabIdx to 0
+                    repeat with t in (every tab of w)
+                        set tabIdx to tabIdx + 1
+                        set tabTitle to title of t
+                        set tabURL to URL of t
+                        if \(matchClause) then
+                            set active tab index of w to tabIdx
+                            set index of w to 1
+                            set foundTab to true
+                            exit repeat
+                        end if
+                    end repeat
+                    if foundTab then exit repeat
+                end repeat
+            end tell
+            """
+        }
+    }
+
+    public func activateSourcePlayer(for track: MusicTrackInfo? = nil, store: PurahWorkspaceStore? = nil) {
+        let activeTrack = track ?? store?._musicTrack ?? MusicTrackInfo.empty
+        var bundleId = Self.normalizeBundleIdentifier(activeTrack.sourceBundleId)
+        var appName = activeTrack.sourceApp
+
+        if bundleId.isEmpty || NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty {
+            if let resolved = Self.resolveRunningMediaAppFallback() {
+                bundleId = resolved.bundleId
+                if appName.isEmpty || appName == "Media Player" {
+                    appName = resolved.name
+                }
+            }
+        }
+
+        guard !bundleId.isEmpty else {
+            let defaultId = "com.apple.Music"
+            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: defaultId) {
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            }
+            return
+        }
+
+        // 1. If it's a browser, attempt AppleScript Tab activation
+        if let browserName = Self.browserAppName(for: bundleId) {
+            let isSafari = (bundleId == "com.apple.Safari")
+            let title = activeTrack.title
+            let script = Self.buildBrowserTabActivationScript(appName: browserName, isSafari: isSafari, trackTitle: title)
+            Task.detached(priority: .userInitiated) {
+                Self.executeAppleScript(script)
+            }
+        }
+
+        // 2. System-level window & app activation
+        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
+            _ = app.activate()
+        }
+        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+        }
     }
 }

@@ -164,7 +164,8 @@ struct LocalizationTests {
             // page hints, empty-rail hint and dock drag hint). They had been
             // referenced by the strip under new key names while only the retired
             // legacy spellings existed, so the rail showed the raw key.
-            .traditionalChinese: 1028
+            // +1: music.activatePlayer
+            .traditionalChinese: 1029
         ]
 
         for (language, expected) in pinnedCoverage {

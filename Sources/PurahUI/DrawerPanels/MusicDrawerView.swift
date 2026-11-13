@@ -162,6 +162,8 @@ public struct MusicDrawerView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .help("music.activatePlayer".localized)
 
                     Spacer(minLength: 4)
 
@@ -254,6 +256,8 @@ public struct MusicDrawerView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .help("music.activatePlayer".localized)
 
                     Spacer(minLength: 4)
 
@@ -377,6 +381,8 @@ public struct MusicDrawerView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help("music.activatePlayer".localized)
 
                 Spacer(minLength: 4)
             }
@@ -502,19 +508,28 @@ public struct MusicDrawerView: View {
                 // Direct Lyrics Showcase: Compact Track Bar + Flowing Lyrics Sheet
                 VStack(spacing: 6) {
                     HStack(spacing: 8) {
-                        artworkThumbnail(size: 32, cornerRadius: 6)
+                        Button {
+                            activateMusicPlayerApp()
+                        } label: {
+                            HStack(spacing: 8) {
+                                artworkThumbnail(size: 32, cornerRadius: 6)
 
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(state.track.title)
-                                .purahTitle(size: 11.5, weight: .bold, design: .rounded)
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                .lineLimit(1)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(state.track.title)
+                                        .purahTitle(size: 11.5, weight: .bold, design: .rounded)
+                                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                        .lineLimit(1)
 
-                            Text(state.track.artist)
-                                .purahBody(size: 9.5, weight: .medium, design: .rounded)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
+                                    Text(state.track.artist)
+                                        .purahBody(size: 9.5, weight: .medium, design: .rounded)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .help("music.activatePlayer".localized)
 
                         Spacer()
 
@@ -569,6 +584,8 @@ public struct MusicDrawerView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .help("music.activatePlayer".localized)
                 .transition(.opacity)
             }
 
@@ -798,21 +815,9 @@ public struct MusicDrawerView: View {
     }
 
     private func activateMusicPlayerApp() {
-        let bundleId = state.track.sourceBundleId
-        if !bundleId.isEmpty, let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
-            return
-        }
-
-        let source = state.track.sourceApp.lowercased()
-        let fallbackId = source.contains("spotify") ? "com.spotify.client" : "com.apple.Music"
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: fallbackId) {
-            let config = NSWorkspace.OpenConfiguration()
-            config.activates = true
-            NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
-        }
+        store.triggerControlHaptic(.levelChange)
+        let activeTrack = !state.track.title.isEmpty ? state.track : store._musicTrack
+        SystemMusicSyncService.shared.activateSourcePlayer(for: activeTrack)
     }
 
     private func timeString(for seconds: Double) -> String {

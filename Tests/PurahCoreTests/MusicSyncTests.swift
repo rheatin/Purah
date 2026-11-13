@@ -441,4 +441,58 @@ struct MusicSyncTests {
         #expect(store._musicTrack.lastUpdated == anchor, "The second heartbeat wrote the track again")
         #expect(service.lyricFetchAttempts == 1, "A lyric-less track must not be looked up again every heartbeat")
     }
+
+    @Test("Helper sub-process bundle identifier normalization strips .helper suffixes")
+    func testNormalizeBundleIdentifier() {
+        #expect(SystemMusicSyncService.normalizeBundleIdentifier("com.google.Chrome.helper.renderer") == "com.google.Chrome")
+        #expect(SystemMusicSyncService.normalizeBundleIdentifier("com.google.Chrome.helper") == "com.google.Chrome")
+        #expect(SystemMusicSyncService.normalizeBundleIdentifier("com.brave.Browser.helper.alerts") == "com.brave.Browser")
+        #expect(SystemMusicSyncService.normalizeBundleIdentifier("com.apple.Safari") == "com.apple.Safari")
+        #expect(SystemMusicSyncService.normalizeBundleIdentifier("com.spotify.client") == "com.spotify.client")
+        #expect(SystemMusicSyncService.normalizeBundleIdentifier("") == "")
+    }
+
+    @Test("Browser app name resolution and AppleScript Tab jump generation with escaping")
+    func testBrowserAppNameAndTabActivationScript() {
+        #expect(SystemMusicSyncService.browserAppName(for: "com.google.Chrome") == "Google Chrome")
+        #expect(SystemMusicSyncService.browserAppName(for: "com.apple.Safari") == "Safari")
+        #expect(SystemMusicSyncService.browserAppName(for: "company.thebrowser.Browser") == "Arc")
+        #expect(SystemMusicSyncService.browserAppName(for: "com.microsoft.edgemac") == "Microsoft Edge")
+        #expect(SystemMusicSyncService.browserAppName(for: "com.brave.Browser") == "Brave Browser")
+        #expect(SystemMusicSyncService.browserAppName(for: "com.apple.Music") == nil)
+
+        // Chromium script escaping test
+        let chromeScript = SystemMusicSyncService.buildBrowserTabActivationScript(
+            appName: "Google Chrome",
+            isSafari: false,
+            trackTitle: "Hello \"World\" \\ Test"
+        )
+        #expect(chromeScript.contains("tell application \"Google Chrome\""))
+        #expect(chromeScript.contains("Hello \\\"World\\\" \\\\ Test"))
+        #expect(chromeScript.contains("set active tab index of w to tabIdx"))
+        #expect(chromeScript.contains("set index of w to 1"))
+
+        // Safari script test
+        let safariScript = SystemMusicSyncService.buildBrowserTabActivationScript(
+            appName: "Safari",
+            isSafari: true,
+            trackTitle: "Bilibili Music Video"
+        )
+        #expect(safariScript.contains("tell application \"Safari\""))
+        #expect(safariScript.contains("Bilibili Music Video"))
+        #expect(safariScript.contains("set current tab of w to t"))
+    }
+
+    @Test("Process tree tracing resolves current process and running fallback")
+    func testProcessTreeTracing() {
+        let currentPid = getpid()
+        let resolved = SystemMusicSyncService.resolveHostApplication(for: currentPid)
+        #expect(resolved != nil)
+        #expect(!resolved!.bundleId.contains(".helper"))
+
+        let fallback = SystemMusicSyncService.resolveRunningMediaAppFallback()
+        if let fallback {
+            #expect(!fallback.bundleId.isEmpty)
+        }
+    }
 }
