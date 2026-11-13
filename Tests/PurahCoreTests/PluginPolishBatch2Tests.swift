@@ -302,6 +302,7 @@ struct PluginPolishBatch2Tests {
         }
         calState.events = events
         store._calendarEvents = events
+        store.splitPodFromMajorGroup(id: "calendar")
 
         // Ensure calendar pod is enabled and locate it in layout
         guard let calPod = store.pods.first(where: { $0.id == "calendar" }) else {

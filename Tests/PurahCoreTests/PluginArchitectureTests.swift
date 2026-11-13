@@ -1225,6 +1225,7 @@ struct PluginArchitectureTests {
     @Test("Todo capability provider bounds minimum height dynamically by todoMaxRailTasks and compact chip height")
     func testTodoCapabilityProviderDynamicHeight() {
         let store = PurahWorkspaceStore()
+        store.splitPodFromMajorGroup(id: "todo")
         store.todoMaxRailTasks = 5
         let minH = store.minimumDrawerHeight(for: "todo")
         // 5 tasks * 32.0 + 4 * 2.5 = 160 + 10 = 170.0

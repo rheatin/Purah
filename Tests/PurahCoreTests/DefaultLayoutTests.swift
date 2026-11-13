@@ -61,4 +61,27 @@ struct DefaultLayoutTests {
             }
         }
     }
+
+    @Test("defaultPods() contains exactly 3 default Stack groups: major_left_default, major_right_top, major_right_bottom")
+    func defaultPodsContainThreeDefaultStackGroups() {
+        let pods = PurahWorkspaceStore.defaultPods()
+
+        let leftDefaultPods = pods.filter { $0.majorGroupId == "major_left_default" }
+        #expect(leftDefaultPods.count == 3)
+        #expect(Set(leftDefaultPods.map(\.id)) == Set(["shelf", "clipboard", "notes"]))
+        #expect(leftDefaultPods.allSatisfy { $0.edge == .left })
+
+        let rightTopPods = pods.filter { $0.majorGroupId == "major_right_top" }
+        #expect(rightTopPods.count == 2)
+        #expect(Set(rightTopPods.map(\.id)) == Set(["calendar", "todo"]))
+        #expect(rightTopPods.allSatisfy { $0.edge == .right })
+
+        let rightBottomPods = pods.filter { $0.majorGroupId == "major_right_bottom" }
+        #expect(rightBottomPods.count == 3)
+        #expect(Set(rightBottomPods.map(\.id)) == Set(["terminal", "music", "scripts"]))
+        #expect(rightBottomPods.allSatisfy { $0.edge == .right })
+
+        let standalonePods = pods.filter { $0.majorGroupId == nil }
+        #expect(Set(standalonePods.map(\.id)) == Set(["vitals", "ai"]))
+    }
 }

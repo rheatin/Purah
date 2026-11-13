@@ -706,7 +706,7 @@ struct DrawerInteractionUITests {
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let totalH = 1000.0
 
-        for pod in store.pods where pod.isEnabled && pod.id != "todo" && pod.id != "calendar" && pod.id != "terminal" {
+        for pod in store.pods where pod.isEnabled && pod.id != "todo" && pod.id != "calendar" && pod.id != "terminal" && pod.majorGroupId == nil {
             let barH = max(pod.range.length * totalH, 36.0)
             #expect(barH >= 120.0, "Pod \(pod.id) bar height must be at least 120pt to host drawer content")
         }

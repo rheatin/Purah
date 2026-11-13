@@ -181,6 +181,7 @@ struct ClipboardPluginTests {
     @Test("ClipboardPlugin decomposed mode generates stepped chips and responds to ownsSubItemId")
     func testClipboardDecomposedMode() {
         let store = PurahWorkspaceStore()
+        store.splitPodFromMajorGroup(id: "clipboard")
         let plugin = ClipboardPlugin()
         plugin.onMount(store: store)
         plugin.state.isDecomposed = true

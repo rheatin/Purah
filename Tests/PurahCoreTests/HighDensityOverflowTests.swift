@@ -599,6 +599,17 @@ struct HighDensityOverflowTests {
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.resetMajorGroups(for: .right)
+        for idx in store.pods.indices {
+            if store.pods[idx].edge == .right && store.pods[idx].id != "calendar" && store.pods[idx].id != "todo" {
+                store.pods[idx].isEnabled = false
+            }
+        }
+        if let calIdx = store.pods.firstIndex(where: { $0.id == "calendar" }) {
+            store.pods[calIdx].range = NormalizedRange(start: 0.15, length: 0.35)
+        }
+        if let todoIdx = store.pods.firstIndex(where: { $0.id == "todo" }) {
+            store.pods[todoIdx].range = NormalizedRange(start: 0.52, length: 0.25)
+        }
 
         // Stack calendar and todo into a Shared Major Pod
         store.addPodToMajorGroup(podId: "todo", targetPodId: "calendar")
@@ -606,24 +617,23 @@ struct HighDensityOverflowTests {
         let groupId = try #require(calPod.majorGroupId)
 
         let totalHeight = 900.0
-        store.resizeMajorGroup(groupId: groupId, on: .right, newTotalSpanRatio: 0.55)
         let initialLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
         let initialCalItem = try #require(initialLayout.first(where: { $0.pod.id == "calendar" }))
         let initialDrawerSpan = initialCalItem.drawerSpanH
 
         // Shrink the Shared Major Pod cluster via resizeMajorGroup(groupId:on:deltaRatio:)
-        store.resizeMajorGroup(groupId: groupId, on: .right, deltaRatio: -0.25)
+        store.resizeMajorGroup(groupId: groupId, on: .right, deltaRatio: -0.32)
         let shrunkLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
         let shrunkCalItem = try #require(shrunkLayout.first(where: { $0.pod.id == "calendar" }))
         let shrunkTodoItem = try #require(shrunkLayout.first(where: { $0.pod.id == "todo" }))
-        #expect(shrunkCalItem.drawerSpanH < initialDrawerSpan - 50.0, "resizeMajorGroup with negative deltaRatio must shrink drawerSpanH")
+        #expect(shrunkCalItem.drawerSpanH < initialDrawerSpan - 100.0, "resizeMajorGroup with negative deltaRatio must shrink drawerSpanH")
         #expect(abs(shrunkCalItem.drawerSpanH - shrunkTodoItem.drawerSpanH) < 0.01)
 
         // Expand the Shared Major Pod cluster via resizeMajorGroup(groupId:on:newTotalSpanRatio:)
         store.resizeMajorGroup(groupId: groupId, on: .right, newTotalSpanRatio: 0.60)
         let expandedLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: totalHeight)
         let expandedCalItem = try #require(expandedLayout.first(where: { $0.pod.id == "calendar" }))
-        #expect(expandedCalItem.drawerSpanH > shrunkCalItem.drawerSpanH + 50.0, "resizeMajorGroup with larger newTotalSpanRatio must expand drawerSpanH")
+        #expect(expandedCalItem.drawerSpanH > shrunkCalItem.drawerSpanH + 100.0, "resizeMajorGroup with larger newTotalSpanRatio must expand drawerSpanH")
 
         // Unstack all pods in groupId
         store.unstackMajorGroup(groupId: groupId, on: .right)
@@ -913,6 +923,7 @@ struct HighDensityOverflowTests {
         let suiteName = "test_pod_alert_portal_\(UUID().uuidString)"
         let isolated = UserDefaults(suiteName: suiteName)!
         let store = PurahWorkspaceStore(userDefaults: isolated)
+        store.resetMajorGroups(for: .right)
         store._calendarEvents = []
 
         // Move "calendar" to Page 2 (pageIndex = 1) while keeping currentRailPage on Page 1 (0)
@@ -1014,6 +1025,7 @@ struct HighDensityOverflowTests {
             if var pod = defaults.first(where: { $0.id == id }) {
                 pod.edge = .left
                 pod.isEnabled = true
+                pod.majorGroupId = nil
                 if id == "vitals" {
                     pod.range = NormalizedRange(start: 0.02, length: 0.28)
                 } else if id == "clipboard" {
