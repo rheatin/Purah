@@ -226,6 +226,8 @@ public struct HardwareVitalsDrawerView: View {
     @State private var overviewHover: VitalsOverviewHover?
     @State private var hoveredBatteryCell: Int?
 
+    @Environment(\.colorScheme) private var colorScheme
+
     private var vitals: HardwareVitalsService {
         service
     }
@@ -754,10 +756,14 @@ public struct HardwareVitalsDrawerView: View {
         )
     }
 
-    // MARK: - Overview Sheet (variant E)
+    // MARK: - Overview Sheet (bento)
 
-    /// One surface divided by hairlines: the drawer card is already a card,
-    /// so the Overview draws no second card inside it.
+    /// A bento of instrument tiles rather than one surface divided by
+    /// hairlines. The card is still the only elevation; each tile is a 3–4%
+    /// fill plus its metric's identity hue in one corner, which is what gives
+    /// six unrelated readings a boundary without drawing six coloured boxes.
+    /// The process list below stays full-bleed — it is a table, not an
+    /// instrument, and boxing its rows would turn a glance into a hunt.
     private func overviewSheet(
         metrics: HardwareVitalsInfo,
         availableHeight: CGFloat,
@@ -788,92 +794,92 @@ public struct HardwareVitalsDrawerView: View {
             VitalsStateRibbon.color(for: $0 ?? 0)
         }
 
-        let instruments = VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                overviewCell(
-                    title: "CPU",
-                    value: "\(Int(metrics.cpuUsage * 100))%",
-                    tint: cpuColor,
-                    detail: "Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Load \(String(format: "%.1f", metrics.loadAverage1m))",
-                    hoverMetric: .cpu,
-                    plot: AnyView(overviewColumnPlot(metric: .cpu, buckets: cpuBuckets)),
-                    spokenLabel: String(
-                        format: "vitals.a11y.metric".localized,
-                        "CPU",
-                        Int(metrics.cpuUsage * 100)
-                    )
-                )
-                .overlay(alignment: .trailing) { overviewVerticalHairline }
-
-                overviewCell(
-                    title: "GPU",
-                    value: "\(Int(metrics.gpuUsage * 100))%",
-                    tint: gpuColor,
-                    detail: "\(metrics.chipModelName) · \(metrics.thermalStateLabel)",
-                    hoverMetric: .gpu,
-                    plot: AnyView(overviewColumnPlot(metric: .gpu, buckets: gpuBuckets)),
-                    spokenLabel: String(
-                        format: "vitals.a11y.metric".localized,
-                        "GPU",
-                        Int(metrics.gpuUsage * 100)
-                    )
-                )
-            }
-            .frame(height: Self.overviewCellNaturalHeight)
-
-            overviewHairline
-                .frame(height: Self.overviewHairlineHeight)
-
-            HStack(spacing: 0) {
-                overviewCell(
-                    title: "RAM",
-                    value: "\(Int(metrics.memoryUsage * 100))%",
-                    tint: ramColor,
-                    detail: ramDetail(metrics),
-                    hoverMetric: .ram,
-                    plot: AnyView(overviewColumnPlot(metric: .ram, buckets: ramBuckets)),
-                    spokenLabel: String(
-                        format: "vitals.a11y.metric".localized,
-                        "RAM",
-                        Int(metrics.memoryUsage * 100)
-                    )
-                )
-                .overlay(alignment: .trailing) { overviewVerticalHairline }
-
-                overviewCell(
-                    title: "BATTERY",
-                    value: "\(metrics.batteryLevel)%",
-                    tint: powerColor,
-                    detail: "Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)",
-                    hoverMetric: .power,
-                    plot: AnyView(
-                        overviewColumnPlot(
-                            metric: .power,
-                            buckets: batteryBuckets,
-                            bucketColors: batteryColors
+        let instruments = VStack(spacing: Self.vitalsTileGap) {
+            HStack(spacing: Self.vitalsTileGap) {
+                vitalsTile(tint: cpuColor) {
+                    overviewCell(
+                        title: "CPU",
+                        value: "\(Int(metrics.cpuUsage * 100))%",
+                        tint: cpuColor,
+                        detail: "Usr \(Int(metrics.cpuUserUsage * 100))% · Sys \(Int(metrics.cpuSystemUsage * 100))% · Load \(String(format: "%.1f", metrics.loadAverage1m))",
+                        hoverMetric: .cpu,
+                        plot: AnyView(overviewColumnPlot(metric: .cpu, buckets: cpuBuckets)),
+                        spokenLabel: String(
+                            format: "vitals.a11y.metric".localized,
+                            "CPU",
+                            Int(metrics.cpuUsage * 100)
                         )
-                    ),
-                    spokenLabel: String(
-                        format: "vitals.a11y.metric".localized,
-                        "BATTERY",
-                        metrics.batteryLevel
                     )
-                )
+                }
+
+                vitalsTile(tint: gpuColor) {
+                    overviewCell(
+                        title: "GPU",
+                        value: "\(Int(metrics.gpuUsage * 100))%",
+                        tint: gpuColor,
+                        detail: "\(metrics.chipModelName) · \(metrics.thermalStateLabel)",
+                        hoverMetric: .gpu,
+                        plot: AnyView(overviewColumnPlot(metric: .gpu, buckets: gpuBuckets)),
+                        spokenLabel: String(
+                            format: "vitals.a11y.metric".localized,
+                            "GPU",
+                            Int(metrics.gpuUsage * 100)
+                        )
+                    )
+                }
             }
             .frame(height: Self.overviewCellNaturalHeight)
 
-            overviewHairline
-                .frame(height: Self.overviewHairlineHeight)
+            HStack(spacing: Self.vitalsTileGap) {
+                vitalsTile(tint: ramColor) {
+                    overviewCell(
+                        title: "RAM",
+                        value: "\(Int(metrics.memoryUsage * 100))%",
+                        tint: ramColor,
+                        detail: ramDetail(metrics),
+                        hoverMetric: .ram,
+                        plot: AnyView(overviewColumnPlot(metric: .ram, buckets: ramBuckets)),
+                        spokenLabel: String(
+                            format: "vitals.a11y.metric".localized,
+                            "RAM",
+                            Int(metrics.memoryUsage * 100)
+                        )
+                    )
+                }
 
-            overviewNetworkBand(metrics: metrics)
-                .frame(height: Self.overviewNetworkNaturalHeight)
+                vitalsTile(tint: powerColor) {
+                    overviewCell(
+                        title: "BATTERY",
+                        value: "\(metrics.batteryLevel)%",
+                        tint: powerColor,
+                        detail: "Health \(metrics.batteryHealthPercent)% · \(metrics.batteryCycleCount) cyc · \(metrics.isCharging ? "Charging" : metrics.powerSource)",
+                        hoverMetric: .power,
+                        plot: AnyView(
+                            overviewColumnPlot(
+                                metric: .power,
+                                buckets: batteryBuckets,
+                                bucketColors: batteryColors
+                            )
+                        ),
+                        spokenLabel: String(
+                            format: "vitals.a11y.metric".localized,
+                            "BATTERY",
+                            metrics.batteryLevel
+                        )
+                    )
+                }
+            }
+            .frame(height: Self.overviewCellNaturalHeight)
 
-            overviewHairline
-                .frame(height: Self.overviewHairlineHeight)
+            vitalsTile(tint: netColor) {
+                overviewNetworkBand(metrics: metrics)
+            }
+            .frame(height: Self.overviewNetworkNaturalHeight)
 
-            overviewSystemInfoRow(metrics: metrics)
-                .frame(height: Self.overviewSystemInfoHeight, alignment: .topLeading)
-
+            vitalsTile(tint: nil) {
+                overviewSystemInfoRow(metrics: metrics)
+            }
+            .frame(height: Self.overviewSystemInfoHeight, alignment: .topLeading)
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -897,15 +903,18 @@ public struct HardwareVitalsDrawerView: View {
 
     private static let overviewCellNaturalHeight: CGFloat = 62
     private static let overviewNetworkNaturalHeight: CGFloat = 54
-    private static let overviewHairlineHeight: CGFloat = 0.6
     private static let overviewSystemInfoHeight: CGFloat = 80
-    /// The two cell rows, the network band, the three hairlines and the
-    /// machine-facts grid: what the tab draws before the process list starts.
+    /// The gap between bento tiles. The drawer card is 12pt, so 6pt of gap and
+    /// an 8pt tile radius keep the nested corners concentric.
+    private static let vitalsTileGap: CGFloat = 6
+    /// The two cell rows, the network band, the machine-facts grid and the
+    /// three gaps between them: what the tab draws before the process list
+    /// starts.
     private static let overviewContentNaturalHeight: CGFloat =
         overviewCellNaturalHeight * 2
         + overviewNetworkNaturalHeight
         + overviewSystemInfoHeight
-        + overviewHairlineHeight * 3
+        + vitalsTileGap * 3
     /// A list header plus at least one row; below this, the drawer is simply
     /// too short to show a process list and the instruments own the height.
     private static let processListMinimumHeight: CGFloat =
@@ -1263,18 +1272,51 @@ public struct HardwareVitalsDrawerView: View {
         return "\(minutes)m"
     }
 
-    private var overviewHairline: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.10))
-            .frame(height: 0.6)
-    }
+    // MARK: - Bento Instrument Tiles
 
-    private var overviewVerticalHairline: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.10))
-            .frame(width: 0.6)
-            .frame(maxHeight: .infinity)
-            .padding(.vertical, 2)
+    /// One instrument tile inside the drawer card. The card itself is 12pt, so
+    /// the inner radius is 8pt and tiles sit 6pt apart — nested corners read as
+    /// one drawing only when the inner radius shrinks by the gap.
+    ///
+    /// Fill and stroke are decoration: no shadow (Purah's only elevation
+    /// language is the alert glow), no hit region, and the identity hue stays a
+    /// corner wash at ≤14% so a threshold alarm's own colour still reads as ink
+    /// rather than as a tinted background.
+    private func vitalsTile<Content: View>(
+        tint: Color?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        let wash = colorScheme == .dark ? 0.14 : 0.08
+        let stroke = colorScheme == .dark ? 0.16 : 0.12
+        let neutralFill = colorScheme == .dark ? 0.035 : 0.03
+        return content()
+            // Fill the frame the call site set, so the tile's fill and stroke
+            // cover the whole slot rather than only the content's natural
+            // height. Every call site gives the tile an explicit height.
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background {
+                ZStack {
+                    shape.fill(Color.primary.opacity(neutralFill))
+                    if let tint {
+                        shape.fill(
+                            LinearGradient(
+                                colors: [tint.opacity(wash), .clear],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    }
+                }
+            }
+            .overlay {
+                shape
+                    .strokeBorder(
+                        tint?.opacity(stroke) ?? palette.borderColor.opacity(0.8),
+                        lineWidth: 1
+                    )
+                    .allowsHitTesting(false)
+            }
     }
 
     // MARK: - Shared Sheet Grammar
@@ -1423,163 +1465,163 @@ public struct HardwareVitalsDrawerView: View {
             naturalContent: Self.computeContentNaturalHeight
         )
 
-        let instruments = VStack(spacing: 0) {
-            VitalsMetricColumnBand(
-                metric: .cpu,
-                title: "CPU",
-                detail: detailWithRange(cpuDetail, metric: .cpu, scope: cpuScope),
-                rangeLabel: VitalsColumnFormatting.duration(cpuScope.durationSeconds),
-                liveValue: "\(Int(metrics.cpuUsage * 100))%",
-                tint: cpuColor,
-                columnTint: VitalsColorResolver.identityColor(for: .cpu),
-                buckets: cpuBuckets,
-                domain: .percentage,
-                scope: cpuScope,
-                thresholds: effectiveThresholds,
-                nowLabel: "vitals.range.now".localized,
-                liveFooter: nil,
-                rangeFooter: rangeFooter(.cpu, scope: cpuScope),
-                valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
-                plotMinHeight: 20,
-                plotMaxHeight: nil,
-                extra: AnyView(
-                    VStack(alignment: .leading, spacing: 5) {
-                        vitalsCoreGrid(
-                            usages: metrics.cpuCoreUsages,
-                            performanceCount: metrics.performanceCoreCount,
-                            efficiencyCount: metrics.efficiencyCoreCount,
-                            tint: cpuColor
-                        )
-                        .padding(.top, 1)
-                        temperatureHistoryStrip(
-                            title: "CPU \(String("vitals.power.temp".localized))",
-                            current: metrics.cpuTemperatureCelsius,
-                            history: vitals.cpuTemperatureHistory,
-                            grid: cpuBuckets,
-                            tint: cpuColor,
-                            metric: .cpu
-                        )
-                        vitalsLegend([
-                            ("USR", "\(Int(metrics.cpuUserUsage * 100))", cpuColor),
-                            ("SYS", "\(Int(metrics.cpuSystemUsage * 100))", VitalsColorResolver.warningYellow),
-                            ("IDLE", "\(Int(metrics.cpuIdleUsage * 100))", Color.primary.opacity(0.35)),
-                            (
-                                "vitals.compute.thermal".localized,
-                                localizedThermalState(metrics.thermalStateLabel),
-                                Color.primary.opacity(0.8)
+        let instruments = VStack(spacing: Self.vitalsTileGap) {
+            vitalsTile(tint: cpuColor) {
+                VitalsMetricColumnBand(
+                    metric: .cpu,
+                    title: "CPU",
+                    detail: detailWithRange(cpuDetail, metric: .cpu, scope: cpuScope),
+                    rangeLabel: VitalsColumnFormatting.duration(cpuScope.durationSeconds),
+                    liveValue: "\(Int(metrics.cpuUsage * 100))%",
+                    tint: cpuColor,
+                    columnTint: VitalsColorResolver.identityColor(for: .cpu),
+                    buckets: cpuBuckets,
+                    domain: .percentage,
+                    scope: cpuScope,
+                    thresholds: effectiveThresholds,
+                    nowLabel: "vitals.range.now".localized,
+                    liveFooter: nil,
+                    rangeFooter: rangeFooter(.cpu, scope: cpuScope),
+                    valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
+                    plotMinHeight: 20,
+                    plotMaxHeight: nil,
+                    extra: AnyView(
+                        VStack(alignment: .leading, spacing: 5) {
+                            vitalsCoreGrid(
+                                usages: metrics.cpuCoreUsages,
+                                performanceCount: metrics.performanceCoreCount,
+                                efficiencyCount: metrics.efficiencyCoreCount,
+                                tint: cpuColor
                             )
-                        ])
-                    }
-                ),
-                onCycle: { cycleScope(.cpu) },
-                collapsesWhenEmpty: true,
-                showsFooter: false,
-                previewHoveredIndex: columnHoverPreviews[.cpu]
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.cpuBandNaturalHeight, alignment: .topLeading)
-
-            vitalsHairline
-                .frame(height: Self.computeHairlineHeight)
-
-            VitalsMetricColumnBand(
-                metric: .gpu,
-                title: "GPU",
-                detail: detailWithRange(gpuDetail, metric: .gpu, scope: gpuScope),
-                rangeLabel: VitalsColumnFormatting.duration(gpuScope.durationSeconds),
-                liveValue: "\(Int(metrics.gpuUsage * 100))%",
-                tint: gpuColor,
-                columnTint: VitalsColorResolver.identityColor(for: .gpu),
-                buckets: gpuBuckets,
-                domain: .percentage,
-                scope: gpuScope,
-                thresholds: effectiveThresholds,
-                nowLabel: "vitals.range.now".localized,
-                liveFooter: nil,
-                rangeFooter: rangeFooter(.gpu, scope: gpuScope),
-                valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
-                plotMinHeight: 30,
-                plotMaxHeight: nil,
-                extra: AnyView(
-                    VStack(alignment: .leading, spacing: 5) {
-                        temperatureHistoryStrip(
-                            title: "GPU \(String("vitals.power.temp".localized))",
-                            current: metrics.gpuTemperatureCelsius,
-                            history: vitals.gpuTemperatureHistory,
-                            grid: gpuBuckets,
-                            tint: gpuColor,
-                            metric: .gpu
-                        )
-                        vitalsLegend([
-                            ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
-                            ("TILER", "\(Int(metrics.gpuTilerUsage * 100))", Color.primary.opacity(0.45)),
-                            ("MEM", gpuMemory, Color.primary.opacity(0.8))
-                        ])
-                    }
-                ),
-                onCycle: { cycleScope(.gpu) },
-                previewHoveredIndex: columnHoverPreviews[.gpu]
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.gpuBandNaturalHeight, alignment: .topLeading)
-
-            vitalsHairline
-                .frame(height: Self.computeHairlineHeight)
-
-            VitalsMetricColumnBand(
-                metric: .ram,
-                title: "RAM",
-                detail: detailWithRange(
-                    String(
-                        format: "vitals.compute.ramDetail".localized,
-                        compactGB(metrics.memoryTotalGB)
+                            .padding(.top, 1)
+                            temperatureHistoryStrip(
+                                title: "CPU \(String("vitals.power.temp".localized))",
+                                current: metrics.cpuTemperatureCelsius,
+                                history: vitals.cpuTemperatureHistory,
+                                grid: cpuBuckets,
+                                tint: cpuColor,
+                                metric: .cpu
+                            )
+                            vitalsLegend([
+                                ("USR", "\(Int(metrics.cpuUserUsage * 100))", cpuColor),
+                                ("SYS", "\(Int(metrics.cpuSystemUsage * 100))", VitalsColorResolver.warningYellow),
+                                ("IDLE", "\(Int(metrics.cpuIdleUsage * 100))", Color.primary.opacity(0.35)),
+                                (
+                                    "vitals.compute.thermal".localized,
+                                    localizedThermalState(metrics.thermalStateLabel),
+                                    Color.primary.opacity(0.8)
+                                )
+                            ])
+                        }
                     ),
+                    onCycle: { cycleScope(.cpu) },
+                    collapsesWhenEmpty: true,
+                    showsFooter: false,
+                    previewHoveredIndex: columnHoverPreviews[.cpu]
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.cpuBandNaturalHeight, alignment: .topLeading)
+            }
+
+            vitalsTile(tint: gpuColor) {
+                VitalsMetricColumnBand(
+                    metric: .gpu,
+                    title: "GPU",
+                    detail: detailWithRange(gpuDetail, metric: .gpu, scope: gpuScope),
+                    rangeLabel: VitalsColumnFormatting.duration(gpuScope.durationSeconds),
+                    liveValue: "\(Int(metrics.gpuUsage * 100))%",
+                    tint: gpuColor,
+                    columnTint: VitalsColorResolver.identityColor(for: .gpu),
+                    buckets: gpuBuckets,
+                    domain: .percentage,
+                    scope: gpuScope,
+                    thresholds: effectiveThresholds,
+                    nowLabel: "vitals.range.now".localized,
+                    liveFooter: nil,
+                    rangeFooter: rangeFooter(.gpu, scope: gpuScope),
+                    valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
+                    plotMinHeight: 30,
+                    plotMaxHeight: nil,
+                    extra: AnyView(
+                        VStack(alignment: .leading, spacing: 5) {
+                            temperatureHistoryStrip(
+                                title: "GPU \(String("vitals.power.temp".localized))",
+                                current: metrics.gpuTemperatureCelsius,
+                                history: vitals.gpuTemperatureHistory,
+                                grid: gpuBuckets,
+                                tint: gpuColor,
+                                metric: .gpu
+                            )
+                            vitalsLegend([
+                                ("RENDERER", "\(Int(metrics.gpuRendererUsage * 100))", gpuColor),
+                                ("TILER", "\(Int(metrics.gpuTilerUsage * 100))", Color.primary.opacity(0.45)),
+                                ("MEM", gpuMemory, Color.primary.opacity(0.8))
+                            ])
+                        }
+                    ),
+                    onCycle: { cycleScope(.gpu) },
+                    previewHoveredIndex: columnHoverPreviews[.gpu]
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.gpuBandNaturalHeight, alignment: .topLeading)
+            }
+
+            vitalsTile(tint: ramColor) {
+                VitalsMetricColumnBand(
                     metric: .ram,
-                    scope: ramScope
-                ),
-                rangeLabel: VitalsColumnFormatting.duration(ramScope.durationSeconds),
-                liveValue: "\(Int(metrics.memoryUsage * 100))%",
-                tint: ramColor,
-                columnTint: VitalsColorResolver.identityColor(for: .ram),
-                buckets: columnBuckets(.ram, scope: ramScope),
-                domain: .percentage,
-                scope: ramScope,
-                thresholds: effectiveThresholds,
-                nowLabel: "vitals.range.now".localized,
-                liveFooter: ramFooter(metrics, usedGB: swapUsedGB, totalGB: swapTotalGB),
-                rangeFooter: rangeFooter(.ram, scope: ramScope),
-                valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
-                plotMinHeight: 32,
-                plotMaxHeight: nil,
-                extra: AnyView(
-                    VStack(alignment: .leading, spacing: 5) {
-                        vitalsCompositionBar(segments: [
-                            (metrics.memoryActiveGB, ramColor.opacity(0.9)),
-                            (metrics.memoryWiredGB, Color.primary.opacity(0.42)),
-                            (metrics.memoryCompressedGB, VitalsColorResolver.warningYellow.opacity(0.85)),
-                            (metrics.memoryCachedGB, Color.primary.opacity(0.20)),
-                            (metrics.memoryFreeGB, Color.primary.opacity(0.08))
-                        ])
-                        vitalsLegend([
-                            ("ACTIVE", compactGB(metrics.memoryActiveGB), ramColor),
-                            ("WIRED", compactGB(metrics.memoryWiredGB), Color.primary.opacity(0.55)),
-                            ("COMPR", compactGB(metrics.memoryCompressedGB), VitalsColorResolver.warningYellow),
-                            ("CACHED", compactGB(metrics.memoryCachedGB), Color.primary.opacity(0.30)),
-                            ("FREE", compactGB(metrics.memoryFreeGB), Color.primary.opacity(0.16))
-                        ])
-                    }
-                ),
-                onCycle: { cycleScope(.ram) },
-                previewHoveredIndex: columnHoverPreviews[.ram]
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.ramBandNaturalHeight, alignment: .topLeading)
+                    title: "RAM",
+                    detail: detailWithRange(
+                        String(
+                            format: "vitals.compute.ramDetail".localized,
+                            compactGB(metrics.memoryTotalGB)
+                        ),
+                        metric: .ram,
+                        scope: ramScope
+                    ),
+                    rangeLabel: VitalsColumnFormatting.duration(ramScope.durationSeconds),
+                    liveValue: "\(Int(metrics.memoryUsage * 100))%",
+                    tint: ramColor,
+                    columnTint: VitalsColorResolver.identityColor(for: .ram),
+                    buckets: columnBuckets(.ram, scope: ramScope),
+                    domain: .percentage,
+                    scope: ramScope,
+                    thresholds: effectiveThresholds,
+                    nowLabel: "vitals.range.now".localized,
+                    liveFooter: ramFooter(metrics, usedGB: swapUsedGB, totalGB: swapTotalGB),
+                    rangeFooter: rangeFooter(.ram, scope: ramScope),
+                    valueFormatter: { "\(Int(($0 * 100).rounded()))%" },
+                    plotMinHeight: 32,
+                    plotMaxHeight: nil,
+                    extra: AnyView(
+                        VStack(alignment: .leading, spacing: 5) {
+                            vitalsCompositionBar(segments: [
+                                (metrics.memoryActiveGB, ramColor.opacity(0.9)),
+                                (metrics.memoryWiredGB, Color.primary.opacity(0.42)),
+                                (metrics.memoryCompressedGB, VitalsColorResolver.warningYellow.opacity(0.85)),
+                                (metrics.memoryCachedGB, Color.primary.opacity(0.20)),
+                                (metrics.memoryFreeGB, Color.primary.opacity(0.08))
+                            ])
+                            vitalsLegend([
+                                ("ACTIVE", compactGB(metrics.memoryActiveGB), ramColor),
+                                ("WIRED", compactGB(metrics.memoryWiredGB), Color.primary.opacity(0.55)),
+                                ("COMPR", compactGB(metrics.memoryCompressedGB), VitalsColorResolver.warningYellow),
+                                ("CACHED", compactGB(metrics.memoryCachedGB), Color.primary.opacity(0.30)),
+                                ("FREE", compactGB(metrics.memoryFreeGB), Color.primary.opacity(0.16))
+                            ])
+                        }
+                    ),
+                    onCycle: { cycleScope(.ram) },
+                    previewHoveredIndex: columnHoverPreviews[.ram]
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.ramBandNaturalHeight, alignment: .topLeading)
+            }
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -1607,12 +1649,12 @@ public struct HardwareVitalsDrawerView: View {
     private static let cpuBandNaturalHeight: CGFloat = 180
     private static let gpuBandNaturalHeight: CGFloat = 127
     private static let ramBandNaturalHeight: CGFloat = 115
-    private static let computeHairlineHeight: CGFloat = 0.6
+    /// Three bands and the two gaps between their tiles.
     private static let computeContentNaturalHeight: CGFloat =
         cpuBandNaturalHeight
         + gpuBandNaturalHeight
         + ramBandNaturalHeight
-        + computeHairlineHeight * 2
+        + vitalsTileGap * 2
 
     /// A temperature history under a metric band: it borrows the band's own
     /// buckets, so every column is exactly as wide as the plot above it.
@@ -1818,109 +1860,109 @@ public struct HardwareVitalsDrawerView: View {
             naturalContent: Self.ioContentNaturalHeight
         )
 
-        let instruments = VStack(spacing: 0) {
-            VitalsThroughputBand(
-                metric: .network,
-                title: "NETWORK",
-                detail: detailWithRange(
-                    "\(metrics.networkInterfaceName) · \(metrics.localIPAddress)",
+        let instruments = VStack(spacing: Self.vitalsTileGap) {
+            vitalsTile(tint: netColor) {
+                VitalsThroughputBand(
                     metric: .network,
-                    scope: netScope
-                ),
-                headerValue: formatSpeed(
-                    metrics.networkDownSpeed + metrics.networkUpSpeed
-                ),
-                tint: netColor,
-                rows: [
-                    VitalsThroughputBandRow(
-                        glyph: "↓",
-                        liveValue: formatSpeed(metrics.networkDownSpeed),
-                        tint: VitalsColorResolver.identityColor(for: .network),
-                        buckets: downBuckets,
-                        total: "Σ \(compactGB(metrics.networkTotalReceivedGB)) G"
+                    title: "NETWORK",
+                    detail: detailWithRange(
+                        "\(metrics.networkInterfaceName) · \(metrics.localIPAddress)",
+                        metric: .network,
+                        scope: netScope
                     ),
-                    VitalsThroughputBandRow(
-                        glyph: "↑",
-                        liveValue: formatSpeed(metrics.networkUpSpeed),
-                        tint: upColor,
-                        buckets: upBuckets,
-                        total: "Σ \(compactGB(metrics.networkTotalSentGB)) G"
-                    )
-                ],
-                domain: netDomain,
-                scope: netScope,
-                thresholds: effectiveThresholds,
-                nowLabel: "vitals.range.now".localized,
-                rangeFooter: "",
-                valueFormatter: rateFormatter,
-                extra: nil,
-                onCycle: { cycleScope(.network) }
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.networkBandNaturalHeight, alignment: .topLeading)
+                    headerValue: formatSpeed(
+                        metrics.networkDownSpeed + metrics.networkUpSpeed
+                    ),
+                    tint: netColor,
+                    rows: [
+                        VitalsThroughputBandRow(
+                            glyph: "↓",
+                            liveValue: formatSpeed(metrics.networkDownSpeed),
+                            tint: VitalsColorResolver.identityColor(for: .network),
+                            buckets: downBuckets,
+                            total: "Σ \(compactGB(metrics.networkTotalReceivedGB)) G"
+                        ),
+                        VitalsThroughputBandRow(
+                            glyph: "↑",
+                            liveValue: formatSpeed(metrics.networkUpSpeed),
+                            tint: upColor,
+                            buckets: upBuckets,
+                            total: "Σ \(compactGB(metrics.networkTotalSentGB)) G"
+                        )
+                    ],
+                    domain: netDomain,
+                    scope: netScope,
+                    thresholds: effectiveThresholds,
+                    nowLabel: "vitals.range.now".localized,
+                    rangeFooter: "",
+                    valueFormatter: rateFormatter,
+                    extra: nil,
+                    onCycle: { cycleScope(.network) }
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.networkBandNaturalHeight, alignment: .topLeading)
+            }
 
-            vitalsHairline
-                .frame(height: Self.ioHairlineHeight)
+            vitalsTile(tint: netColor) {
+                wifiBand(metrics: metrics, netColor: netColor, grid: downBuckets)
+                    .frame(height: Self.wifiBandNaturalHeight, alignment: .topLeading)
+            }
 
-            wifiBand(metrics: metrics, netColor: netColor, grid: downBuckets)
-                .frame(height: Self.wifiBandNaturalHeight, alignment: .topLeading)
-
-            vitalsHairline
-                .frame(height: Self.ioHairlineHeight)
-
-            VitalsThroughputBand(
-                metric: .disk,
-                title: "DISK",
-                detail: detailWithRange(
-                    "vitals.disk.bootDiskOnly".localized,
+            vitalsTile(tint: diskColor) {
+                VitalsThroughputBand(
                     metric: .disk,
-                    scope: diskScope
-                ),
-                headerValue: "\(Int((usedRatio * 100).rounded()))%",
-                tint: diskColor,
-                rows: [
-                    VitalsThroughputBandRow(
-                        glyph: "R",
-                        liveValue: formatSpeed(metrics.diskReadBytesPerSec),
-                        tint: VitalsColorResolver.identityColor(for: .disk),
-                        buckets: readBuckets,
-                        total: "Σ \(compactGB(metrics.diskReadTotalGB)) G"
+                    title: "DISK",
+                    detail: detailWithRange(
+                        "vitals.disk.bootDiskOnly".localized,
+                        metric: .disk,
+                        scope: diskScope
                     ),
-                    VitalsThroughputBandRow(
-                        glyph: "W",
-                        liveValue: formatSpeed(metrics.diskWriteBytesPerSec),
-                        tint: writeColor,
-                        buckets: writeBuckets,
-                        total: "Σ \(compactGB(metrics.diskWriteTotalGB)) G"
-                    )
-                ],
-                domain: diskDomain,
-                scope: diskScope,
-                thresholds: effectiveThresholds,
-                nowLabel: "vitals.range.now".localized,
-                rangeFooter: "",
-                valueFormatter: rateFormatter,
-                extra: AnyView(
-                    VStack(alignment: .leading, spacing: 5) {
-                        vitalsCompositionBar(segments: [
-                            (usedGB, diskColor.opacity(0.75)),
-                            (metrics.diskFreeGB, Color.primary.opacity(0.08))
-                        ])
-                        vitalsLegend([
-                            ("USED", "\(compactGB(usedGB)) G", diskColor),
-                            ("FREE", "\(compactGB(metrics.diskFreeGB)) G", Color.primary.opacity(0.8)),
-                            ("TOTAL", "\(compactGB(metrics.diskTotalGB)) G", Color.primary.opacity(0.3))
-                        ])
-                    }
-                ),
-                onCycle: { cycleScope(.disk) }
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.diskBandNaturalHeight, alignment: .topLeading)
+                    headerValue: "\(Int((usedRatio * 100).rounded()))%",
+                    tint: diskColor,
+                    rows: [
+                        VitalsThroughputBandRow(
+                            glyph: "R",
+                            liveValue: formatSpeed(metrics.diskReadBytesPerSec),
+                            tint: VitalsColorResolver.identityColor(for: .disk),
+                            buckets: readBuckets,
+                            total: "Σ \(compactGB(metrics.diskReadTotalGB)) G"
+                        ),
+                        VitalsThroughputBandRow(
+                            glyph: "W",
+                            liveValue: formatSpeed(metrics.diskWriteBytesPerSec),
+                            tint: writeColor,
+                            buckets: writeBuckets,
+                            total: "Σ \(compactGB(metrics.diskWriteTotalGB)) G"
+                        )
+                    ],
+                    domain: diskDomain,
+                    scope: diskScope,
+                    thresholds: effectiveThresholds,
+                    nowLabel: "vitals.range.now".localized,
+                    rangeFooter: "",
+                    valueFormatter: rateFormatter,
+                    extra: AnyView(
+                        VStack(alignment: .leading, spacing: 5) {
+                            vitalsCompositionBar(segments: [
+                                (usedGB, diskColor.opacity(0.75)),
+                                (metrics.diskFreeGB, Color.primary.opacity(0.08))
+                            ])
+                            vitalsLegend([
+                                ("USED", "\(compactGB(usedGB)) G", diskColor),
+                                ("FREE", "\(compactGB(metrics.diskFreeGB)) G", Color.primary.opacity(0.8)),
+                                ("TOTAL", "\(compactGB(metrics.diskTotalGB)) G", Color.primary.opacity(0.3))
+                            ])
+                        }
+                    ),
+                    onCycle: { cycleScope(.disk) }
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.diskBandNaturalHeight, alignment: .topLeading)
+            }
         }
         .padding(.horizontal, 2)
         .frame(height: split.content, alignment: .top)
@@ -1946,13 +1988,13 @@ public struct HardwareVitalsDrawerView: View {
     /// 20pt minimum, the footer, and the disk's composition legend.
     private static let networkBandNaturalHeight: CGFloat = 122
     private static let diskBandNaturalHeight: CGFloat = 148
-    private static let ioHairlineHeight: CGFloat = 0.6
     private static let wifiBandNaturalHeight: CGFloat = 72
+    /// Three bands and the two gaps between their tiles.
     private static let ioContentNaturalHeight: CGFloat =
         networkBandNaturalHeight
         + wifiBandNaturalHeight
         + diskBandNaturalHeight
-        + ioHairlineHeight * 2
+        + vitalsTileGap * 2
 
     private func wifiBand(
         metrics: HardwareVitalsInfo,
@@ -2119,48 +2161,52 @@ public struct HardwareVitalsDrawerView: View {
         // size. The extra height belongs to the energy process list.
         let naturalContent = Self.batteryBandNaturalHeight
             + Self.powerDetailNaturalHeight
-            + Self.powerHairlineHeight
+            + Self.vitalsTileGap
             + (showsFlow
-                ? Self.powerFlowNaturalHeight + Self.powerHairlineHeight
+                ? Self.powerFlowNaturalHeight + Self.vitalsTileGap
                 : 0)
             + (capacity != nil
-                ? Self.capacityBandNaturalHeight + Self.powerHairlineHeight
+                ? Self.capacityBandNaturalHeight + Self.vitalsTileGap
                 : 0)
         let split = VitalsTabLayout.split(
             available: availableHeight - 4,
             naturalContent: naturalContent
         )
 
-        let instruments = VStack(spacing: 0) {
-            batteryBand(metrics: metrics, state: state, powerColor: powerColor)
-                .frame(height: Self.batteryBandNaturalHeight)
+        let instruments = VStack(spacing: Self.vitalsTileGap) {
+            vitalsTile(tint: powerColor) {
+                batteryBand(metrics: metrics, state: state, powerColor: powerColor)
+                    .frame(height: Self.batteryBandNaturalHeight)
+            }
 
             if showsFlow {
-                vitalsHairline
-                powerFlowBand(
-                    metrics: metrics,
-                    powerColor: powerColor
-                )
-                .frame(height: Self.powerFlowNaturalHeight)
+                vitalsTile(tint: powerColor) {
+                    powerFlowBand(
+                        metrics: metrics,
+                        powerColor: powerColor
+                    )
+                    .frame(height: Self.powerFlowNaturalHeight)
+                }
             }
 
             if let capacity {
-                vitalsHairline
-                capacityBand(
-                    metrics: metrics,
-                    maxWh: capacity.max,
-                    designWh: capacity.design,
-                    powerColor: powerColor
-                )
-                .frame(height: Self.capacityBandNaturalHeight)
+                vitalsTile(tint: powerColor) {
+                    capacityBand(
+                        metrics: metrics,
+                        maxWh: capacity.max,
+                        designWh: capacity.design,
+                        powerColor: powerColor
+                    )
+                    .frame(height: Self.capacityBandNaturalHeight)
+                }
             }
 
-            vitalsHairline
-
-            vitalsDetailCells(powerDetailCells(metrics))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(height: Self.powerDetailNaturalHeight)
+            vitalsTile(tint: nil) {
+                vitalsDetailCells(powerDetailCells(metrics))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .frame(height: Self.powerDetailNaturalHeight)
+            }
         }
         .frame(height: split.content, alignment: .top)
 
@@ -2185,7 +2231,6 @@ public struct HardwareVitalsDrawerView: View {
     private static let powerFlowNaturalHeight: CGFloat = 103
     private static let capacityBandNaturalHeight: CGFloat = 62
     private static let powerDetailNaturalHeight: CGFloat = 30
-    private static let powerHairlineHeight: CGFloat = 0.6
 
     private func batteryBand(
         metrics: HardwareVitalsInfo,

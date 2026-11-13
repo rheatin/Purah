@@ -131,6 +131,21 @@ struct VitalsDrawerRenderTests {
         let powerBitmap = try render(power, named: "power-hover.png")
         #expect(inkPixelCount(powerBitmap) > 500)
 
+        state.dashboardTab = .io
+        let io = HardwareVitalsDrawerView(
+            state: state,
+            store: store,
+            service: service,
+            historyOverride: [.network: oneHour, .disk: oneHour],
+            throughputOverride: [
+                .networkUp: oneHour,
+                .diskRead: oneHour,
+                .diskWrite: oneHour
+            ]
+        )
+        let ioBitmap = try render(io, named: "io.png")
+        #expect(inkPixelCount(ioBitmap) > 500)
+
         state.dashboardTab = .overview
         let shortOverview = HardwareVitalsDrawerView(
             state: state,
