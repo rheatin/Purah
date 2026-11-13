@@ -36,9 +36,32 @@ enum VitalsColumnStripLayout {
     static func bars(
         buckets: [VitalsBucket],
         domain: VitalsColumnDomain,
-        size: CGSize
+        size: CGSize,
+        placements: [Double]? = nil
     ) -> [VitalsColumnBar] {
         guard !buckets.isEmpty, size.width > 0, size.height > 0 else { return [] }
+
+        if let placements, placements.count == buckets.count {
+            let barWidth = timedBarWidth(placements: placements, size: size)
+            let half = barWidth / 2
+            return buckets.enumerated().compactMap { index, bucket in
+                guard bucket.mean > 0.000_001 else { return nil }
+                let height = max(domain.height(for: bucket.mean) * size.height, 1.5)
+                let fraction = min(max(CGFloat(placements[index]), 0), 1)
+                let center = min(max(fraction * size.width, half), size.width - half)
+                return VitalsColumnBar(
+                    index: index,
+                    rect: CGRect(
+                        x: center - half,
+                        y: size.height - height,
+                        width: barWidth,
+                        height: height
+                    ),
+                    mean: bucket.mean
+                )
+            }
+        }
+
         let geometry = cellGeometry(count: buckets.count, width: size.width)
 
         return buckets.enumerated().compactMap { index, bucket in
@@ -51,6 +74,31 @@ enum VitalsColumnStripLayout {
                 mean: bucket.mean
             )
         }
+    }
+
+    /// Timed bars are sized from the spacing between consecutive samples
+    /// rather than from a count-based grid, so a missing sample leaves a
+    /// visible gap instead of widening its neighbours.
+    private static func timedBarWidth(
+        placements: [Double],
+        size: CGSize
+    ) -> CGFloat {
+        var width: CGFloat = 9
+        if placements.count >= 2 {
+            let spacings = zip(placements, placements.dropFirst())
+                .map { abs($1 - $0) }
+                .sorted()
+            let middle = spacings.count / 2
+            let median = spacings.count.isMultiple(of: 2)
+                ? (spacings[middle - 1] + spacings[middle]) / 2
+                : spacings[middle]
+            width = CGFloat(median) * size.width * 0.8
+        }
+        width = min(max(width, 4), 12)
+        // A timed bar never grows wider than the strip is tall, which keeps
+        // an edge sample inside the strip instead of overhanging it.
+        width = max(4, min(width, size.height))
+        return min(width, size.width)
     }
 
     static func index(at x: CGFloat, count: Int, width: CGFloat) -> Int? {
@@ -91,6 +139,10 @@ struct VitalsColumnStrip: View {
     /// Optional per-bucket colour source. A supplied colour wins over the
     /// metric's alert logic; nil keeps every existing caller unchanged.
     var bucketColors: [Color]? = nil
+    /// Optional per-bucket horizontal placement (0…1). When supplied and its
+    /// count matches the buckets, bars sit at their real sample times instead
+    /// of the equal index grid.
+    var placements: [Double]? = nil
     let metric: VitalsMetricType
     let thresholds: VitalsColorThresholds
     @Binding var hoveredIndex: Int?
@@ -103,7 +155,8 @@ struct VitalsColumnStrip: View {
             let bars = VitalsColumnStripLayout.bars(
                 buckets: buckets,
                 domain: domain,
-                size: size
+                size: size,
+                placements: placements
             )
             ZStack(alignment: .topLeading) {
                 ForEach(bars) { bar in

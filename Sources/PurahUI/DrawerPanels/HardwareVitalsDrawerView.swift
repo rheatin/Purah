@@ -2065,20 +2065,34 @@ public struct HardwareVitalsDrawerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// RSSI on the network chart's own buckets. A grid built from the RSSI
-    /// buffer alone covers only as much time as the drawer has been open, so
-    /// its columns came out wider than the plot's for the first minute.
+    /// RSSI drawn at each sample's real time inside the network chart's
+    /// window. Borrowing the window keeps the strip the same 30 seconds as
+    /// the plot above it, while per-sample placement means a sample that is
+    /// genuinely absent leaves a gap instead of being carried forward.
     private func rssiStrip(
         points: [VitalsHistoryPoint],
         grid: [VitalsBucket],
         tint: Color
     ) -> some View {
+        var samples: [VitalsHistoryPoint] = []
+        var placements: [Double] = []
+        if let windowStart = grid.first?.start, let windowEnd = grid.last?.end {
+            let span = windowEnd.timeIntervalSince(windowStart)
+            if span > 0 {
+                samples = points.filter {
+                    $0.timestamp >= windowStart && $0.timestamp <= windowEnd
+                }
+                placements = samples.map {
+                    min(max($0.timestamp.timeIntervalSince(windowStart) / span, 0), 1)
+                }
+            }
+        }
         // -95 dBm is the bottom of the scale and -30 the top.
-        let readings = VitalsHistoryBuffer.means(for: grid, points: points)
-        let buckets = zip(grid, readings).map { slot, dBm in
-            VitalsBucket(
-                start: slot.start,
-                end: slot.end,
+        let buckets = samples.map { sample in
+            let dBm = sample.value
+            return VitalsBucket(
+                start: sample.timestamp,
+                end: sample.timestamp,
                 mean: dBm < 0 ? min(max((dBm + 95.0) / 65.0, 0.03), 1.0) : 0
             )
         }
@@ -2086,9 +2100,10 @@ public struct HardwareVitalsDrawerView: View {
             buckets: buckets,
             domain: .percentage,
             tint: tint,
-            bucketColors: readings.map { reading in
-                wifiTint(Int(reading.rounded()), associated: reading < 0)
+            bucketColors: samples.map { sample in
+                wifiTint(Int(sample.value.rounded()), associated: sample.value < 0)
             },
+            placements: placements,
             metric: .network,
             thresholds: effectiveThresholds,
             hoveredIndex: .constant(nil),

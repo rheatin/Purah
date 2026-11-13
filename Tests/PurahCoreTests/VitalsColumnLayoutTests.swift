@@ -80,6 +80,67 @@ struct VitalsColumnLayoutTests {
         }
     }
 
+    @Test("Timed bars sit at their sample fractions")
+    func timedBarsFollowPlacements() {
+        let bars = VitalsColumnStripLayout.bars(
+            buckets: [bucket(0.5), bucket(0.5), bucket(0.5)],
+            domain: .percentage,
+            size: CGSize(width: 100, height: 10),
+            placements: [0, 0.5, 1]
+        )
+
+        #expect(bars.count == 3)
+        #expect(abs(bars[0].rect.midX - 5) < 0.001)
+        #expect(abs(bars[1].rect.midX - 50) < 0.001)
+        #expect(abs(bars[2].rect.midX - 95) < 0.001)
+    }
+
+    @Test("A missing timed sample leaves a real gap")
+    func timedBarsLeaveAGapForAMissingSample() {
+        let size = CGSize(width: 100, height: 10)
+        let sparse = VitalsColumnStripLayout.bars(
+            buckets: [bucket(0.5), bucket(0.5), bucket(0.5), bucket(0.5)],
+            domain: .percentage,
+            size: size,
+            placements: [0, 0.25, 0.75, 1]
+        )
+        let dense = VitalsColumnStripLayout.bars(
+            buckets: [bucket(0.5), bucket(0.5), bucket(0.5), bucket(0.5), bucket(0.5)],
+            domain: .percentage,
+            size: size,
+            placements: [0, 0.25, 0.5, 0.75, 1]
+        )
+
+        #expect(abs(dense[2].rect.midX - 50) < 0.001)
+        #expect(abs(sparse[2].rect.midX - 75) < 0.001)
+        #expect(abs(sparse[2].rect.midX - dense[2].rect.midX - 25) < 0.001)
+    }
+
+    @Test("No placements keeps the index-grid geometry")
+    func nilPlacementsKeepIndexGrid() {
+        let buckets = (0..<6).map { bucket($0.isMultiple(of: 2) ? 0.5 : 0) }
+        let size = CGSize(width: 120, height: 20)
+        let implicitNil = VitalsColumnStripLayout.bars(
+            buckets: buckets,
+            domain: .percentage,
+            size: size
+        )
+        let explicitNil = VitalsColumnStripLayout.bars(
+            buckets: buckets,
+            domain: .percentage,
+            size: size,
+            placements: nil
+        )
+
+        #expect(implicitNil.count == explicitNil.count)
+        for (lhs, rhs) in zip(implicitNil, explicitNil) {
+            #expect(lhs.index == rhs.index)
+            #expect(lhs.rect == rhs.rect)
+            #expect(lhs.mean == rhs.mean)
+        }
+        #expect(implicitNil.first?.rect.minX == 0)
+    }
+
     @Test("Hovered detail keeps the range and follows the scope's time format")
     @MainActor
     func hoveredDetailUsesScopeTimeFormat() {
