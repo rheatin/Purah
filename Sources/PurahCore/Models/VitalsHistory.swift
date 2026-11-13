@@ -256,9 +256,11 @@ public struct VitalsHistoryBuffer: Sendable {
         // picket fence rather than a chart.
         let cadence = sampleCadence(source.points, fallback: source.resolution)
         let limit = max(maximumColumns, 1)
-        let count = min(max(Int((span / cadence).rounded(.down)), 1), limit)
-        let width = span / Double(count)
-        let gridStart = now.addingTimeInterval(-span)
+        // A slot is one sample period; the window is padded back to whole
+        // periods so the newest slot always ends at `now`.
+        let width = max(cadence, span / Double(limit))
+        let count = max(min(Int((span / width).rounded(.up)), limit), 1)
+        let gridStart = now.addingTimeInterval(-Double(count) * width)
         let grid = (0..<count).map { index in
             let start = gridStart.addingTimeInterval(Double(index) * width)
             let end = min(start.addingTimeInterval(width), now)

@@ -73,6 +73,42 @@ struct VitalsHistoryTests {
         #expect(abs(buckets[1].end.timeIntervalSince(buckets[1].start) - 60) < 0.001)
     }
 
+    @Test("Two coarse samples under a stretched window keep cadence-width slots")
+    func coarseSamplesKeepCadenceWidthSlots() {
+        let now = base.addingTimeInterval(43_200)
+        let fast = (0..<300).map { index in
+            VitalsHistoryPoint(
+                timestamp: now.addingTimeInterval(TimeInterval(index - 299)),
+                value: 0.5
+            )
+        }
+        let minute = (0..<21).map { index in
+            VitalsHistoryPoint(
+                timestamp: now.addingTimeInterval(TimeInterval(index - 20) * 60),
+                value: 0.6
+            )
+        }
+        let coarse = [
+            VitalsHistoryPoint(timestamp: now.addingTimeInterval(-1_746), value: 0.9),
+            VitalsHistoryPoint(timestamp: now.addingTimeInterval(-1_026), value: 0.8)
+        ]
+
+        let buckets = VitalsHistoryBuffer.columns(
+            tiers: VitalsTieredHistory(fast: fast, minute: minute, coarse: coarse),
+            scope: .hours12,
+            now: now,
+            maximumColumns: 30
+        )
+
+        #expect(buckets.count == 3)
+        #expect(abs(buckets[0].start.timeIntervalSince(now.addingTimeInterval(-2_160))) < 0.001)
+        #expect(buckets.allSatisfy { abs($0.end.timeIntervalSince($0.start) - 720) < 0.001 })
+        #expect(buckets.last?.end == now)
+        #expect(abs(buckets[0].mean - 0.9) < 0.001)
+        #expect(abs(buckets[1].mean - 0.8) < 0.001)
+        #expect(buckets[2].mean == 0)
+    }
+
     @Test("Twenty minutes under an hour draws twenty one-minute columns")
     func shortHistoryWidensHourBuckets() {
         var buffer = VitalsHistoryBuffer()
