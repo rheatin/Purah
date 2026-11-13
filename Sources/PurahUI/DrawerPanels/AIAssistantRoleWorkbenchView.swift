@@ -732,16 +732,6 @@ public struct AIAssistantRoleWorkbenchView: View {
                             }
                     }
                 }
-                .simultaneousGesture(
-                    TapGesture().onEnded {
-                        if state.isEditingSource || state.isRefiningOutput {
-                            withAnimation(PurahMotionPolicy.microLight) {
-                                state.isEditingSource = false
-                                state.isRefiningOutput = false
-                            }
-                        }
-                    }
-                )
 
             // 3. The one-row confirmation for anything the answer proposed to write
             if let draft = pendingDraft, let messageId = lastAssistantMsg?.id {
@@ -1150,22 +1140,25 @@ public struct AIAssistantRoleWorkbenchView: View {
                     )
                 }
 
-                // Copy Button
-                Button {
-                    copyResult()
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 9))
-                        .foregroundColor(Color.white.opacity(0.75))
-                        .frame(width: 22, height: 22)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5.5, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
-                        )
+                // Secondary Copy Button: only needed when the primary bottom-left
+                // pill is "Replace Selection" or hidden behind the expanded Refine box.
+                if state.capturedSelection != nil || state.isRefiningOutput {
+                    Button {
+                        copyResult()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 9))
+                            .foregroundColor(Color.white.opacity(0.75))
+                            .frame(width: 22, height: 22)
+                            .background(
+                                RoundedRectangle(cornerRadius: 5.5, style: .continuous)
+                                    .fill(Color.white.opacity(0.06))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("ai.action.copyResult".localized)
+                    .accessibilityLabel("ai.action.copyResult".localized)
                 }
-                .buttonStyle(.plain)
-                .help("ai.action.copyResult".localized)
-                .accessibilityLabel("ai.action.copyResult".localized)
             }
             .frame(height: 22)
             .simultaneousGesture(
@@ -1361,6 +1354,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                                             .font(.system(size: 9.5, design: .monospaced))
                                             .foregroundColor(Color.white.opacity(0.70))
                                             .lineSpacing(2)
+                                            .textSelection(.enabled)
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .padding(6)
 
@@ -1592,6 +1586,7 @@ public struct AIAssistantRoleWorkbenchView: View {
                     Text(reasoning)
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Color.white.opacity(0.65))
+                        .textSelection(.enabled)
                         .padding(6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }

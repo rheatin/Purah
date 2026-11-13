@@ -96,7 +96,7 @@ public struct InteractiveMarkdownPreviewView: View {
     public let fontSize: CGFloat
     public let accentColor: Color
     public let onToggleChecklist: (Int) -> Void
-    public let onRequestEdit: () -> Void
+    public let onRequestEdit: (() -> Void)?
 
     @State private var followsTail: Bool = true
     @State private var isScrolledUp: Bool = false
@@ -108,7 +108,7 @@ public struct InteractiveMarkdownPreviewView: View {
         fontSize: CGFloat = 11.5,
         accentColor: Color,
         onToggleChecklist: @escaping (Int) -> Void,
-        onRequestEdit: @escaping () -> Void = {}
+        onRequestEdit: (() -> Void)? = nil
     ) {
         self.markdown = markdown
         self.fontSize = fontSize
@@ -121,7 +121,7 @@ public struct InteractiveMarkdownPreviewView: View {
         markdown: String,
         accentColor: Color,
         onToggleChecklist: @escaping (Int) -> Void,
-        onRequestEdit: @escaping () -> Void = {}
+        onRequestEdit: (() -> Void)? = nil
     ) {
         self.init(
             markdown: markdown,
@@ -137,7 +137,7 @@ public struct InteractiveMarkdownPreviewView: View {
         fontSize: CGFloat = 11.5,
         accentColor: Color = Color(hex: "#A78BFA"),
         onToggleChecklist: @escaping (Int) -> Void = { _ in },
-        onRequestEdit: @escaping () -> Void = {}
+        onRequestEdit: (() -> Void)? = nil
     ) {
         self.markdown = content.wrappedValue
         self.fontSize = fontSize
@@ -183,6 +183,7 @@ public struct InteractiveMarkdownPreviewView: View {
                             } else {
                                 ForEach(blocks) { block in
                                     renderBlock(block)
+                                        .textSelection(.enabled)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
@@ -199,11 +200,17 @@ public struct InteractiveMarkdownPreviewView: View {
                                     }
                                 )
                         }
+                        .textSelection(.enabled)
                         .padding(6)
                         .frame(maxWidth: .infinity, minHeight: max(80, outerGeo.size.height), alignment: .topLeading)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            onRequestEdit()
+                        .background {
+                            if let onRequestEdit {
+                                Color.clear
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        onRequestEdit()
+                                    }
+                            }
                         }
                     }
                     .coordinateSpace(name: "markdownPreviewScroll")
@@ -317,11 +324,8 @@ public struct InteractiveMarkdownPreviewView: View {
                 .help("notes.toggleChecklist".localized)
 
                 renderInlineMarkdown(itemText, fontSize: fontSize)
+                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        onRequestEdit()
-                    }
             }
         } else if trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") {
             let itemText = String(trimmed.dropFirst(6))
@@ -340,11 +344,8 @@ public struct InteractiveMarkdownPreviewView: View {
                 renderInlineMarkdown(itemText, fontSize: fontSize)
                     .strikethrough(true, color: .secondary.opacity(0.6))
                     .foregroundColor(.secondary.opacity(0.7))
+                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        onRequestEdit()
-                    }
             }
         } else if trimmed.hasPrefix("###") {
             let content = String(trimmed.drop(while: { $0 == "#" || $0.isWhitespace }))
