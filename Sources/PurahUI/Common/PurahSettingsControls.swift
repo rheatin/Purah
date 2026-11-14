@@ -274,3 +274,345 @@ public struct PurahThemedSliderRow: View {
         }
     }
 }
+
+// MARK: - Standardized Setting Toggle Row
+public struct PurahSettingToggleRow: View {
+    public let title: String
+    public var subtitle: String?
+    @Binding public var isOn: Bool
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        isOn: Binding<Bool>
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self._isOn = isOn
+    }
+
+    public var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle("", isOn: $isOn)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .labelsHidden()
+                .purahRowAccessibility(title, detail: subtitle)
+        }
+    }
+}
+
+// MARK: - Standardized Setting Pill Picker Row
+public struct PurahSettingPillPickerRow<T: Hashable>: View {
+    public let title: String
+    public var subtitle: String?
+    public var badgeText: String?
+    public let options: [T]
+    @Binding public var selection: T
+    public let titleForOption: (T) -> String
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        badgeText: String? = nil,
+        options: [T],
+        selection: Binding<T>,
+        titleForOption: @escaping (T) -> String
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.badgeText = badgeText
+        self.options = options
+        self._selection = selection
+        self.titleForOption = titleForOption
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                if let badge = badgeText, !badge.isEmpty {
+                    Text(badge)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(palette.primaryAccent)
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 5) {
+                    ForEach(options, id: \.self) { opt in
+                        let isSelected = (selection == opt)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                selection = opt
+                            }
+                        } label: {
+                            Text(titleForOption(opt))
+                                .font(.system(size: 10, weight: isSelected ? .bold : .medium, design: .rounded))
+                                .foregroundColor(isSelected ? palette.primaryAccent : .primary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(isSelected ? palette.primaryAccent.opacity(0.14) : Color.primary.opacity(0.04))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .stroke(isSelected ? palette.primaryAccent : palette.borderColor.opacity(0.2), lineWidth: isSelected ? 1.2 : 0.6)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+}
+
+// MARK: - Standardized Setting Stepper Row
+public struct PurahSettingStepperRow: View {
+    public let title: String
+    public var subtitle: String?
+    public var badgeText: String?
+    @Binding public var value: Double
+    public let range: ClosedRange<Double>
+    public let step: Double
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        badgeText: String? = nil,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double = 1.0
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.badgeText = badgeText
+        self._value = value
+        self.range = range
+        self.step = step
+    }
+
+    public var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 8) {
+                if let badge = badgeText, !badge.isEmpty {
+                    Text(badge)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(palette.primaryAccent)
+                }
+
+                Stepper("", value: $value, in: range, step: step)
+                    .labelsHidden()
+                    .controlSize(.small)
+            }
+        }
+    }
+}
+
+// MARK: - Standardized Setting Action Row
+public struct PurahSettingActionRow: View {
+    public let title: String
+    public var subtitle: String?
+    public let buttonTitle: String
+    public var systemIcon: String?
+    public var role: String?
+    public let action: () -> Void
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        buttonTitle: String,
+        systemIcon: String? = nil,
+        role: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.buttonTitle = buttonTitle
+        self.systemIcon = systemIcon
+        self.role = role
+        self.action = action
+    }
+
+    public var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: action) {
+                HStack(spacing: 4) {
+                    if let icon = systemIcon, !icon.isEmpty {
+                        Image(systemName: icon)
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    Text(buttonTitle)
+                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(buttonBgColor)
+                )
+                .foregroundColor(buttonFgColor)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(buttonBorderColor, lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.tactile)
+        }
+    }
+
+    private var buttonBgColor: Color {
+        if role == "destructive" {
+            return Color.red.opacity(0.15)
+        } else if role == "accent" {
+            return palette.primaryAccent.opacity(0.15)
+        }
+        return Color.primary.opacity(0.06)
+    }
+
+    private var buttonFgColor: Color {
+        if role == "destructive" {
+            return Color.red
+        } else if role == "accent" {
+            return palette.primaryAccent
+        }
+        return .primary
+    }
+
+    private var buttonBorderColor: Color {
+        if role == "destructive" {
+            return Color.red.opacity(0.4)
+        } else if role == "accent" {
+            return palette.primaryAccent.opacity(0.4)
+        }
+        return palette.borderColor.opacity(0.25)
+    }
+}
+
+// MARK: - Standardized Setting Info Row
+public struct PurahSettingInfoRow: View {
+    public let title: String
+    public var subtitle: String?
+    public let valueText: String
+    public var systemIcon: String?
+
+    private var palette: ThemePalette {
+        ThemeManager.shared.palette
+    }
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        valueText: String,
+        systemIcon: String? = nil
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.valueText = valueText
+        self.systemIcon = systemIcon
+    }
+
+    public var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    if let icon = systemIcon, !icon.isEmpty {
+                        Image(systemName: icon)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    Text(title)
+                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                }
+
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Text(valueText)
+                .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                .foregroundColor(.secondary)
+        }
+    }
+}

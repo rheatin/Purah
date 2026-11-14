@@ -65,14 +65,22 @@ public struct MusicPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(
-            MusicRailBarContainerView(
-                state: state,
-                store: context.store,
-                slotHeight: context.slotHeight,
-                railWidth: context.railWidth
-            )
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        let storeTrack = context.store._musicTrack
+        let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
+        let hasTrack = !liveTrack.title.isEmpty
+        let isPlaying = hasTrack
+            && (storeTrack.isPlaying || state.isPlaying || (SystemAudioLiveMonitor.shared.currentLevel > 0.008))
+        SystemAudioLiveMonitor.shared.latencyOffsetMs = state.rhythmOffsetMs
+
+        return .audioWave(
+            style: state.railStyle,
+            subStyle: state.dynamicSubStyle,
+            track: liveTrack,
+            progress: liveTrack.calculatedProgress,
+            samples: hasTrack ? liveTrack.waveformSamples : [],
+            isPlaying: isPlaying,
+            isAnimated: hasTrack && state.isWaveformAnimationEnabled
         )
     }
 
@@ -97,14 +105,14 @@ public struct MusicPlugin: PurahPodPlugin {
         return sourceApp
     }
 
-    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+    public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
         let hasTrack = !state.track.title.isEmpty || !context.store._musicTrack.title.isEmpty
         guard hasTrack else { return nil }
         let source = state.track.sourceApp
         let bundleId = state.track.sourceBundleId
         let displaySource = Self.normalizedSourceDisplayName(sourceApp: source, bundleId: bundleId)
         guard !displaySource.isEmpty else { return nil }
-        return AnyView(PurahHeaderBadge(displaySource, tint: context.accentColor))
+        return .badge(displaySource)
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {

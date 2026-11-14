@@ -25,16 +25,8 @@ public struct DropShelfPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(
-            RailBarAmbientView(
-                type: .shelf,
-                hasContent: !state.files.isEmpty,
-                color: context.accentColor,
-                barWidth: context.railWidth
-            )
-            .frame(width: context.railWidth, height: context.slotHeight)
-        )
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        .solid(color: context.accentColor, hasContent: !state.files.isEmpty)
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {

@@ -27,8 +27,24 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(VitalsRailBarPluginView(context: context, state: state))
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        let metric = state.headerMetric
+        let color = VitalsColorResolver.statusColor(
+            for: metric,
+            vitals: state.metrics,
+            thresholds: state.thresholds,
+            palette: context.palette
+        )
+        return .gauge(
+            segments: [PurahGaugeSegment(
+                id: metric.rawValue,
+                ratio: state.ratio(for: metric),
+                color: color,
+                isAlerting: state.isAlerting(for: metric)
+            )],
+            trackColor: color.opacity(0.25),
+            minimumVisibleFill: 4.0
+        )
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
@@ -36,54 +52,38 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     /// The reading the header reports, and which metric it reports.
-    ///
-    /// A control names what it changes (AGENTS.md §3): the pill used to be a
-    /// fixed CPU badge, so the other five metrics were unreachable without
-    /// opening the drawer. It is a menu now and the label is the live value of
-    /// the chosen metric.
-    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            Menu {
-                ForEach(VitalsMetricType.allCases) { metric in
-                    Button {
-                        state.setHeaderMetric(metric)
-                    } label: {
-                        HStack {
-                            Label(metric.displayName, systemImage: metric.systemIcon)
-                            if state.headerMetric == metric {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                PurahHeaderMenuLabel(
-                    text: headerMetricValue,
-                    icon: state.headerMetric.systemIcon,
-                    tint: context.accentColor,
-                    maxTextWidth: 78
+    public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
+        PurahHeaderAccessoryDescriptor.menu(
+            text: headerMetricValue,
+            systemIcon: state.headerMetric.systemIcon,
+            options: VitalsMetricType.allCases.map { metric in
+                PurahHeaderMenuOption(
+                    id: metric.rawValue,
+                    title: metric.displayName,
+                    systemIcon: metric.systemIcon,
+                    isSelected: state.headerMetric == metric
                 )
             }
-            .purahHeaderMenuStyle()
-            .fixedSize()
         )
     }
 
-    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            PurahHeaderGroup {
-                ForEach(VitalsDashboardTab.allCases) { tab in
-                    PurahHeaderButton(
-                        systemImage: tab.icon,
-                        help: tab.title,
-                        tint: context.accentColor,
-                        isActive: state.dashboardTab == tab
-                    ) {
-                        withAnimation(PurahMotionPolicy.surfaceSoft) { state.dashboardTab = tab }
-                    }
-                }
-            }
-        )
+    public func headerTrailingItems(context: PurahPluginContext) -> [PurahHeaderTrailingItem] {
+        VitalsDashboardTab.allCases.map { tab in
+            PurahHeaderTrailingItem.button(
+                id: tab.rawValue,
+                systemIcon: tab.icon,
+                help: tab.title,
+                isActive: state.dashboardTab == tab
+            )
+        }
+    }
+
+    public func onHeaderAction(actionId: String, context: PurahPluginContext) {
+        if let metric = VitalsMetricType(rawValue: actionId) {
+            state.setHeaderMetric(metric)
+        } else if let tab = VitalsDashboardTab(rawValue: actionId) {
+            withAnimation(PurahMotionPolicy.surfaceSoft) { state.dashboardTab = tab }
+        }
     }
 
     private var headerMetricValue: String {

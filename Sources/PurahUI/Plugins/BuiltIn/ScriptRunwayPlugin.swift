@@ -25,21 +25,16 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(ScriptsRailBarPluginView(context: context))
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        .solid(color: context.accentColor, hasContent: true)
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
         AnyView(ScriptRunwayDrawerView(state: state, store: context.store))
     }
 
-    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            PurahHeaderBadge(
-                String(format: "runway.actionCount".localized, state.actions.count),
-                tint: context.accentColor
-            )
-        )
+    public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
+        .badge(String(format: "runway.actionCount".localized, state.actions.count))
     }
 
     public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {

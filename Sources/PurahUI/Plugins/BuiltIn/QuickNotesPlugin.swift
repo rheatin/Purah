@@ -24,16 +24,8 @@ public struct QuickNotesPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(
-            RailBarAmbientView(
-                type: .notes,
-                hasContent: !state.noteContent.text.isEmpty,
-                color: context.accentColor,
-                barWidth: context.railWidth
-            )
-            .frame(width: context.railWidth, height: context.slotHeight)
-        )
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        .solid(color: context.accentColor, hasContent: !state.noteContent.text.isEmpty)
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {

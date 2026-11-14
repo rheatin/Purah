@@ -126,7 +126,6 @@ public struct AIAssistantSteppedDrawerView: View {
         let drawerW = context.drawerWidth
         let edge = context.edge
         let roleColor = Color(hex: role.colorHex)
-        let barRadius = min(barW / 2, 4)
         let scale = PurahSteppedCardMetrics.rowScale(cardHeight: cardH)
         let iconSize = 26 * scale
         let font = 10 * scale
@@ -171,10 +170,9 @@ public struct AIAssistantSteppedDrawerView: View {
         }
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // 1. In-Rail Indicator Bar with flowing light spot when running
+            // Host owns the in-rail indicator bar; only overlay the activity sweep when this role is running
             ZStack(alignment: .top) {
-                RoundedRectangle(cornerRadius: barRadius)
-                    .fill(roleColor.opacity(isExpanded ? 0.96 : 0.75))
+                Color.clear
                     .frame(width: barW, height: slotH)
 
                 if isRoleRunning {

@@ -182,24 +182,7 @@ public struct PodSettingsPage: View {
                 )
 
                 if let customSettings = activePlugin.makeSettingsView(store: store) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Label("settings.title".localized, systemImage: "gearshape.2.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
-                            .lineLimit(1)
-
-                        Divider()
-                            .background(palette.borderColor.opacity(0.3))
-
-                        customSettings
-                    }
-                    .padding(12)
-                    .background(palette.surfaceBackground)
-                    .cornerRadius(10)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(palette.borderColor.opacity(0.4), lineWidth: 1)
-                    )
+                    customSettings
                 }
 
                 if activePlugin.manifest.supportsAlerts {
@@ -303,6 +286,40 @@ public struct PodSettingsPage: View {
                 )
                 .font(.system(size: 9))
                 .foregroundColor(.secondary)
+            }
+
+            if activePlugin is DynamicABIPodPlugin, activePlugin.supportedDrawerModes.contains(.stepped) {
+                Divider()
+                    .background(palette.borderColor.opacity(0.25))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    PurahStackedDecomposeNoticeView(podId: podId, store: store)
+
+                    HStack {
+                        Text("Rail Display Mode")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+
+                        Spacer()
+
+                        PurahThemedSegmentedPicker(
+                            options: [false, true],
+                            selection: Binding<Bool>(
+                                get: { activePlugin.isDecomposed(store: store) },
+                                set: { newValue in
+                                    activePlugin.setDecomposed(newValue, store: store)
+                                    if newValue { store.ensurePodFitsDecomposedChips(podId: podId) }
+                                    store.invalidateLayoutCache()
+                                    store.savePersistentState()
+                                    store.onWindowsRebuildNeeded?()
+                                }
+                            ),
+                            titleForOption: { $0 ? "Stepped Chips" : "Composite Bar" }
+                        )
+                        .frame(width: 190)
+                        .disabled(store.isInSharedMajorPod(podId: podId))
+                    }
+                }
             }
         }
         .padding(12)

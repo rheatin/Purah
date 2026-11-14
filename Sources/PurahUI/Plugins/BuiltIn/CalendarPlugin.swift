@@ -31,9 +31,33 @@ public struct CalendarPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(
-            CalendarRailBarPluginView(context: context, state: state)
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        _ = state.lastAlertTick
+        let now = Date()
+        let event = state.resolveUpNextEvent(now: now)
+        let normalColor = event?.colorHex.flatMap { Color(hex: $0) } ?? context.accentColor
+        let color = event.map {
+            CalendarUpNextStyle.color(for: $0, now: now, normalColor: normalColor)
+        } ?? normalColor
+        let status = event.map {
+            CalendarUpNextStyle.status(for: $0, now: now)
+        }
+        let accessibilityValue = event.flatMap { event in
+            state.upNextCountdownText(at: now).map { "\(event.title), \($0)" }
+        } ?? "calendar.empty.title".localized
+
+        return .gauge(
+            segments: event.map {
+                [PurahGaugeSegment(
+                    id: $0.id,
+                    ratio: state.upNextRailRatio(at: now),
+                    color: color,
+                    isAlerting: status == .danger
+                )]
+            } ?? [],
+            trackColor: color.opacity(0.25),
+            minimumVisibleFill: 0,
+            accessibilityValueLabel: accessibilityValue
         )
     }
 

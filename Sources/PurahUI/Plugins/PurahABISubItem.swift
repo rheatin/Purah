@@ -18,6 +18,8 @@ public struct PurahABISubItem: Codable, Sendable, Equatable {
     public var state: String?
     public var gaugeRatio: Double?
     public var gaugeStyle: String?
+    public var gaugeValue: String?
+    public var showsRowFill: Bool
     public var tintColorHex: String?
     public var isPinned: Bool
 
@@ -30,6 +32,8 @@ public struct PurahABISubItem: Codable, Sendable, Equatable {
         state: String? = nil,
         gaugeRatio: Double? = nil,
         gaugeStyle: String? = nil,
+        gaugeValue: String? = nil,
+        showsRowFill: Bool = false,
         tintColorHex: String? = nil,
         isPinned: Bool = false
     ) {
@@ -41,13 +45,15 @@ public struct PurahABISubItem: Codable, Sendable, Equatable {
         self.state = state
         self.gaugeRatio = gaugeRatio
         self.gaugeStyle = gaugeStyle
+        self.gaugeValue = gaugeValue
+        self.showsRowFill = showsRowFill
         self.tintColorHex = tintColorHex
         self.isPinned = isPinned
     }
 
     enum CodingKeys: String, CodingKey {
         case id, title, subtitle, systemIcon, badge, state
-        case gaugeRatio, gaugeStyle, tintColorHex, isPinned
+        case gaugeRatio, gaugeStyle, gaugeValue, showsRowFill, tintColorHex, isPinned
     }
 
     public init(from decoder: Decoder) throws {
@@ -60,6 +66,8 @@ public struct PurahABISubItem: Codable, Sendable, Equatable {
         state = try container.decodeIfPresent(String.self, forKey: .state)
         gaugeRatio = try container.decodeIfPresent(Double.self, forKey: .gaugeRatio)
         gaugeStyle = try container.decodeIfPresent(String.self, forKey: .gaugeStyle)
+        gaugeValue = try container.decodeIfPresent(String.self, forKey: .gaugeValue)
+        showsRowFill = try container.decodeIfPresent(Bool.self, forKey: .showsRowFill) ?? false
         tintColorHex = try container.decodeIfPresent(String.self, forKey: .tintColorHex)
         isPinned = try container.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
     }
@@ -77,6 +85,8 @@ public struct PurahABISubItem: Codable, Sendable, Equatable {
             state: RailItemActivityState(rawValue: state ?? "") ?? .normal,
             gaugeRatio: gaugeRatio.map { min(max($0, 0.0), 1.0) },
             gaugeStyle: RailGaugeStyle(rawValue: gaugeStyle ?? "") ?? .none,
+            gaugeValue: gaugeValue,
+            showsRowFill: showsRowFill,
             tintColorHex: tintColorHex,
             isPinned: isPinned
         )
@@ -94,6 +104,75 @@ public struct PurahABISubItem: Codable, Sendable, Equatable {
             return []
         }
         return decoded.map { $0.toSubItem() }
+    }
+}
+
+/// Wire representation of a single segment in a composite gauge rail bar.
+public struct PurahABIGaugeSegment: Codable, Sendable, Equatable {
+    public var id: String
+    public var ratio: Double
+    public var colorHex: String?
+    public var isAlerting: Bool?
+
+    public init(
+        id: String,
+        ratio: Double,
+        colorHex: String? = nil,
+        isAlerting: Bool? = nil
+    ) {
+        self.id = id
+        self.ratio = ratio
+        self.colorHex = colorHex
+        self.isAlerting = isAlerting
+    }
+}
+
+/// Wire representation of a composite pod's rail bar state (`purahRailBarStateJSON`).
+///
+/// External plugins never draw arbitrary views on the 8pt edge rail. Instead,
+/// they return this data descriptor and the host renders the physical rail pod.
+public struct PurahABIRailBarState: Codable, Sendable, Equatable {
+    /// `"solid"` (default) or `"gauge"` / `"segmented"`.
+    public var style: String?
+    public var colorHex: String?
+    public var hasContent: Bool?
+    public var isGradient: Bool?
+    /// Single-segment fill ratio (`0.0 ... 1.0`) when `style == "gauge"`.
+    public var ratio: Double?
+    public var isAlerting: Bool?
+    /// Multi-segment gauge fills when `style == "gauge"` or `"segmented"`.
+    public var segments: [PurahABIGaugeSegment]?
+    public var minimumVisibleFill: Double?
+    public var accessibilityValueLabel: String?
+
+    public init(
+        style: String? = "solid",
+        colorHex: String? = nil,
+        hasContent: Bool? = true,
+        isGradient: Bool? = false,
+        ratio: Double? = nil,
+        isAlerting: Bool? = nil,
+        segments: [PurahABIGaugeSegment]? = nil,
+        minimumVisibleFill: Double? = nil,
+        accessibilityValueLabel: String? = nil
+    ) {
+        self.style = style
+        self.colorHex = colorHex
+        self.hasContent = hasContent
+        self.isGradient = isGradient
+        self.ratio = ratio
+        self.isAlerting = isAlerting
+        self.segments = segments
+        self.minimumVisibleFill = minimumVisibleFill
+        self.accessibilityValueLabel = accessibilityValueLabel
+    }
+
+    public static func decode(_ json: String) -> PurahABIRailBarState? {
+        guard let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(PurahABIRailBarState.self, from: data) else {
+            return nil
+        }
+        return decoded
     }
 }
 

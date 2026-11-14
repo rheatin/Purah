@@ -54,15 +54,8 @@ public struct TodoItemDrawerView: View {
         }()
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // Rail-anchored baseline color bar (using native category list color)
-            RoundedRectangle(cornerRadius: min(CGFloat(store.railBarWidth) / 2, 4))
-                .fill(listColor.opacity(isDone ? 0.35 : 0.9))
+            Color.clear
                 .frame(width: CGFloat(store.railBarWidth), height: cardH)
-                .transaction { t in
-                    if !store.isBreathingActive(for: edge) {
-                        t.animation = nil
-                    }
-                }
 
             if isExpanded {
                 expandedCard(isDone: isDone, cardH: cardH, listColor: listColor, scale: scale)

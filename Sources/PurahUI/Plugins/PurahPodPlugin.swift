@@ -4,9 +4,113 @@ import UniformTypeIdentifiers
 import PurahCore
 
 @MainActor
+public enum PurahRailBarDescriptor {
+    /// Standard solid or subtle-gradient ambient rail bar owned by the host.
+    /// - `color`: optional override color (defaults to `dynamicBarColor(context:) ?? context.accentColor`).
+    /// - `hasContent`: when `false`, dims opacity to `0.40`; when `true`, renders at full ambient opacity.
+    /// - `isGradient`: when `true`, renders a vertical top-to-bottom opacity gradient.
+    case solid(color: Color? = nil, hasContent: Bool = true, isGradient: Bool = false)
+
+    /// Single-segment or multi-segment vertical gauge bar (`PurahSegmentGaugeBarView`).
+    case gauge(
+        segments: [PurahGaugeSegment],
+        trackColor: Color? = nil,
+        minimumVisibleFill: CGFloat = 4,
+        accessibilityValueLabel: String? = nil
+    )
+
+    /// Audio waveform / progress meter (`WaveMeterAmbientView`).
+    case audioWave(
+        style: MusicRailStyle,
+        subStyle: DynamicWaveformSubStyle,
+        track: MusicTrackInfo,
+        progress: Double,
+        samples: [Double],
+        isPlaying: Bool,
+        isAnimated: Bool,
+        rhythmOffsetMs: Double = 0
+    )
+}
+
+public struct PurahHostRailBarView: View {
+    public let descriptor: PurahRailBarDescriptor
+    public let context: PurahPluginContext
+
+    public init(descriptor: PurahRailBarDescriptor, context: PurahPluginContext) {
+        self.descriptor = descriptor
+        self.context = context
+    }
+
+    public var body: some View {
+        let barW = context.railWidth
+        let barH = context.slotHeight
+        let radius = min(barW / 2, 4)
+
+        switch descriptor {
+        case .solid(let customColor, let hasContent, let isGradient):
+            let activeColor = customColor ?? context.accentColor
+            if isGradient {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                activeColor.opacity(context.isExpanded ? 0.95 : 0.75),
+                                activeColor.opacity(context.isExpanded ? 0.80 : 0.55)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: barW, height: barH)
+            } else {
+                RoundedRectangle(cornerRadius: radius)
+                    .fill(activeColor.opacity(hasContent ? 0.88 : 0.40))
+                    .frame(width: barW, height: barH)
+            }
+
+        case .gauge(let segments, let trackColor, let minimumVisibleFill, let accessibilityValueLabel):
+            let baseView = PurahSegmentGaugeBarView(
+                segments: segments,
+                barWidth: barW,
+                height: barH,
+                trackColor: trackColor ?? context.accentColor.opacity(0.25),
+                minimumVisibleFill: minimumVisibleFill
+            )
+            if let accessibilityValueLabel {
+                baseView.accessibilityLabel(accessibilityValueLabel)
+            } else {
+                baseView
+            }
+
+        case .audioWave(let style, let subStyle, let track, let progress, let samples, let isPlaying, let isAnimated, let rhythmOffsetMs):
+            WaveMeterAmbientView(
+                style: style,
+                subStyle: subStyle,
+                track: track,
+                progress: progress,
+                samples: samples,
+                isPlaying: isPlaying,
+                isAnimated: isAnimated,
+                height: barH,
+                barWidth: barW
+            )
+            .frame(width: barW, height: barH)
+            .onAppear {
+                SystemAudioLiveMonitor.shared.latencyOffsetMs = rhythmOffsetMs
+            }
+        }
+    }
+}
+
+@MainActor
 public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendable {
     nonisolated var manifest: PurahPluginManifest { get }
     func alertStyle(store: PurahWorkspaceStore) -> PluginAlertStyle?
+
+    /// Declarative descriptor for the pod's composite rail bar. The host owns
+    /// all edge rail rendering (`PurahHostRailBarView`); plugins only declare
+    /// which pod style and data they want on the rail.
+    func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor
 
     @ViewBuilder func makeRailBarView(context: PurahPluginContext) -> AnyView
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
@@ -62,6 +166,9 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     func contextMenuActions(subItemId: String?, context: PurahPluginContext) -> [PurahMenuAction]
 
     // 8. Custom Header Slots (accessories next to title & trailing tools before settings/pin)
+    func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor?
+    func headerTrailingItems(context: PurahPluginContext) -> [PurahHeaderTrailingItem]
+    func onHeaderAction(actionId: String, context: PurahPluginContext)
     @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
     @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
 
@@ -70,12 +177,24 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
 
     // 10. Alert Management
     func acknowledgeAllAlerts(context: PurahPluginContext)
+
+    // 11. Declarative Settings Schema
+    func settingsSections(store: PurahWorkspaceStore) -> [PurahPluginSettingSection]
+    func onSettingChanged(key: String, value: String, store: PurahWorkspaceStore)
 }
 
 public extension PurahPodPlugin {
     nonisolated var id: String { manifest.id }
     var podId: String { manifest.id }
     func alertStyle(store: PurahWorkspaceStore) -> PluginAlertStyle? { manifest.alertStyle }
+
+    func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        .solid(color: dynamicBarColor(context: context) ?? context.accentColor, hasContent: true)
+    }
+
+    func makeRailBarView(context: PurahPluginContext) -> AnyView {
+        AnyView(PurahHostRailBarView(descriptor: railBarDescriptor(context: context), context: context))
+    }
 
     /// Whether the pod starts in stepped (chips) mode. A plugin that wants
     /// that must say so explicitly — declaring `supportedDrawerModes` only
@@ -100,13 +219,50 @@ public extension PurahPodPlugin {
 
     func onMount(store: PurahWorkspaceStore) {}
     func onUnmount(store: PurahWorkspaceStore) {}
-    func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? { nil }
+    func settingsSections(store: PurahWorkspaceStore) -> [PurahPluginSettingSection] { [] }
+    func onSettingChanged(key: String, value: String, store: PurahWorkspaceStore) {}
+
+    func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
+        let sections = settingsSections(store: store)
+        guard !sections.isEmpty else { return nil }
+        return AnyView(PurahDeclarativeSettingsView(
+            store: store,
+            sectionsProvider: { [weak store] in
+                guard let store else { return [] }
+                return self.settingsSections(store: store)
+            },
+            onSettingChanged: { [weak store] key, val in
+                guard let store else { return }
+                self.onSettingChanged(key: key, value: val, store: store)
+            }
+        ))
+    }
     func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
     func makeSteppedDrawerContent(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
     func makeSteppedRowAccessory(subItemId: String, context: PurahPluginContext) -> AnyView? { nil }
-    func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat { 8.0 }
-    func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? { nil }
-    func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? { nil }
+    func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat { 48.0 }
+    func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? { nil }
+    func headerTrailingItems(context: PurahPluginContext) -> [PurahHeaderTrailingItem] { [] }
+    func onHeaderAction(actionId: String, context: PurahPluginContext) {}
+
+    func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
+        if let descriptor = headerAccessory(context: context) {
+            return AnyView(PurahHostHeaderAccessoryView(descriptor: descriptor, context: context) { actionId in
+                self.onHeaderAction(actionId: actionId, context: context)
+            })
+        }
+        return nil
+    }
+
+    func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
+        let items = headerTrailingItems(context: context)
+        if !items.isEmpty {
+            return AnyView(PurahHostHeaderTrailingView(items: items, context: context) { actionId in
+                self.onHeaderAction(actionId: actionId, context: context)
+            })
+        }
+        return nil
+    }
 
     /// Content-only view for the pod's "+N more" overview drawer. The stepped
     /// container supplies the shared shell (rail bar, drawer-grade solid card,
