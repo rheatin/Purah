@@ -3,6 +3,7 @@ import Testing
 import Foundation
 @testable import PurahUI
 
+@MainActor
 @Suite("Inline Markdown CJK Rendering")
 struct InlineMarkdownCJKTests {
 

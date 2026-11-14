@@ -11,7 +11,10 @@ struct FreezeModeTests {
     @Test("ScreenEdgeCoordinator setFrozen hides windows and disables interactivity")
     @MainActor
     func testCoordinatorFreeze() {
-        let store = PurahWorkspaceStore()
+        let suite = "freeze_coord_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suite)!
+        defer { isolated.removePersistentDomain(forName: suite) }
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let coordinator = ScreenEdgeCoordinator(store: store)
         
         coordinator.setFrozen(true)
@@ -24,7 +27,10 @@ struct FreezeModeTests {
     @Test("EdgeMouseMonitor setFrozen toggles frozen state and resets dwell")
     @MainActor
     func testEdgeMouseMonitorFreeze() {
-        let store = PurahWorkspaceStore()
+        let suite = "freeze_mon_\(UUID().uuidString)"
+        let isolated = UserDefaults(suiteName: suite)!
+        defer { isolated.removePersistentDomain(forName: suite) }
+        let store = PurahWorkspaceStore(userDefaults: isolated)
         let monitor = EdgeMouseMonitor(store: store)
         
         monitor.setFrozen(true)

@@ -47,6 +47,7 @@ struct CalendarOverflowStrategyTests {
         state.isDecomposed = false
         let plugin = CalendarPlugin(state: state)
         let store = PurahWorkspaceStore()
+        store.resetMajorGroups(for: .right)
 
         #expect(plugin.isDecomposed(store: store) == false)
 

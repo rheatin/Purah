@@ -212,7 +212,16 @@ public final class SystemMusicSyncService {
         return nil
     }
 
-    public func handleAppleMusicInfo(notification: Notification, store: PurahWorkspaceStore?) {
+    private func handleTrackNotification(
+        notification: Notification,
+        store: PurahWorkspaceStore?,
+        sourceApp: String,
+        sourceBundleId: String,
+        defaultArtist: String,
+        durationKey: String,
+        positionKey: String,
+        isPlayingCheck: (String) -> Bool
+    ) {
         guard let userInfo = notification.userInfo else { return }
         playbackTimer?.invalidate()
         playbackTimer = nil
@@ -220,18 +229,18 @@ public final class SystemMusicSyncService {
         isMusicAppConnected = true
 
         let playerState = userInfo["Player State"] as? String ?? ""
-        let isPlaying = (playerState == "Playing")
+        let isPlaying = isPlayingCheck(playerState)
         let title = userInfo["Name"] as? String ?? "Unknown Track"
-        let artist = userInfo["Artist"] as? String ?? "Apple Music"
+        let artist = userInfo["Artist"] as? String ?? defaultArtist
         let album = userInfo["Album"] as? String ?? ""
 
-        let totalTimeMs = Self.extractNumericValue(from: userInfo["Total Time"]) ?? 180000.0
+        let totalTimeMs = Self.extractNumericValue(from: userInfo[durationKey]) ?? 180000.0
         let totalSec = max(totalTimeMs / 1000.0, 1.0)
 
         let isSameTrack = (store?._musicTrack.title == title && store?._musicTrack.artist == artist)
         let existingPos = store?._musicTrack.calculatedCurrentTime ?? 0.0
 
-        let parsedPosSec = Self.extractNumericValue(from: userInfo["Player Position"])
+        let parsedPosSec = Self.extractNumericValue(from: userInfo[positionKey])
         let currentPosSec: Double = {
             if let pos = parsedPosSec {
                 // If notification is Pause and pos is 0, but we were already playing this song,
@@ -272,8 +281,8 @@ public final class SystemMusicSyncService {
                 artworkData: existingArtwork,
                 lyrics: existingLyrics,
                 syncedLyrics: existingSyncedLyrics,
-                sourceApp: "Apple Music",
-                sourceBundleId: "com.apple.Music"
+                sourceApp: sourceApp,
+                sourceBundleId: sourceBundleId
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
             onTrackChanged?(store._musicTrack)
@@ -317,103 +326,30 @@ public final class SystemMusicSyncService {
         }
     }
 
+    public func handleAppleMusicInfo(notification: Notification, store: PurahWorkspaceStore?) {
+        handleTrackNotification(
+            notification: notification,
+            store: store,
+            sourceApp: "Apple Music",
+            sourceBundleId: "com.apple.Music",
+            defaultArtist: "Apple Music",
+            durationKey: "Total Time",
+            positionKey: "Player Position",
+            isPlayingCheck: { $0 == "Playing" }
+        )
+    }
+
     public func handleSpotifyInfo(notification: Notification, store: PurahWorkspaceStore?) {
-        guard let userInfo = notification.userInfo else { return }
-        playbackTimer?.invalidate()
-        playbackTimer = nil
-        lastNotificationDate = Date()
-        isMusicAppConnected = true
-
-        let playerState = userInfo["Player State"] as? String ?? ""
-        let isPlaying = (playerState == "Playing" || playerState == "kPSPStatePlaying")
-        let title = userInfo["Name"] as? String ?? "Unknown Track"
-        let artist = userInfo["Artist"] as? String ?? "Spotify"
-        let album = userInfo["Album"] as? String ?? ""
-
-        let durationMs = Self.extractNumericValue(from: userInfo["Duration"]) ?? 180000.0
-        let durationSec = max(durationMs / 1000.0, 1.0)
-
-        let isSameTrack = (store?._musicTrack.title == title && store?._musicTrack.artist == artist)
-        let existingPos = store?._musicTrack.calculatedCurrentTime ?? 0.0
-
-        let parsedPosSec = Self.extractNumericValue(from: userInfo["Playback Position"])
-        let currentPosSec: Double = {
-            if let pos = parsedPosSec {
-                if !isPlaying && pos == 0.0 && isSameTrack && existingPos > 1.0 {
-                    return existingPos
-                }
-                return min(max(pos, 0.0), durationSec)
-            } else if isSameTrack {
-                return existingPos
-            }
-            return 0.0
-        }()
-
-        let progress = min(max(currentPosSec / durationSec, 0.0), 1.0)
-
-        let samples: [Double] = (0..<14).map { _ in
-            isPlaying ? Double.random(in: 0.25...0.95) : 0.15
-        }
-
-        let existingArtwork = (isSameTrack ? store?._musicTrack.artworkData : nil) ?? ((cachedArtworkKey == "\(title)|\(artist)") ? cachedArtworkData : nil)
-        let cachedLyr = cachedLyrics(for: title, artist: artist)
-        let existingLyrics = (isSameTrack ? store?._musicTrack.lyrics : nil) ?? cachedLyr?.plainLyrics
-        let existingSyncedLyrics = (isSameTrack ? store?._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
-
-        if let store = store {
-            store._musicTrack = MusicTrackInfo(
-                title: title,
-                artist: artist,
-                album: album,
-                isPlaying: isPlaying,
-                playbackProgress: progress,
-                currentPositionSeconds: currentPosSec,
-                durationSeconds: durationSec,
-                lastUpdated: Date(),
-                playbackRate: isPlaying ? 1.0 : 0.0,
-                waveformSamples: samples,
-                artworkData: existingArtwork,
-                lyrics: existingLyrics,
-                syncedLyrics: existingSyncedLyrics,
-                sourceApp: "Spotify",
-                sourceBundleId: "com.spotify.client"
-            )
-            updatePlaybackTimer(store: store, isPlaying: isPlaying)
-            onTrackChanged?(store._musicTrack)
-        }
-
-        let artworkKey = "\(title)|\(artist)"
-        if existingArtwork == nil, !attemptedArtworkKeys.contains(artworkKey) {
-            attemptedArtworkKeys.insert(artworkKey)
-            Task { [weak self, weak store] in
-                if let art = await self?.fetchArtwork(title: title, artist: artist, album: album) {
-                    await MainActor.run {
-                        if let store = store, store._musicTrack.title == title {
-                            store._musicTrack.artworkData = art
-                            self?.onTrackChanged?(store._musicTrack)
-                        }
-                    }
-                }
-            }
-        }
-
-        let lyricsKey = "\(title)|\(artist)"
-        if existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track",
-           !attemptedLyricsKeys.contains(lyricsKey) {
-            attemptedLyricsKeys.insert(lyricsKey)
-            lyricFetchAttempts += 1
-            Task { [weak self, weak store] in
-                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist) {
-                    await MainActor.run {
-                        if let store = store, store._musicTrack.title == title {
-                            store._musicTrack.lyrics = lyr.plainLyrics
-                            store._musicTrack.syncedLyrics = lyr.syncedLyrics
-                            self?.onTrackChanged?(store._musicTrack)
-                        }
-                    }
-                }
-            }
-        }
+        handleTrackNotification(
+            notification: notification,
+            store: store,
+            sourceApp: "Spotify",
+            sourceBundleId: "com.spotify.client",
+            defaultArtist: "Spotify",
+            durationKey: "Duration",
+            positionKey: "Playback Position",
+            isPlayingCheck: { $0 == "Playing" || $0 == "kPSPStatePlaying" }
+        )
     }
 
     // MARK: - MediaRemote System-wide Multimedia Processing

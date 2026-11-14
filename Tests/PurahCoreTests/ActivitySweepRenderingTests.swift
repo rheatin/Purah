@@ -14,7 +14,7 @@ import Foundation
 /// Animation, so the cost is the render server's and a plugin only reports
 /// state.
 @MainActor
-@Suite("Activity Sweep Rendering")
+@Suite("Activity Sweep Rendering", .serialized)
 struct ActivitySweepRenderingTests {
 
     private var sweepURL: URL {

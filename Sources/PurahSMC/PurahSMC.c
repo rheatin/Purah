@@ -2,6 +2,7 @@
 
 #include <IOKit/IOKitLib.h>
 #include <string.h>
+#include <pthread.h>
 
 typedef struct {
     unsigned char major, minor, build, reserved;
@@ -28,26 +29,33 @@ typedef struct {
     unsigned char bytes[32];
 } SMCKeyData_t;
 
+static pthread_mutex_t purah_smc_mutex = PTHREAD_MUTEX_INITIALIZER;
 static io_connect_t purah_smc_connection = 0;
 
 static io_connect_t purah_smc_open(void) {
+    pthread_mutex_lock(&purah_smc_mutex);
     if (purah_smc_connection != 0) {
-        return purah_smc_connection;
+        io_connect_t conn = purah_smc_connection;
+        pthread_mutex_unlock(&purah_smc_mutex);
+        return conn;
     }
     io_service_t service = IOServiceGetMatchingService(
         kIOMainPortDefault,
         IOServiceMatching("AppleSMC")
     );
     if (service == 0) {
+        pthread_mutex_unlock(&purah_smc_mutex);
         return 0;
     }
     io_connect_t connection = 0;
     kern_return_t result = IOServiceOpen(service, mach_task_self(), 0, &connection);
     IOObjectRelease(service);
     if (result != KERN_SUCCESS) {
+        pthread_mutex_unlock(&purah_smc_mutex);
         return 0;
     }
     purah_smc_connection = connection;
+    pthread_mutex_unlock(&purah_smc_mutex);
     return connection;
 }
 
@@ -61,6 +69,9 @@ static unsigned int purah_four_cc(const char *key) {
 
 int purah_smc_read_number(const char *key, double *value) {
     if (key == NULL || value == NULL) {
+        return 0;
+    }
+    if (strnlen(key, 5) != 4) {
         return 0;
     }
     io_connect_t connection = purah_smc_open();

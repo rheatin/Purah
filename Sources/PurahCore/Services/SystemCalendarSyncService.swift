@@ -60,31 +60,27 @@ public final class SystemCalendarSyncService {
         syncGeneration &+= 1
         let currentGen = syncGeneration
 
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let backgroundStore = EKEventStore()
-            backgroundStore.refreshSourcesIfNecessary()
+        let currentStore = writableStore()
+        currentStore.refreshSourcesIfNecessary()
 
-            let allCalendars = backgroundStore.calendars(for: .event)
-            let predicate = backgroundStore.predicateForEvents(
-                withStart: interval.start,
-                end: interval.end,
-                calendars: allCalendars.isEmpty ? nil : allCalendars
-            )
-            let events = backgroundStore.events(matching: predicate)
-            let deduplicated = Self.processEvents(events)
+        let allCalendars = currentStore.calendars(for: .event)
+        let predicate = currentStore.predicateForEvents(
+            withStart: interval.start,
+            end: interval.end,
+            calendars: allCalendars.isEmpty ? nil : allCalendars
+        )
+        let events = currentStore.events(matching: predicate)
+        let deduplicated = Self.processEvents(events)
 
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                guard currentGen == self.syncGeneration else { return }
-                if let targetStore = self.boundStore {
-                    targetStore.calendarScope = targetScope
-                    targetStore.isUsingRealCalendar = true
-                    targetStore._calendarEvents = deduplicated
-                }
-                self.calendarCount = allCalendars.count
-                self.lastSyncDate = Date()
-                self.isSyncing = false
+        if currentGen == self.syncGeneration {
+            if let targetStore = self.boundStore {
+                targetStore.calendarScope = targetScope
+                targetStore.isUsingRealCalendar = true
+                targetStore._calendarEvents = deduplicated
             }
+            self.calendarCount = allCalendars.count
+            self.lastSyncDate = Date()
+            self.isSyncing = false
         }
     }
 

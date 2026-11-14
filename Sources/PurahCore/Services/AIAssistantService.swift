@@ -1326,39 +1326,32 @@ public final class AIAssistantService {
         }
     }
 
+    // MARK: - Precompiled Regular Expressions
+    nonisolated private static let oscRegex = try? NSRegularExpression(pattern: "\u{001B}\\][^\u{0007}\u{001B}]*(?:\u{0007}|\u{001B}\\\\)")
+    nonisolated private static let csiRegex = try? NSRegularExpression(pattern: "\u{001B}\\[[0-9:;<=>?]*[ -/]*[@-~]")
+    nonisolated private static let genericEscRegex = try? NSRegularExpression(pattern: "\u{001B}[@-Z\\\\-_]")
+    nonisolated private static let strayRegex = try? NSRegularExpression(pattern: "\\[(?:\\?|>)[0-9;]*[a-zA-Z$]")
+    nonisolated private static let localPathRegex = try? NSRegularExpression(pattern: #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#)
+
     // MARK: - ANSI Escape Stripping & NDJSON Stream Parsing
     public nonisolated static func stripANSIEscapeSequences(_ input: String) -> String {
         guard !input.isEmpty else { return "" }
         var result = input
-        let esc = "\u{001B}"
 
-        // 1. OSC sequences: ESC ] ... (BEL or ESC \)
-        let oscPattern = "\(esc)\\][^\u{0007}\(esc)]*(?:\u{0007}|\(esc)\\\\)"
-        if let oscRegex = try? NSRegularExpression(pattern: oscPattern) {
+        if let oscRegex {
             result = oscRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
         }
-
-        // 2. CSI sequences: ESC [ ... [@-~]
-        let csiPattern = "\(esc)\\[[0-9:;<=>?]*[ -/]*[@-~]"
-        if let csiRegex = try? NSRegularExpression(pattern: csiPattern) {
+        if let csiRegex {
             result = csiRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
         }
-
-        // 3. Generic 2-character ESC sequences (e.g. ESC @ through ESC _, ESC c, ESC =)
-        let genericEscPattern = "\(esc)[@-Z\\\\-_]"
-        if let escRegex = try? NSRegularExpression(pattern: genericEscPattern) {
-            result = escRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
+        if let genericEscRegex {
+            result = genericEscRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
         }
-
-        // 4. Stray / stripped-ESC terminal sequences where ESC byte was dropped (e.g. [?2004h, [?25l, [>0q, etc.)
-        let strayPattern = "\\[(?:\\?|>)[0-9;]*[a-zA-Z$]"
-        if let strayRegex = try? NSRegularExpression(pattern: strayPattern) {
+        if let strayRegex {
             result = strayRegex.stringByReplacingMatches(in: result, range: NSRange(location: 0, length: result.utf16.count), withTemplate: "")
         }
 
-        // 5. Line endings normalization and carriage return cleanup
         result = result.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "")
-
         return result
     }
 
@@ -2104,8 +2097,7 @@ public final class AIAssistantService {
 
     // MARK: - Built-in Local Skills & File Access
     public nonisolated static func extractReferencedLocalPaths(in text: String) -> [String] {
-        let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        guard let regex = localPathRegex else {
             return []
         }
 
@@ -2266,63 +2258,43 @@ public final class AIAssistantService {
         var attachedFilesSummary: [String] = []
 
         if skills.enableFileReadSkill || skills.enableDirectoryListSkill {
-            let pattern = #"(?:~|/Users/|/tmp/|/var/|/opt/|/etc/)[^\s"'`<>|;,\)\]]+"#
-            if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
-                let nsPrompt = userPrompt as NSString
-                let matches = regex.matches(in: userPrompt, options: [], range: NSRange(location: 0, length: nsPrompt.length))
-                var processedPaths = Set<String>()
+            let referencedPaths = extractReferencedLocalPaths(in: userPrompt)
+            for expandedPath in referencedPaths {
+                // Permission guard if allowedPaths is provided
+                guard isPathPermitted(expandedPath, allowedPaths: allowedPaths) else {
+                    continue
+                }
 
-                for match in matches {
-                    let rawPath = nsPrompt.substring(with: match.range)
-                    var expandedPath = (rawPath as NSString).expandingTildeInPath
+                var isDir: ObjCBool = false
+                FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir)
 
-                    var isDir: ObjCBool = false
-                    if !FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir) {
-                        let trimmed = rawPath.trimmingCharacters(in: CharacterSet(charactersIn: ".,:;?!"))
-                        let exp = (trimmed as NSString).expandingTildeInPath
-                        if FileManager.default.fileExists(atPath: exp, isDirectory: &isDir) {
-                            expandedPath = exp
-                        } else {
-                            continue
+                if !isDir.boolValue && skills.enableFileReadSkill {
+                    let url = URL(fileURLWithPath: expandedPath)
+                    let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
+                    let fileSize = (attrs?[.size] as? Int64) ?? 0
+                    let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
+
+                    var sampleContent = ""
+                    if let handle = try? FileHandle(forReadingFrom: url) {
+                        defer { try? handle.close() }
+                        // `String(decoding:)` never fails, so a PNG used to arrive as 16 KB of
+                        // replacement characters. Only real UTF-8 is inlined; images are
+                        // attached as images by the caller instead.
+                        if let data = try? handle.read(upToCount: 65_536),
+                           let decoded = String(data: data, encoding: .utf8) {
+                            sampleContent = String(decoded.prefix(16_000))
                         }
                     }
 
-                    guard !processedPaths.contains(expandedPath) else { continue }
-                    processedPaths.insert(expandedPath)
-
-                    // Permission guard if allowedPaths is provided
-                    guard isPathPermitted(expandedPath, allowedPaths: allowedPaths) else {
-                        continue
+                    if !sampleContent.isEmpty {
+                        enrichedPrompt += "\n\n[Attached Local File: '\(expandedPath)' (Size: \(sizeStr)) — Content / Sample]:\n```\n\(sampleContent)\n```"
+                        attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
                     }
-
-                    if !isDir.boolValue && skills.enableFileReadSkill {
-                        let url = URL(fileURLWithPath: expandedPath)
-                        let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
-                        let fileSize = (attrs?[.size] as? Int64) ?? 0
-                        let sizeStr = ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
-
-                        var sampleContent = ""
-                        if let handle = try? FileHandle(forReadingFrom: url) {
-                            defer { try? handle.close() }
-                            // `String(decoding:)` never fails, so a PNG used to arrive as 16 KB of
-                            // replacement characters. Only real UTF-8 is inlined; images are
-                            // attached as images by the caller instead.
-                            if let data = try? handle.read(upToCount: 65_536),
-                               let decoded = String(data: data, encoding: .utf8) {
-                                sampleContent = String(decoded.prefix(16_000))
-                            }
-                        }
-
-                        if !sampleContent.isEmpty {
-                            enrichedPrompt += "\n\n[Attached Local File: '\(expandedPath)' (Size: \(sizeStr)) — Content / Sample]:\n```\n\(sampleContent)\n```"
-                            attachedFilesSummary.append((expandedPath as NSString).lastPathComponent)
-                        }
-                    } else if isDir.boolValue && skills.enableDirectoryListSkill {
-                        if let entries = try? FileManager.default.contentsOfDirectory(atPath: expandedPath) {
-                            let sortedEntries = entries.sorted()
-                            let limitedEntries = Array(sortedEntries.prefix(60))
-                            enrichedPrompt += "\n\n[Built-in Skill: Directory Listing of '\(expandedPath)']:\n\(limitedEntries.joined(separator: "\n"))"
-                        }
+                } else if isDir.boolValue && skills.enableDirectoryListSkill {
+                    if let entries = try? FileManager.default.contentsOfDirectory(atPath: expandedPath) {
+                        let sortedEntries = entries.sorted()
+                        let limitedEntries = Array(sortedEntries.prefix(60))
+                        enrichedPrompt += "\n\n[Built-in Skill: Directory Listing of '\(expandedPath)']:\n\(limitedEntries.joined(separator: "\n"))"
                     }
                 }
             }

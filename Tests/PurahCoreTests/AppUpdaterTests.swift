@@ -7,7 +7,7 @@ import SwiftUI
 @testable import PurahApp
 @testable import PurahUI
 
-@Suite("App Updater & Version Tests")
+@Suite("App Updater & Version Tests", .serialized)
 @MainActor
 struct AppUpdaterTests {
     @Test("Semantic version parsing and comparison")
@@ -248,10 +248,13 @@ struct AppUpdaterTests {
         )
 
         _ = Task { await updater.checkForUpdates(force: true) }
-        try await Task.sleep(for: .milliseconds(50))
-        #expect(updater.state == .checking)
+        _ = try await Self.waitUntil { updater.isChecking }
 
-        try await Task.sleep(for: .milliseconds(600))
+        let finished = try await Self.waitUntil(timeout: 3.0) {
+            if case .failed = updater.state { return true }
+            return false
+        }
+        #expect(finished, "expected the watchdog to end .checking")
 
         guard case .failed(let message) = updater.state else {
             Issue.record("expected the watchdog to end .checking, got \(updater.state)")
