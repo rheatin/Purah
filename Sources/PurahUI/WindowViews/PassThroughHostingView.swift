@@ -292,25 +292,14 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
                    let provider = store.capabilityProvider(for: item.pod.id) {
                     let policy = provider.decomposedPolicy(store: store)
                     let rawCount = provider.subItemCount(store: store)
-                    let minChipH = Double(policy.minChipHeight)
-                    let maxChipH = Double(policy.maxChipHeight)
-                    let spacing = Double(policy.spacing)
-                    let isDynamicAccordion = railIsBreathing
-                    let maxAllowed = isDynamicAccordion
-                        ? max(policy.maxRailItems, 1)
-                        : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
-                    let count = min(rawCount, maxAllowed)
+                    let layout = policy.resolveLayout(spanHeight: CGFloat(item.spanH), rawCount: rawCount, isDynamicAccordion: railIsBreathing)
                     // Zero sub-items draws the composite bar (AGENTS §3), so
                     // the hit box is the whole pod. The chip maths gave a
                     // zero-height box and nothing to click.
-                    guard count > 0 else {
+                    guard layout.count > 0 else {
                         return currentWindowY >= topY && currentWindowY <= topY + item.spanH
                     }
-                    let safeCount = max(count, 1)
-                    let totalSpacing = spacing * Double(safeCount - 1)
-                    let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
-                    let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
-                    actualSpan = Double(count) * itemH + spacing * Double(max(count - 1, 0))
+                    actualSpan = Double(layout.actualSpan)
                 } else {
                     actualSpan = item.spanH
                 }

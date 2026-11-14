@@ -374,7 +374,7 @@ struct VitalsAndScriptTests {
         #expect(metrics.memoryTotalGB > 0.0)
     }
 
-    @Test("Hardware Vitals time-series history accumulates and feeds VitalsTimeSeriesGraphView dynamically")
+    @Test("Hardware Vitals time-series history accumulates and feeds VitalsFocusedColumnBand dynamically")
     func testVitalsHistoryAccumulationAndGraph() {
         let service = HardwareVitalsService.shared
         let originalScope = service.selectedTimeScope
@@ -393,37 +393,29 @@ struct VitalsAndScriptTests {
         #expect(!netHistory.isEmpty)
         #expect(!cpuHistory.isEmpty)
 
-        let graphView = VitalsTimeSeriesGraphView(
-            points: netHistory,
-            color: .green,
-            palette: ThemeManager.shared.palette,
-            height: 50.0
+        let band = VitalsFocusedColumnBand(
+            metric: .cpu,
+            availableHeight: 50.0,
+            state: VitalsPluginState()
         )
-        let hosting = NSHostingView(rootView: graphView)
+        let hosting = NSHostingView(rootView: band)
         hosting.frame = NSRect(x: 0, y: 0, width: 280, height: 50)
         hosting.layoutSubtreeIfNeeded()
         #expect(hosting.frame.height == 50.0)
     }
 
-    @Test("VitalsDualTimeSeriesGraphView renders dual-line download and upload curves cleanly")
+    @Test("VitalsFocusedColumnBand renders dual-line network metric cleanly")
     func testDualLineNetworkGraphView() {
         let service = HardwareVitalsService.shared
         service.refreshMetrics(includeProcesses: false)
 
-        let downHistory = service.history(for: .network)
-        let upHistory = service.networkUpHistory()
-
-        let dualGraph = VitalsDualTimeSeriesGraphView(
-            downPoints: downHistory,
-            upPoints: upHistory,
-            downColor: Color(hex: "#00F5D4"),
-            upColor: Color(hex: "#0A84FF"),
-            palette: ThemeManager.shared.palette,
-            height: 52.0,
-            scope: .realTime30s
+        let band = VitalsFocusedColumnBand(
+            metric: .network,
+            availableHeight: 52.0,
+            state: VitalsPluginState()
         )
 
-        let hosting = NSHostingView(rootView: dualGraph)
+        let hosting = NSHostingView(rootView: band)
         hosting.frame = NSRect(x: 0, y: 0, width: 280, height: 52)
         hosting.layoutSubtreeIfNeeded()
         #expect(hosting.frame.height == 52.0)
@@ -1099,7 +1091,7 @@ struct VitalsAndScriptTests {
         #expect(bat.temperatureCelsius > 0.0)
         #expect(!bat.source.isEmpty)
 
-        // 4. HardwareVitalsDrawerView and VitalsFocusedDrawerView across all height tiers
+        // 4. HardwareVitalsDrawerView and VitalsFocusedColumnBand across all height tiers
         let store = PurahWorkspaceStore()
         let vitalsPluginState = (PluginRegistry.shared.plugin(for: "vitals") as? HardwareVitalsPlugin)?.state ?? VitalsPluginState()
 
@@ -1107,11 +1099,11 @@ struct VitalsAndScriptTests {
         #expect(!compositeDrawer.state.enabledMetrics.isEmpty)
 
         for metric in VitalsMetricType.allCases {
-            let ultraCompact = VitalsFocusedDrawerView(metric: metric, availableHeight: 32.0, state: vitalsPluginState, store: store)
+            let ultraCompact = VitalsFocusedColumnBand(metric: metric, availableHeight: 32.0, state: vitalsPluginState)
             #expect(ultraCompact.metric == metric)
-            let standard = VitalsFocusedDrawerView(metric: metric, availableHeight: 60.0, state: vitalsPluginState, store: store)
+            let standard = VitalsFocusedColumnBand(metric: metric, availableHeight: 60.0, state: vitalsPluginState)
             #expect(standard.availableHeight == 60.0)
-            let tall = VitalsFocusedDrawerView(metric: metric, availableHeight: 120.0, state: vitalsPluginState, store: store)
+            let tall = VitalsFocusedColumnBand(metric: metric, availableHeight: 120.0, state: vitalsPluginState)
             #expect(tall.availableHeight == 120.0)
         }
     }

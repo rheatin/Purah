@@ -3224,23 +3224,15 @@ public final class PurahWorkspaceStore {
             if isPodDecomposed(pod.id), let provider = capabilityProvider(for: pod.id), provider.subItemCount(store: self) > 0 {
                 let policy = provider.decomposedPolicy(store: self)
                 let rawCount = provider.subItemCount(store: self)
+                let layout = policy.resolveLayout(spanHeight: CGFloat(item.spanH), rawCount: rawCount, isDynamicAccordion: isBreathing)
                 let minChipH = Double(policy.minChipHeight)
-                let maxChipH = Double(policy.maxChipHeight)
-                let spacing = Double(policy.spacing)
-                let isDynamicAccordion = isBreathing
-                let maxAllowed = isDynamicAccordion
-                    ? max(policy.maxRailItems, 1)
-                    : max(min(Int((item.spanH + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
-                let count = min(rawCount, maxAllowed)
-                let safeCount = max(count, 1)
-                let totalSpacing = spacing * Double(safeCount - 1)
-                let effectiveMinChipH = isDynamicAccordion ? 6.0 : minChipH
-                let itemH = min(max((item.spanH - totalSpacing) / Double(safeCount), effectiveMinChipH), maxChipH)
+                let itemH = Double(layout.itemHeight)
+                let spacing = Double(layout.spacing)
                 let cardH = PurahSteppedCardMetrics.cardHeight(slotHeight: itemH, minChipHeight: minChipH)
 
                 var matchedSubItem = false
-                for idx in 0..<count {
-                    let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && idx == count - 1)
+                for idx in 0..<layout.count {
+                    let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > layout.maxAllowed && layout.maxAllowed >= 2 && idx == layout.count - 1)
                     let smartFoldID = PurahPluginSubItem.moreItemsID(forPod: pod.id)
                     let subId = isSmartFoldSlot ? smartFoldID : provider.subItemId(at: idx, store: self)
                     guard let subId = subId else { continue }

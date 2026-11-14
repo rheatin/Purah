@@ -112,6 +112,30 @@ public struct PurahDecomposedPolicy: Sendable, Codable, Equatable {
         return CGFloat(count) * minChipHeight + totalSpacing
     }
 
+    /// Canonical layout resolution for decomposed chips on the bezel rail.
+    public func resolveLayout(
+        spanHeight: CGFloat,
+        rawCount: Int,
+        isDynamicAccordion: Bool
+    ) -> DecomposedSubItemLayout {
+        let maxAllowed = isDynamicAccordion
+            ? max(maxRailItems, 1)
+            : max(min(Int((spanHeight + spacing) / (minChipHeight + spacing)), maxRailItems), 1)
+        let count = min(rawCount, maxAllowed)
+        let safeCount = max(count, 1)
+        let totalSpacing = spacing * CGFloat(safeCount - 1)
+        let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipHeight
+        let itemH = min(max((spanHeight - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipHeight)
+        let actualSpan = CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
+        return DecomposedSubItemLayout(
+            count: count,
+            maxAllowed: maxAllowed,
+            itemHeight: itemH,
+            spacing: spacing,
+            actualSpan: actualSpan
+        )
+    }
+
     /// Default ergonomic policies for standard built-in modes
     public static let calendarDefault = PurahDecomposedPolicy(
         maxRailItems: 4,
@@ -152,4 +176,21 @@ public struct PurahDecomposedPolicy: Sendable, Codable, Equatable {
         spacing: 0.0,
         overflowStrategy: .truncate
     )
+}
+
+/// Resolved sub-item layout geometry on the rail.
+public struct DecomposedSubItemLayout: Sendable, Equatable {
+    public let count: Int
+    public let maxAllowed: Int
+    public let itemHeight: CGFloat
+    public let spacing: CGFloat
+    public let actualSpan: CGFloat
+
+    public init(count: Int, maxAllowed: Int, itemHeight: CGFloat, spacing: CGFloat, actualSpan: CGFloat) {
+        self.count = count
+        self.maxAllowed = maxAllowed
+        self.itemHeight = itemHeight
+        self.spacing = spacing
+        self.actualSpan = actualSpan
+    }
 }

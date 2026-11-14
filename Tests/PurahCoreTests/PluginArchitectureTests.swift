@@ -6,7 +6,7 @@ import Foundation
 @testable import PurahUI
 
 @MainActor
-@Suite("Purah Pod Plugin Architecture Tests")
+@Suite("Purah Pod Plugin Architecture Tests", .serialized)
 struct PluginArchitectureTests {
     @Test("Plugin manifest initializes with valid ergonomic and visual properties")
     func testManifestInitialization() throws {
@@ -842,8 +842,8 @@ struct PluginArchitectureTests {
         let vitalsState = VitalsPluginState()
         let vitalsDrawerWithState = HardwareVitalsDrawerView(state: vitalsState, store: store)
         let vitalsDrawerWithStore = HardwareVitalsDrawerView(store: store)
-        let vitalsFocusedWithState = VitalsFocusedDrawerView(metric: .cpu, state: vitalsState, store: store)
-        let vitalsFocusedWithStore = VitalsFocusedDrawerView(metric: .cpu, store: store)
+        let vitalsFocusedWithState = VitalsFocusedColumnBand(metric: .cpu, availableHeight: 60.0, state: vitalsState)
+        let vitalsFocusedWithStore = VitalsFocusedColumnBand(metric: .cpu, availableHeight: 60.0, state: VitalsPluginState())
         _ = vitalsDrawerWithState
         _ = vitalsDrawerWithStore
         _ = vitalsFocusedWithState

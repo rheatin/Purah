@@ -732,19 +732,8 @@ public final class EdgeMouseMonitor {
            let provider = store.capabilityProvider(for: item.pod.id),
            provider.subItemCount(store: store) > 0 {
             let policy = provider.decomposedPolicy(store: store)
-            let rawCount = provider.subItemCount(store: store)
-            let minChipH = policy.minChipHeight
-            let maxChipH = policy.maxChipHeight
-            let spacing = policy.spacing
-            let maxAllowed = isDynamicAccordion
-                ? max(policy.maxRailItems, 1)
-                : max(min(Int((CGFloat(item.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
-            let count = min(rawCount, maxAllowed)
-            let safeCount = max(count, 1)
-            let totalSpacing = spacing * CGFloat(safeCount - 1)
-            let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-            let itemH = min(max((CGFloat(item.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
-            return CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
+            let layout = policy.resolveLayout(spanHeight: CGFloat(item.spanH), rawCount: provider.subItemCount(store: store), isDynamicAccordion: isDynamicAccordion)
+            return layout.actualSpan
         }
         return CGFloat(item.spanH)
     }
@@ -1250,18 +1239,12 @@ public final class EdgeMouseMonitor {
            provider.subItemCount(store: store) > 0 {
             let policy = provider.decomposedPolicy(store: store)
             let rawCount = provider.subItemCount(store: store)
-            let minChipH = policy.minChipHeight
-            let maxChipH = policy.maxChipHeight
-            let spacing = policy.spacing
-            let maxAllowed = isDynamicAccordion
-                ? max(policy.maxRailItems, 1)
-                : max(min(Int((CGFloat(matched.spanH) + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
-            let count = min(rawCount, maxAllowed)
-            let safeCount = max(count, 1)
-            let totalSpacing = spacing * CGFloat(safeCount - 1)
-            let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-            let itemH = min(max((CGFloat(matched.spanH) - totalSpacing) / CGFloat(safeCount), effectiveMinChipH), maxChipH)
-            let actualSpan = CGFloat(count) * itemH + spacing * CGFloat(max(count - 1, 0))
+            let layout = policy.resolveLayout(spanHeight: CGFloat(matched.spanH), rawCount: rawCount, isDynamicAccordion: isDynamicAccordion)
+            let count = layout.count
+            let maxAllowed = layout.maxAllowed
+            let itemH = layout.itemHeight
+            let spacing = layout.spacing
+            let actualSpan = layout.actualSpan
 
             let podY = currentWindowY - CGFloat(matched.startY)
             // Cursor is in empty space below the actual chips: do NOT trigger any chip!
