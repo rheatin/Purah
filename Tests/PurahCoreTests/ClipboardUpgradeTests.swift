@@ -71,8 +71,9 @@ struct ClipboardUpgradeTests {
         #expect(service.history.first?.plainTextToCopy == "Middle text item")
 
         // Favorite the image item at index 1
-        service.toggleFavorite(id: service.history[1].id)
-        #expect(service.history[1].isFavorite == true)
+        let imageId = service.history[1].id
+        service.toggleFavorite(id: imageId)
+        #expect(service.history.first(where: { $0.id == imageId })?.isFavorite == true)
 
         // Re-copy the same image
         service.addItem(itemFromPNG)

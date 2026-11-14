@@ -174,7 +174,7 @@ public final class SystemClipboardSyncService {
             return
         }
         guard let items = outcome.items else { return }
-        self._history = items
+        self._history = items.filter(\.isFavorite) + items.filter { !$0.isFavorite }
         onHistoryLoaded?()
     }
 
@@ -320,7 +320,18 @@ public final class SystemClipboardSyncService {
     public func toggleFavorite(id: String) {
         ensureLoaded()
         if let idx = history.firstIndex(where: { $0.id == id }) {
-            history[idx].isFavorite.toggle()
+            var item = history.remove(at: idx)
+            item.isFavorite.toggle()
+            let starred = history.filter(\.isFavorite)
+            let unstarred = history.filter { !$0.isFavorite }
+            if item.isFavorite {
+                history = [item] + starred + unstarred
+            } else {
+                let insertIdx = unstarred.firstIndex(where: { $0.timestamp <= item.timestamp }) ?? unstarred.endIndex
+                var updatedUnstarred = unstarred
+                updatedUnstarred.insert(item, at: insertIdx)
+                history = starred + updatedUnstarred
+            }
             saveToDisk()
         }
     }
@@ -461,15 +472,33 @@ public final class SystemClipboardSyncService {
         if let latest = history.first, latest.deduplicationKey == item.deduplicationKey {
             return
         }
+        if !item.isFavorite,
+           let latestUnstarred = history.first(where: { !$0.isFavorite }),
+           latestUnstarred.deduplicationKey == item.deduplicationKey {
+            return
+        }
 
+        let insertedItem: ClipboardItem
         if let existingIdx = history.firstIndex(where: { $0.deduplicationKey == item.deduplicationKey }) {
             let wasFavorite = history[existingIdx].isFavorite
             history.remove(at: existingIdx)
             var updated = item
             updated.isFavorite = wasFavorite || item.isFavorite
-            history.insert(updated, at: 0)
+            insertedItem = updated
+            if updated.isFavorite {
+                history.insert(updated, at: 0)
+            } else {
+                let firstUnstarredIdx = history.firstIndex(where: { !$0.isFavorite }) ?? history.endIndex
+                history.insert(updated, at: firstUnstarredIdx)
+            }
         } else {
-            history.insert(item, at: 0)
+            insertedItem = item
+            if item.isFavorite {
+                history.insert(item, at: 0)
+            } else {
+                let firstUnstarredIdx = history.firstIndex(where: { !$0.isFavorite }) ?? history.endIndex
+                history.insert(item, at: firstUnstarredIdx)
+            }
         }
 
         // Enforce user-defined retention policy and disk quota instead of hardcoded count
@@ -477,7 +506,7 @@ public final class SystemClipboardSyncService {
         enforceDiskQuota()
 
         saveToDisk()
-        onItemAdded?(history.first ?? item)
+        onItemAdded?(insertedItem)
     }
 
     private func isConcealed(pasteboard: NSPasteboard) -> Bool {
@@ -645,7 +674,7 @@ public final class SystemClipboardSyncService {
                     }
                 }
 
-                let byteSize = (try? Data(contentsOf: fullFileURL).count) ?? data.count
+                let byteSize = (try? FileManager.default.attributesOfItem(atPath: fullFileURL.path)[.size] as? Int) ?? data.count
 
                 return ClipboardItem(
                     type: .image(

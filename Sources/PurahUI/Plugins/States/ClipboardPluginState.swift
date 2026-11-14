@@ -48,7 +48,7 @@ public final class ClipboardPluginState: Sendable {
     }
 
     public var filteredItems: [ClipboardItem] {
-        var baseItems = items
+        var baseItems = items.filter(\.isFavorite) + items.filter { !$0.isFavorite }
         switch selectedFilter {
         case .all:
             break
@@ -70,7 +70,12 @@ public final class ClipboardPluginState: Sendable {
             guard match.matched else { return nil }
             return (item, match.score)
         }
-        .sorted { $0.score > $1.score }
+        .sorted {
+            if $0.item.isFavorite != $1.item.isFavorite {
+                return $0.item.isFavorite && !$1.item.isFavorite
+            }
+            return $0.score > $1.score
+        }
         .map(\.item)
     }
 

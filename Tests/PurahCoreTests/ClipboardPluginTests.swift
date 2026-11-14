@@ -450,11 +450,13 @@ struct ClipboardPluginTests {
         #expect(service.history[2].id == freshItem.id)
         #expect(service.history[0].id == expiredUnstarred.id)
 
-        // 2. Star toggling
+        // 2. Star toggling pins starred item to top (index 0) and restores it below starred items on unstar
         service.toggleFavorite(id: freshItem.id)
+        #expect(service.history.first?.id == freshItem.id, "Newly starred item must pin to the top of clipboard history")
         #expect(service.history.first(where: { $0.id == freshItem.id })?.isFavorite == true)
         #expect(service.history.first(where: { $0.id == freshItem.id })?.isPinned == true, "isPinned bridge must match isFavorite")
         service.toggleFavorite(id: freshItem.id)
+        #expect(service.history.first?.id == expiredStarred.id, "Unstarring must leave remaining starred items at the top")
         #expect(service.history.first(where: { $0.id == freshItem.id })?.isFavorite == false)
 
         // 3. Expiration cleaning (7 days): expiredStarred must be strictly protected, expiredUnstarred removed
@@ -463,6 +465,13 @@ struct ClipboardPluginTests {
         #expect(service.history.contains(where: { $0.id == freshItem.id }))
         #expect(service.history.contains(where: { $0.id == expiredStarred.id }), "Starred item MUST be strictly protected from expiration cleanup")
         #expect(!service.history.contains(where: { $0.id == expiredUnstarred.id }), "Expired unstarred item must be deleted")
+
+        // 4. Adding a new unstarred item must NOT push starred items down from the top
+        let newerUnstarred = ClipboardItem(type: .text("Newer Unstarred Text"), timestamp: now.addingTimeInterval(60), isFavorite: false)
+        service.addItem(newerUnstarred)
+        #expect(service.history.first?.id == expiredStarred.id, "Starred item must remain pinned above newly copied unstarred items")
+        let firstUnstarredIndex = service.history.firstIndex(where: { !$0.isFavorite })
+        #expect(firstUnstarredIndex == 1 && service.history[1].id == newerUnstarred.id)
     }
 
     @Test("ClipboardHoverPreviewController show shelfFile renders image, text, and binary sidecar previews")
