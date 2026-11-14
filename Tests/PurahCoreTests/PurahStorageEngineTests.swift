@@ -10,6 +10,13 @@ struct MockStorableItem: PurahStorableItem, Equatable {
     var isFavorite: Bool
 }
 
+struct MockAssetItem: PurahStorableItem, Equatable {
+    let id: String
+    let timestamp: Date
+    var isFavorite: Bool
+    var assetPaths: [String]
+}
+
 @Suite("Purah Storage Engine & Disk Repository Tests")
 @MainActor
 struct PurahStorageEngineTests {
@@ -218,5 +225,103 @@ struct PurahStorageEngineTests {
             .contentsOfDirectory(atPath: storage.rootDirectory.path)
             .filter { $0.hasPrefix("index.corrupt-") }
         #expect(backups.count == 1, "the unreadable index should have been renamed, not overwritten")
+    }
+
+    @Test("PurahDiskRepository insert and append automatically clean expired items and unlinks disk asset files")
+    func testInsertAndAppendCleansExpiredAssetsOnDisk() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_asset_expire_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = PurahPluginFileStorage(pluginId: "asset-expire-plugin", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<MockAssetItem>(
+            pluginId: "asset-expire-plugin",
+            customStorage: storage,
+            retentionPeriod: .oneHour,
+            diskQuota: .mb500
+        )
+
+        let assetsDir = storage.assetsDirectory
+        let oldAssetURL = assetsDir.appendingPathComponent("old_asset.bin")
+        let freshAssetURL = assetsDir.appendingPathComponent("fresh_asset.bin")
+
+        try Data(repeating: 0x42, count: 5000).write(to: oldAssetURL)
+        try Data(repeating: 0x43, count: 5000).write(to: freshAssetURL)
+
+        #expect(FileManager.default.fileExists(atPath: oldAssetURL.path))
+        #expect(FileManager.default.fileExists(atPath: freshAssetURL.path))
+
+        let now = Date()
+        let oldItem = MockAssetItem(
+            id: "old-item",
+            timestamp: now.addingTimeInterval(-7200),
+            isFavorite: false,
+            assetPaths: [oldAssetURL.path]
+        )
+        let freshItem = MockAssetItem(
+            id: "fresh-item",
+            timestamp: now,
+            isFavorite: false,
+            assetPaths: [freshAssetURL.path]
+        )
+
+        // Append the old item with retention set to never first so it lands in items
+        repo.retentionPeriod = .never
+        repo.append(oldItem)
+        #expect(repo.items.count == 1)
+
+        // Now activate 1-hour retention and append freshItem; oldItem should be automatically expired & its file deleted
+        repo.retentionPeriod = .oneHour
+        repo.append(freshItem)
+
+        #expect(repo.items.count == 1)
+        #expect(repo.items.first?.id == "fresh-item")
+        #expect(!FileManager.default.fileExists(atPath: oldAssetURL.path), "Expired item's asset file must be deleted from disk")
+        #expect(FileManager.default.fileExists(atPath: freshAssetURL.path), "Fresh item's asset file must remain on disk")
+    }
+
+    @Test("PurahDiskRepository enforces quota pruning and unlinks disk asset files under star protection")
+    func testInsertAndAppendEnforcesDiskQuotaPruningWithAssets() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah_asset_quota_\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let storage = PurahPluginFileStorage(pluginId: "asset-quota-plugin", customBaseDirectory: tempDir)
+        let repo = PurahDiskRepository<MockAssetItem>(
+            pluginId: "asset-quota-plugin",
+            customStorage: storage,
+            retentionPeriod: .never,
+            diskQuota: .mb100
+        )
+
+        let assetsDir = storage.assetsDirectory
+        let asset1 = assetsDir.appendingPathComponent("asset_1.bin")
+        let asset2 = assetsDir.appendingPathComponent("asset_2.bin")
+        let asset3 = assetsDir.appendingPathComponent("asset_3.bin")
+
+        let chunk = Data(repeating: 0x58, count: 100_000)
+        try chunk.write(to: asset1)
+        try chunk.write(to: asset2)
+        try chunk.write(to: asset3)
+
+        let now = Date()
+        let item1 = MockAssetItem(id: "item-1", timestamp: now.addingTimeInterval(-30), isFavorite: false, assetPaths: [asset1.path])
+        let item2Starred = MockAssetItem(id: "item-2", timestamp: now.addingTimeInterval(-20), isFavorite: true, assetPaths: [asset2.path])
+        let item3 = MockAssetItem(id: "item-3", timestamp: now.addingTimeInterval(-10), isFavorite: false, assetPaths: [asset3.path])
+
+        repo.append(item1)
+        repo.append(item2Starred)
+        repo.append(item3)
+        #expect(repo.items.count == 3)
+
+        // Current size is ~300KB. Enforce quota of 250KB. Oldest non-starred (item1) must be pruned and its file unlinked.
+        let pruned = repo.enforceQuota(maxBytes: 250_000, autoPrune: true)
+        #expect(pruned == 1)
+        #expect(!FileManager.default.fileExists(atPath: asset1.path), "Pruned item's asset file must be deleted from disk")
+        #expect(FileManager.default.fileExists(atPath: asset2.path), "Starred item's asset file must be preserved under star immunity")
+        #expect(FileManager.default.fileExists(atPath: asset3.path), "Remaining fresh item's asset file must remain on disk")
+        #expect(repo.items.contains { $0.id == "item-2" && $0.isFavorite })
+        #expect(repo.items.contains { $0.id == "item-3" })
+        #expect(!repo.items.contains { $0.id == "item-1" })
     }
 }

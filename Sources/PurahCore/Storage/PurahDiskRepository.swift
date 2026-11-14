@@ -14,13 +14,15 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
     public var diskQuota: PurahDiskQuota = .mb500
     public var autoPruneOnQuota: Bool = true
     public var onQuotaWarning: ((String) -> Void)?
+    public var defaultRemoveAssociatedFiles: ((Item) -> Void)?
 
     public init(
         pluginId: String,
         customStorage: PurahPluginFileStorage? = nil,
         retentionPeriod: PurahRetentionPeriod = .sevenDays,
         diskQuota: PurahDiskQuota = .mb500,
-        autoPruneOnQuota: Bool = true
+        autoPruneOnQuota: Bool = true,
+        defaultRemoveAssociatedFiles: ((Item) -> Void)? = nil
     ) {
         let fileStorage = customStorage ?? PurahPluginFileStorage(pluginId: pluginId)
         self.storage = fileStorage
@@ -28,6 +30,7 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         self.retentionPeriod = retentionPeriod
         self.diskQuota = diskQuota
         self.autoPruneOnQuota = autoPruneOnQuota
+        self.defaultRemoveAssociatedFiles = defaultRemoveAssociatedFiles
         loadFromDisk()
     }
 
@@ -98,15 +101,15 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
 
     public func insert(_ item: Item, at index: Int = 0) {
         items.insert(item, at: index)
-        cleanExpired()
-        enforceQuota()
+        cleanExpired(onRemoveAssociatedFiles: defaultRemoveAssociatedFiles)
+        enforceQuota(onRemoveAssociatedFiles: defaultRemoveAssociatedFiles)
         saveToDisk()
     }
 
     public func append(_ item: Item) {
         items.append(item)
-        cleanExpired()
-        enforceQuota()
+        cleanExpired(onRemoveAssociatedFiles: defaultRemoveAssociatedFiles)
+        enforceQuota(onRemoveAssociatedFiles: defaultRemoveAssociatedFiles)
         saveToDisk()
     }
 
@@ -142,15 +145,16 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
     public func remove(id: String, onRemoveAssociatedFiles: ((Item) -> Void)? = nil) {
         if let idx = items.firstIndex(where: { $0.id == id }) {
             let removed = items.remove(at: idx)
-            onRemoveAssociatedFiles?(removed)
+            effectiveRemoveAssociatedFiles(custom: onRemoveAssociatedFiles)(removed)
             saveToDisk()
         }
     }
 
     public func clearAll(keepFavorites: Bool = true, onRemoveAssociatedFiles: ((Item) -> Void)? = nil) {
         let toRemove = keepFavorites ? items.filter { !$0.isFavorite } : items
+        let fileRemover = effectiveRemoveAssociatedFiles(custom: onRemoveAssociatedFiles)
         for item in toRemove {
-            onRemoveAssociatedFiles?(item)
+            fileRemover(item)
         }
         items = keepFavorites ? items.filter(\.isFavorite) : []
         saveToDisk()
@@ -169,6 +173,7 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         let period = retention ?? self.retentionPeriod
         guard period != .never else { return 0 }
 
+        let fileRemover = effectiveRemoveAssociatedFiles(custom: onRemoveAssociatedFiles)
         var removedCount = 0
         var kept: [Item] = []
 
@@ -178,7 +183,7 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
                 kept.append(item)
             } else if period.isExpired(timestamp: item.timestamp, now: now) {
                 removedCount += 1
-                onRemoveAssociatedFiles?(item)
+                fileRemover(item)
             } else {
                 kept.append(item)
             }
@@ -218,6 +223,7 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         var prunedCount = 0
 
         if shouldPrune {
+            let fileRemover = effectiveRemoveAssociatedFiles(custom: onRemoveAssociatedFiles)
             // Only delete what this repository can actually reclaim. Bytes
             // belonging to caches or an unrelated file cannot be freed by
             // removing a row, so pruning all rows would still leave the folder
@@ -225,11 +231,9 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
             let remainingFavorites = items.filter(\.isFavorite)
             let finalIndexBytes = (try? JSONEncoder().encode(remainingFavorites)).map { Int64($0.count) } ?? 0
             let reclaimableIndex = max(0, Self.fileSize(at: indexURL) - finalIndexBytes)
-            let reclaimableFiles = onRemoveAssociatedFiles == nil
-                ? 0
-                : items.reduce(Int64(0)) { total, item in
-                    total + Self.bytesOnDisk(atPaths: item.assetPaths)
-                }
+            let reclaimableFiles = items.reduce(Int64(0)) { total, item in
+                total + Self.bytesOnDisk(atPaths: item.assetPaths)
+            }
             let reclaimable = reclaimableIndex + reclaimableFiles
             let minimumSize = max(0, currentSize - reclaimable)
             guard minimumSize <= maxBytes else {
@@ -251,7 +255,7 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
                     items.insert(removed, at: oldestIdx)
                     break
                 }
-                onRemoveAssociatedFiles?(removed)
+                fileRemover(removed)
                 let afterSize = storage.computeDiskUsageBytes()
                 if afterSize >= currentSize {
                     // The handler may not have deleted the files, or the index
@@ -273,6 +277,26 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
         }
 
         return prunedCount
+    }
+
+    private func effectiveRemoveAssociatedFiles(
+        custom: ((Item) -> Void)?
+    ) -> ((Item) -> Void) {
+        if let custom {
+            return custom
+        }
+        if let defaultRemover = defaultRemoveAssociatedFiles {
+            return defaultRemover
+        }
+        return { [storage] item in
+            for path in item.assetPaths {
+                let normalizedPath = URL(fileURLWithPath: path).standardized.path
+                let pluginDirPath = storage.rootDirectory.standardized.path
+                if normalizedPath.hasPrefix(pluginDirPath) {
+                    try? FileManager.default.removeItem(atPath: normalizedPath)
+                }
+            }
+        }
     }
 
     private static func fileSize(at url: URL) -> Int64 {

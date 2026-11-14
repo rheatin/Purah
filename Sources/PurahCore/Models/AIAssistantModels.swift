@@ -624,6 +624,24 @@ public struct AIChatSession: PurahStorableItem, Equatable, Sendable {
 
     public var timestamp: Date { createdAt }
 
+    /// Files stored in Purah's AI storage sandbox attached to messages in this session.
+    /// Excludes external user files so that session removal never unlinks user documents.
+    public var assetPaths: [String] {
+        let aiStorageRoot = PurahPluginFileStorage(pluginId: "ai").rootDirectory.standardized.path
+        var paths: [String] = []
+        for message in messages {
+            for attachment in message.attachments {
+                if let filePath = attachment.filePath {
+                    let normalized = URL(fileURLWithPath: filePath).standardized.path
+                    if normalized.hasPrefix(aiStorageRoot) {
+                        paths.append(normalized)
+                    }
+                }
+            }
+        }
+        return paths
+    }
+
     /// Every model that answered in this session, newest turn first.
     ///
     /// Reads the per-message attribution, so it survives a session outliving a

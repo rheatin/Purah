@@ -2000,8 +2000,9 @@ public final class AIAssistantPluginState: Sendable {
         }
         guard let data = pngData, !data.isEmpty else { return nil }
 
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PurahAIDrops", isDirectory: true)
+        let fileStorage = PurahPluginFileStorage(pluginId: "ai")
+        let directory = fileStorage.assetsDirectory
+            .appendingPathComponent("drops", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let fileURL = directory.appendingPathComponent("Drop_\(Int(Date().timeIntervalSince1970))_\(UUID().uuidString.prefix(6)).png")
         guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
