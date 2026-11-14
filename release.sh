@@ -348,18 +348,23 @@ if [ -n "$CUSTOM_NOTES_FILE" ] && [ -f "$CUSTOM_NOTES_FILE" ]; then
 elif [ -n "$CUSTOM_NOTES" ]; then
     echo -e "$CUSTOM_NOTES" > "$NOTES_PATH"
 else
-    PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+    PREV_TAG=$(git describe --tags --abbrev=0 --exclude="${TAG_NAME}" HEAD^ 2>/dev/null || echo "")
     if [ -n "$PREV_TAG" ]; then
         LOG_RANGE="${PREV_TAG}..HEAD"
     else
         LOG_RANGE="HEAD~15..HEAD"
     fi
 
+    CHANGELOG_ITEMS=$(git log $LOG_RANGE --pretty=format:"* %s (%h)" --no-merges --invert-grep --grep="Bump version to" 2>/dev/null || true)
+    if [ -z "$CHANGELOG_ITEMS" ]; then
+        CHANGELOG_ITEMS="* Performance enhancements and architecture improvements."
+    fi
+
     cat <<EOF > "$NOTES_PATH"
 # Purah ${TAG_NAME}
 
 ## What's New
-$(git log $LOG_RANGE --pretty=format:"* %s (%h)" --no-merges 2>/dev/null || echo "* Performance enhancements and architecture improvements.")
+${CHANGELOG_ITEMS}
 
 ## System Requirements
 * macOS 14.0 (Sonoma) or newer (Apple Silicon & Intel)
