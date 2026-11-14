@@ -1,6 +1,8 @@
 // Tests/PurahCoreTests/ExternalPluginABITests.swift
 import Testing
 import Foundation
+import SwiftUI
+import AppKit
 @testable import PurahCore
 @testable import PurahUI
 
@@ -26,8 +28,7 @@ struct ExternalPluginABITests {
     /// calls when the plugin exports it.
     private static let requiredSymbols = [
         "purahPluginManifestJSON",
-        "purahCreateRailView",
-        "purahCreateRailViewWithContext",
+        "purahRailBarStateJSON",
         "purahCreateDrawerView",
         "purahCreateDrawerViewWithContext",
         "purahCreateSettingsView",
@@ -45,7 +46,8 @@ struct ExternalPluginABITests {
     /// exercised end to end.
     private static let capabilitySymbols = [
         "purahSteppedItemsJSON",
-        "purahCreateSteppedDrawerViewWithContext",
+        "purahCreateSteppedRowAccessoryWithContext",
+        "purahCreateSteppedDrawerContentWithContext",
         "purahDecomposedPolicyJSON",
         "purahDynamicBarColorHex",
         "purahDynamicAccentColorHex",
@@ -115,7 +117,7 @@ struct ExternalPluginABITests {
             "pluginId", "edge", "railWidth", "slotHeight", "drawerWidth",
             "isExpanded", "isPinned", "isDark", "accentColorHex", "storageDirectoryPath",
             "visibleSubItemIds", "isDecomposed", "paletteStyle",
-            "primaryAccentHex", "borderColorHex"
+            "primaryAccentHex", "borderColorHex", "grantedPermissions"
         ] {
             #expect(sdk.contains("let \(field):"),
                     "PurahExternalPluginSDK.swift is missing '\(field)'")
@@ -274,11 +276,13 @@ struct ExternalPluginABITests {
         #expect(plugin.decomposedPolicy.maxRailItems == 3)
         #expect(plugin.decomposedPolicy.minChipHeight == 56.0)
 
-        // A stepped drawer for a known chip crosses the boundary and returns a
-        // real view; an unknown sub-item id must come back nil, not crash.
+        // External plugins never own the stepped card shell (`makeSteppedDrawerView` is nil);
+        // instead they provide `makeSteppedDrawerContent` and `makeSteppedRowAccessory` inside the host card.
         let firstId = try #require(items.first?.id)
-        #expect(plugin.makeSteppedDrawerView(subItemId: firstId, context: context) != nil)
-        #expect(plugin.makeSteppedDrawerView(subItemId: "nope", context: context) == nil)
+        #expect(plugin.makeSteppedDrawerView(subItemId: firstId, context: context) == nil)
+        #expect(plugin.makeSteppedDrawerContent(subItemId: firstId, context: context) != nil)
+        #expect(plugin.makeSteppedRowAccessory(subItemId: firstId, context: context) != nil)
+        #expect(plugin.makeSteppedDrawerContent(subItemId: "nope", context: context) == nil)
 
         // The cache lets the layout engine answer before any render happens.
         #expect(plugin.subItemCount(store: store) == 3)
@@ -298,6 +302,10 @@ struct ExternalPluginABITests {
         // the tick, so the registry will schedule it.
         #expect(plugin.preferredPollingInterval == 5.0)
         await plugin.onPollingTick(store: store)
+
+        // Declarative host-owned header accessory & trailing items.
+        #expect(plugin.headerAccessory(context: context) != nil)
+        #expect(!plugin.headerTrailingItems(context: context).isEmpty)
     }
 
     @Test("A plugin with no stepped symbols reports composite only")
@@ -318,4 +326,60 @@ struct ExternalPluginABITests {
         #expect(plugin.usesAdaptiveTelemetryColor == false)
         #expect(!plugin.isDecomposed)
     }
+
+    @Test("Declarative settings schema decodes from JSON and models construct accurately")
+    @MainActor
+    func testDeclarativeSettingsSchema() throws {
+        let sampleJSON = """
+        [
+            {
+                "id": "general",
+                "title": "General Settings",
+                "subtitle": "Basic configurations",
+                "icon": "gearshape.fill",
+                "iconColorHex": "#00B4D8",
+                "items": [
+                    {
+                        "id": "enableSound",
+                        "title": "Sound Effects",
+                        "type": "toggle",
+                        "boolValue": true
+                    },
+                    {
+                        "id": "dailyGoal",
+                        "title": "Daily Goal",
+                        "type": "stepper",
+                        "doubleValue": 2000.0,
+                        "minValue": 500.0,
+                        "maxValue": 5000.0,
+                        "step": 250.0,
+                        "badgeText": "2000 ml"
+                    },
+                    {
+                        "id": "themeMode",
+                        "title": "Theme Style",
+                        "type": "pills",
+                        "stringValue": "dark",
+                        "options": [
+                            {"id": "dark", "title": "Dark Mode"},
+                            {"id": "light", "title": "Light Mode"}
+                        ]
+                    }
+                ]
+            }
+        ]
+        """
+        let sections = PurahPluginSettingSection.decodeList(sampleJSON)
+        #expect(sections.count == 1)
+        #expect(sections.first?.items.count == 3)
+        #expect(sections.first?.items[0].type == "toggle")
+        #expect(sections.first?.items[0].boolValue == true)
+        #expect(sections.first?.items[1].type == "stepper")
+        #expect(sections.first?.items[1].doubleValue == 2000.0)
+        #expect(sections.first?.items[2].type == "pills")
+        #expect(sections.first?.items[2].options?.count == 2)
+    }
 }
+
+
+
