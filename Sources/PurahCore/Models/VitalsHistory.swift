@@ -300,14 +300,39 @@ public struct VitalsHistoryBuffer: Sendable {
             sums[index] += point.value
             counts[index] += 1
         }
-        return grid.indices.map { index in
+        var rawMeans = grid.indices.map { index in
             counts[index] > 0 ? sums[index] / Double(counts[index]) : 0
         }
+
+        // A timer that ticks at 1.02s against 1.00s buckets slips across a
+        // bucket edge once per window: the sample before lands just left of
+        // `start` and the next lands just right of `end`, leaving `counts == 0`
+        // even though no sample period was missed. Bridge only when two
+        // consecutive samples straddle the slot within normal single-period
+        // jitter (<= 1.65x slot width), or when the newest slot is queried
+        // just before the next tick fires (<= 1.35x slot width). Genuine
+        // multi-period gaps (>= 1.7x slot width) stay zero.
+        for index in grid.indices where counts[index] == 0 {
+            let bucket = grid[index]
+            let prev = points.last { $0.timestamp < bucket.start }
+            let next = points.first { $0.timestamp >= bucket.end }
+            if let prev, let next,
+               next.timestamp.timeIntervalSince(prev.timestamp) <= width * 1.65 {
+                rawMeans[index] = (prev.value + next.value) / 2
+            } else if index == grid.count - 1, next == nil, let prev,
+                      bucket.end.timeIntervalSince(prev.timestamp) <= width * 1.35 {
+                rawMeans[index] = prev.value
+            }
+        }
+        return rawMeans
     }
 
     /// Median spacing between consecutive source samples. A single point (or
     /// duplicate timestamps) cannot state a cadence, so the tier's declared
-    /// resolution is used instead.
+    /// resolution is used instead. When the measured median is within normal
+    /// runloop timer jitter (<= 25%) of the declared resolution, keep the
+    /// declared resolution so a 1.03s timer still builds 30 one-second slots
+    /// over a 30-second window instead of 29 fractional slots.
     private static func sampleCadence(
         _ points: [VitalsHistoryPoint],
         fallback: TimeInterval
@@ -323,6 +348,9 @@ public struct VitalsHistoryBuffer: Sendable {
         let median = spacings.count.isMultiple(of: 2)
             ? (spacings[middle - 1] + spacings[middle]) / 2
             : spacings[middle]
+        if abs(median - fallback) <= fallback * 0.25 {
+            return fallback
+        }
         return max(median, 0.001)
     }
 

@@ -460,4 +460,26 @@ struct VitalsHistoryTests {
         #expect(short.count == 2)
         #expect(short.last?.state == 1)
     }
+
+    @Test("A one-second timer with runloop jitter keeps thirty continuous columns")
+    func jitteryOneSecondTimerKeepsThirtyContinuousColumns() {
+        var timestamps: [TimeInterval] = [0]
+        for index in 1...30 {
+            let jitter = index == 15 ? 1.05 : 1.03
+            timestamps.append((timestamps.last ?? 0) + jitter)
+        }
+        let samples = timestamps.map { point($0, 0.72) }
+        let now = base.addingTimeInterval((timestamps.last ?? 30) + 0.15)
+
+        let buckets = VitalsHistoryBuffer.columns(
+            fast: samples,
+            scope: .realTime30s,
+            now: now,
+            fastResolution: 1.0,
+            maximumColumns: 30
+        )
+
+        #expect(buckets.count == 30)
+        #expect(buckets.allSatisfy { abs($0.mean - 0.72) < 0.001 })
+    }
 }

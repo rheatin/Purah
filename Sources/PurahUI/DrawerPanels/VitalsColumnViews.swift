@@ -148,6 +148,7 @@ struct VitalsColumnStrip: View {
     @Binding var hoveredIndex: Int?
     var showsHover = true
     var onCycle: (() -> Void)?
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         GeometryReader { geo in
@@ -160,10 +161,11 @@ struct VitalsColumnStrip: View {
             )
             ZStack(alignment: .topLeading) {
                 ForEach(bars) { bar in
+                    let rect = pixelAlignedRect(for: bar, totalWidth: size.width)
                     RoundedRectangle(cornerRadius: 1, style: .continuous)
                         .fill(color(for: bar.mean, index: bar.index))
-                        .frame(width: bar.rect.width, height: bar.rect.height)
-                        .position(x: bar.rect.midX, y: bar.rect.midY)
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
                 }
 
                 if showsHover,
@@ -239,6 +241,23 @@ struct VitalsColumnStrip: View {
         if value > danger { return VitalsColorResolver.dangerRed }
         if value > warning { return VitalsColorResolver.warningYellow }
         return tint
+    }
+
+    private func pixelAlignedRect(for bar: VitalsColumnBar, totalWidth: CGFloat) -> CGRect {
+        let step = min(1.0 / max(displayScale, 1.0), 0.5)
+        guard placements == nil, !buckets.isEmpty, totalWidth > 0 else {
+            let x = (bar.rect.minX / step).rounded() * step
+            let w = max((bar.rect.width / step).rounded() * step, step)
+            return CGRect(x: x, y: bar.rect.minY, width: w, height: bar.rect.height)
+        }
+        let count = CGFloat(buckets.count)
+        let stride = totalWidth / count
+        let rawGap = min(1.5, max(1.0, stride * 0.2), stride * 0.5)
+        let gap = max((rawGap / step).rounded(.down) * step, min(step, stride * 0.5))
+        let x0 = (CGFloat(bar.index) * stride / step).rounded() * step
+        let x1 = (CGFloat(bar.index + 1) * stride / step).rounded() * step
+        let width = max(x1 - x0 - gap, step)
+        return CGRect(x: x0, y: bar.rect.minY, width: width, height: bar.rect.height)
     }
 }
 
@@ -613,17 +632,23 @@ struct VitalsFocusedBandCopy: Equatable, Sendable {
 /// The composite drawer's band, focused on one metric. The stepped chip card
 /// used to own a second chart implementation; this keeps one presentation so a
 /// chip and the drawer tell the same story.
-struct VitalsFocusedColumnBand: View {
-    let metric: VitalsMetricType
-    let availableHeight: CGFloat
-    let state: VitalsPluginState
+public struct VitalsFocusedColumnBand: View {
+    public let metric: VitalsMetricType
+    public let availableHeight: CGFloat
+    public let state: VitalsPluginState
+
+    public init(metric: VitalsMetricType, availableHeight: CGFloat, state: VitalsPluginState) {
+        self.metric = metric
+        self.availableHeight = availableHeight
+        self.state = state
+    }
 
     private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
     private var metrics: HardwareVitalsInfo { vitals.metrics }
     private var thresholds: VitalsColorThresholds { state.thresholds }
     private var scope: VitalsTimeScope { state.scope(for: metric) }
 
-    var body: some View {
+    public var body: some View {
         let copy = VitalsFocusedBandCopy.make(
             metric: metric,
             metrics: metrics,
