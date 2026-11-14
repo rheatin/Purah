@@ -65,24 +65,10 @@ public struct ClipboardPlugin: PurahPodPlugin {
         return nil
     }
 
-    // 1. In-rail view: Pure physical geometric pill shape without any distracting icons
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
+    // 1. In-rail view: Host-rendered solid gradient pill
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
         let activeColor = dynamicBarColor(context: context) ?? context.accentColor
-        return AnyView(
-            Capsule()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            activeColor.opacity(context.isExpanded ? 0.95 : 0.75),
-                            activeColor.opacity(context.isExpanded ? 0.80 : 0.55)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(width: context.railWidth, height: context.slotHeight)
-                .contentShape(Rectangle())
-        )
+        return .solid(color: activeColor, hasContent: true, isGradient: true)
     }
 
     // 2. Capability Provider: Decomposed Mode
@@ -147,8 +133,8 @@ public struct ClipboardPlugin: PurahPodPlugin {
     }
 
     // 3. Header Accessory & Trailing Tools (Directly integrated into Card Header Row 1)
-    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        AnyView(PurahHeaderBadge("\(state.items.count)", tint: Color(hex: "#FF9F0A")))
+    public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
+        .badge("\(state.items.count)", colorHex: "#FF9F0A")
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
@@ -207,7 +193,7 @@ public struct ClipboardPlugin: PurahPodPlugin {
         }
     }
 
-    // 5. Stepped Drawer View (Single item popout with co-planar rail indicator and physical divider)
+    // 5. Stepped Drawer View (Single item popout; SteppedRailContainerView renders the in-rail indicator bar)
     public func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView? {
         let cleanId = subItemId.replacingOccurrences(of: "clipboard-", with: "")
         let item = state.items.first(where: { $0.id == cleanId || $0.id == subItemId })
@@ -287,9 +273,8 @@ public struct ClipboardItemDrawerView: View {
             .steppedDrawerWidth(store: store) ?? 290.0
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            // Pure physical in-rail capsule (co-planar, NO icons)
-            Capsule()
-                .fill(itemColor.opacity(isExpanded ? 0.95 : 0.70))
+            // Host (`SteppedRailContainerView`) renders the physical in-rail indicator bar
+            Color.clear
                 .frame(width: barW, height: isExpanded ? cardH : height)
 
             if isExpanded {

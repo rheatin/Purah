@@ -87,6 +87,8 @@ public final class AmbientRailWindow: NSPanel {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             self.setFrame(newFrame, display: display)
+            self.contentView?.needsLayout = true
+            self.contentView?.layoutSubtreeIfNeeded()
             CATransaction.commit()
         }
     }

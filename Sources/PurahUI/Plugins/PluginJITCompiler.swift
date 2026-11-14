@@ -177,6 +177,7 @@ public final class PluginJITCompiler {
     ) async throws -> any PurahPodPlugin {
         let dylib = try await compilePackage(packageDir: packageDir, configuration: configuration)
         let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
+        PluginDynamicLoader.shared.rememberInstalled(path: dylib.path, for: plugin.manifest.id)
 
         PluginRegistry.shared.register(plugin, store: store)
         store.marketManager.install(id: plugin.manifest.id)

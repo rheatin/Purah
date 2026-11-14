@@ -25,13 +25,8 @@ public struct TodoPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        let radius = min(context.railWidth / 2, 4)
-        return AnyView(
-            RoundedRectangle(cornerRadius: radius)
-                .fill(context.accentColor.opacity(0.85))
-                .frame(width: context.railWidth, height: context.slotHeight)
-        )
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        .solid(color: context.accentColor, hasContent: true)
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
@@ -42,33 +37,29 @@ public struct TodoPlugin: PurahPodPlugin {
         AnyView(TodoPluginSettingsView(state: state, store: store))
     }
 
-    /// Open / Completed are two icon toggles in the header's control group,
-    /// beside the gear and pin: the filled glyph is the view you are in. They
-    /// cost the drawer body nothing, and nothing else in the pod reads the
-    /// flag — the rail chips and the pod's minimum height still describe what
-    /// is open.
-    public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            PurahHeaderGroup {
-                PurahHeaderButton(
-                    systemImage: "circle",
-                    help: "todo.tab.open".localized,
-                    tint: .primary,
-                    isActive: !state.showsCompleted
-                ) {
-                    state.showsCompleted = false
-                }
+    public func headerTrailingItems(context: PurahPluginContext) -> [PurahHeaderTrailingItem] {
+        [
+            PurahHeaderTrailingItem.button(
+                id: "open",
+                systemIcon: "circle",
+                help: "todo.tab.open".localized,
+                isActive: !state.showsCompleted
+            ),
+            PurahHeaderTrailingItem.button(
+                id: "completed",
+                systemIcon: state.showsCompleted ? "checkmark.circle.fill" : "checkmark.circle",
+                help: "todo.tab.done".localized,
+                isActive: state.showsCompleted
+            )
+        ]
+    }
 
-                PurahHeaderButton(
-                    systemImage: state.showsCompleted ? "checkmark.circle.fill" : "checkmark.circle",
-                    help: "todo.tab.done".localized,
-                    tint: context.accentColor,
-                    isActive: state.showsCompleted
-                ) {
-                    state.showsCompleted = true
-                }
-            }
-        )
+    public func onHeaderAction(actionId: String, context: PurahPluginContext) {
+        if actionId == "open" {
+            state.showsCompleted = false
+        } else if actionId == "completed" {
+            state.showsCompleted = true
+        }
     }
 
     public func onMount(store: PurahWorkspaceStore) {

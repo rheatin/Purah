@@ -101,7 +101,10 @@ public struct SteppedRailContainerView: View {
 
         Group {
             if displayItems.isEmpty {
-                plugin.makeRailBarView(context: context)
+                PurahHostRailBarView(
+                    descriptor: plugin.railBarDescriptor(context: context),
+                    context: context
+                )
                     .frame(width: barW, height: totalHeight)
             } else {
                 VStack(alignment: edge == .left ? .leading : .trailing, spacing: spacing) {
@@ -150,11 +153,11 @@ public struct SteppedRailContainerView: View {
                                 .accessibilityAddTraits(.isButton)
                                 .accessibilityAction { activate() }
                         }
-                        .frame(height: slotH, alignment: .top)
+                        .frame(maxWidth: .infinity, minHeight: slotH, maxHeight: slotH, alignment: edge == .right ? .topTrailing : .topLeading)
                         .zIndex(isActive ? 100 : Double(10 - idx))
                     }
                 }
-                .frame(height: displaySpanH, alignment: .top)
+                .frame(maxWidth: .infinity, minHeight: displaySpanH, maxHeight: displaySpanH, alignment: edge == .left ? .topLeading : .topTrailing)
             }
         }
         .animation(PurahMotionPolicy.railReflow, value: totalHeight)
@@ -245,7 +248,18 @@ public struct SteppedRailContainerView: View {
         ) {
             hosted
         } else if let customDrawer = plugin.makeSteppedDrawerView(subItemId: subItem.id, context: subContext) {
-            customDrawer
+            let tintColor: Color = subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor
+            ZStack(alignment: edge == .right ? .trailing : .leading) {
+                subItemIndicatorBar(subItem: subItem, itemH: itemH, tintColor: tintColor)
+                    .transaction { t in
+                        if !store.isBreathingActive(for: edge) {
+                            t.animation = nil
+                        }
+                    }
+
+                customDrawer
+            }
+            .frame(maxWidth: .infinity, minHeight: itemH, maxHeight: itemH, alignment: edge == .right ? .trailing : .leading)
         } else {
             genericSubItemChip(
                 subItem: subItem,
@@ -258,8 +272,8 @@ public struct SteppedRailContainerView: View {
 
     // MARK: - Host-owned stepped card
 
-    /// A plugin that returns body content gets the standard card: rail bar,
-    /// background, header with settings/pin, on-screen clamp, entrance/exit
+    /// A plugin that returns body content or row accessory gets the standard card:
+    /// rail bar, background, header with settings/pin, on-screen clamp, entrance/exit
     /// motion. It keeps the plugin out of height and chrome maths.
     private func hostedSteppedChip(
         subItem: PurahPluginSubItem,
@@ -279,14 +293,6 @@ public struct SteppedRailContainerView: View {
             isPinned: isPinned,
             visibleIDs: visibleIDs
         )
-        guard let content = plugin.makeSteppedDrawerContent(subItemId: subItem.id, context: contentContext) else {
-            return nil
-        }
-        // A minimum-size chip is its row and nothing else. The plugin declares
-        // the body height it can actually render at, so a graph is not squeezed
-        // into a sliver under the row.
-        let minBodyH = max(8.0, plugin.steppedDrawerMinimumBodyHeight(subItemId: subItem.id))
-        let showsBody = bodyH >= minBodyH
         // Row accessories size themselves against the card, not the body.
         let rowContext = makeSubItemContext(
             for: subItem,
@@ -295,6 +301,16 @@ public struct SteppedRailContainerView: View {
             isPinned: isPinned,
             visibleIDs: visibleIDs
         )
+        let content = plugin.makeSteppedDrawerContent(subItemId: subItem.id, context: contentContext)
+        let accessory = plugin.makeSteppedRowAccessory(subItemId: subItem.id, context: rowContext)
+        guard content != nil || accessory != nil else {
+            return nil
+        }
+        // A minimum-size chip is its row and nothing else. The plugin declares
+        // the body height it can actually render at, so a graph is not squeezed
+        // into a sliver under the row.
+        let minBodyH = max(8.0, plugin.steppedDrawerMinimumBodyHeight(subItemId: subItem.id))
+        let showsBody = bodyH >= minBodyH
 
         let tintColor: Color = subItem.tintColorHex.flatMap { Color(hex: $0) } ?? context.accentColor
         return AnyView(
@@ -312,13 +328,13 @@ public struct SteppedRailContainerView: View {
                         isPinned: isPinned,
                         cardH: cardH,
                         tintColor: tintColor,
-                        accessory: plugin.makeSteppedRowAccessory(subItemId: subItem.id, context: rowContext),
+                        accessory: accessory,
                         content: showsBody ? content : nil
                     )
                     .transition(.move(edge: edge == .right ? .trailing : .leading))
                 }
             }
-            .frame(height: itemH)
+            .frame(maxWidth: .infinity, minHeight: itemH, maxHeight: itemH, alignment: edge == .right ? .trailing : .leading)
             .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
         )
     }
@@ -370,10 +386,13 @@ public struct SteppedRailContainerView: View {
                 )
             }
             .frame(height: rowH)
+            .zIndex(1)
 
             if let content {
                 content
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .padding(.bottom, 6)
+                    .clipped()
             }
         }
         // A row-fill chip reads its row as a band of the pod's card: at the
@@ -545,6 +564,7 @@ public struct SteppedRailContainerView: View {
                         .font(.system(size: titleSize, weight: .semibold, design: .rounded))
                         .foregroundColor(palette.style == .native ? Color.primary : .white)
                         .lineLimit(1)
+                        .minimumScaleFactor(1.0 / max(scale, 1.0))
                         .truncationMode(.tail)
                         .layoutPriority(1)
 
@@ -622,9 +642,11 @@ public struct SteppedRailContainerView: View {
                     )
                 }
                 .frame(height: rowH)
+                .zIndex(1)
 
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .clipped()
             }
             .padding(.leading, edge == .left ? 12.0 : 18.0)
             .padding(.trailing, edge == .left ? 18.0 : 12.0)
@@ -663,7 +685,7 @@ public struct SteppedRailContainerView: View {
                     .transition(.move(edge: edge == .right ? .trailing : .leading))
             }
         }
-        .frame(height: cardH)
+        .frame(maxWidth: .infinity, minHeight: cardH, maxHeight: cardH, alignment: edge == .right ? .trailing : .leading)
         .animation(isExpanded ? PurahMotionPolicy.drawerEntrance : PurahMotionPolicy.drawerExit, value: isExpanded)
     }
 
@@ -700,10 +722,16 @@ public struct SteppedRailContainerView: View {
             ))
 
             if subItem.state == .running {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: min(max(barW - 2, 3), 5), height: min(max(barW - 2, 3), 5))
-                    .padding(.bottom, itemH / 2 - 2.5)
+                if pod.id == "ai" {
+                    PurahActivitySweepView(isAnimated: !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+                        .frame(width: barW, height: itemH)
+                        .allowsHitTesting(false)
+                } else {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: min(max(barW - 2, 3), 5), height: min(max(barW - 2, 3), 5))
+                        .padding(.bottom, itemH / 2 - 2.5)
+                }
             }
         }
         .frame(width: barW, height: itemH)

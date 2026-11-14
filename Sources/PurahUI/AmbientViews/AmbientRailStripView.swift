@@ -150,7 +150,7 @@ public struct AmbientRailStripView: View {
                             genericRailBar(pod: pod, totalHeight: spanH, railWidth: activeBarW, isThisPodActive: isThisPodActive)
                         }
                     }
-                    .frame(width: geo.size.width, height: spanH, alignment: edge == .left ? .topLeading : .topTrailing)
+                    .frame(height: spanH, alignment: .top)
                     .opacity(isBreathing && store.activePod != nil && !isThisPodActive ? 0.65 : 1.0)
                     // Measured inside the same render transform as the pod:
                     // an anchor attached after `.offset` sees the unoffset slot
@@ -160,6 +160,7 @@ public struct AmbientRailStripView: View {
                     .animation(PurahMotionPolicy.railReflow, value: spanH)
                     .animation(PurahMotionPolicy.railReflow, value: startY)
                     .animation(.spring(response: 0.26, dampingFraction: 0.78), value: isThisPodActive)
+                    .frame(width: geo.size.width, alignment: edge == .left ? .topLeading : .topTrailing)
                 }
 
                 if showsOnboardingEdgeBand {
@@ -180,11 +181,12 @@ public struct AmbientRailStripView: View {
                         .zIndex(210)
                 }
             }
-            .frame(width: geo.size.width, height: totalHeight, alignment: edge == .left ? .topLeading : .topTrailing)
+            .frame(height: totalHeight, alignment: .top)
             .animation(
                 PurahMotionPolicy.railReflow,
                 value: layoutItems.map { "\($0.id)_\(Int($0.startY))_\(Int($0.spanH))" }
             )
+            .frame(width: geo.size.width, height: totalHeight, alignment: edge == .left ? .topLeading : .topTrailing)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: edge == .left ? .leading : .trailing)
@@ -403,7 +405,10 @@ public struct AmbientRailStripView: View {
         let podActivity = plugin.activity(store: store)
 
         ZStack(alignment: edge == .right ? .topTrailing : .topLeading) {
-            plugin.makeRailBarView(context: barContext)
+            PurahHostRailBarView(
+                descriptor: plugin.railBarDescriptor(context: barContext),
+                context: barContext
+            )
                 .frame(width: railWidth, height: barSlotH)
                 .dynamicActivitySweep(
                     isWorking: podActivity == .working,
@@ -446,14 +451,14 @@ public struct AmbientRailStripView: View {
                     }
             }
         }
-        .frame(height: barSlotH, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: barSlotH, maxHeight: barSlotH, alignment: edge == .right ? .topTrailing : .topLeading)
     }
 
     @ViewBuilder
     private func pluginDrawerCard(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext, totalHeight: CGFloat) -> some View {
         let color = context.accentColor
         let isPinned = context.isPinned
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: plugin.manifest.systemIcon)
                     .foregroundColor(color)
@@ -495,9 +500,16 @@ public struct AmbientRailStripView: View {
                     pinButton(id: pod.id, isPinned: isPinned, color: color)
                 }
             }
+            .frame(height: 22)
+            .zIndex(1)
+
             plugin.makeDrawerView(context: context)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .clipped()
         }
-        .padding(8)
+        .padding(.leading, edge == .left ? 12 : 14)
+        .padding(.trailing, edge == .left ? 14 : 12)
+        .padding(.vertical, 10)
         .frame(
             width: store.effectiveDrawerWidth(baseWidth: pod.drawerWidth, podId: pod.id),
             height: totalHeight,

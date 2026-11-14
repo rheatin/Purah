@@ -43,8 +43,8 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     // MARK: - Views
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(AIRailBarPluginView(state: state, context: context))
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        .solid(color: Color(hex: state.selectedRole.colorHex), hasContent: true)
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {

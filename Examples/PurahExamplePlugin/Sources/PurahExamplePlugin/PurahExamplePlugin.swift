@@ -63,25 +63,6 @@ final class ZenCounterState: ObservableObject {
 }
 
 // MARK: - SwiftUI Views
-struct ZenRailView: View {
-    @ObservedObject private var state = ZenCounterState.shared
-    private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
-
-    var body: some View {
-        VStack(spacing: 3) {
-            Image(systemName: "flame.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(accentColor)
-            Text("\(state.count)")
-                .font(.system(size: 8, weight: .heavy, design: .monospaced))
-                .foregroundColor(.white)
-        }
-        .frame(width: 8, height: 60)
-        .background(accentColor.opacity(0.85))
-        .clipShape(Capsule())
-    }
-}
-
 struct ZenDrawerView: View {
     @ObservedObject private var state = ZenCounterState.shared
     private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
@@ -231,85 +212,60 @@ struct ZenSettingsView: View {
     private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Header
-            HStack(spacing: 8) {
-                Image(systemName: "flame.fill")
-                    .foregroundColor(accentColor)
-                    .font(.system(size: 14, weight: .bold))
-                Text("Zen Counter Configuration")
-                    .font(.system(size: 12, weight: .semibold))
-                Spacer()
-            }
+        PurahExternalSettingsCard(
+            title: "Zen Counter Configuration",
+            subtitle: "Configure target cycles and step increments",
+            icon: "flame.fill",
+            iconColor: accentColor
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                PurahExternalSettingStepperRow(
+                    title: "Daily Target Goal",
+                    subtitle: "Cycles required to achieve daily focus",
+                    badgeText: "\(state.targetGoal) cycles",
+                    value: Binding(
+                        get: { Double(state.targetGoal) },
+                        set: { state.targetGoal = Int($0) }
+                    ),
+                    range: 1...100,
+                    step: 1
+                )
 
-            Divider()
+                PurahExternalSettingStepperRow(
+                    title: "Increment Step Size",
+                    subtitle: "Amount added per focus cycle completion",
+                    badgeText: "+\(state.stepSize)",
+                    value: Binding(
+                        get: { Double(state.stepSize) },
+                        set: { state.stepSize = Int($0) }
+                    ),
+                    range: 1...10,
+                    step: 1
+                )
 
-            // Daily Target Goal
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Daily Target Goal")
-                        .font(.system(size: 11, weight: .medium))
-                    Spacer()
-                    Text("\(state.targetGoal) cycles")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(accentColor)
+                Divider()
+
+                PurahExternalSettingActionRow(
+                    title: "Host Toast Notification",
+                    subtitle: "Test Purah HostBridge toast action",
+                    buttonTitle: "Test Toast",
+                    systemIcon: "sparkles",
+                    role: "accent"
+                ) {
+                    PurahHostBridge.shared.showToast(pluginId: pluginId, message: "Target goal: \(state.targetGoal) cycles")
+                    PurahHostBridge.shared.performHaptic(pluginId: pluginId, type: "levelChange")
                 }
 
-                Stepper("", value: $state.targetGoal, in: 1...100)
-                    .labelsHidden()
-            }
-
-            // Step Size
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Increment Step Size")
-                        .font(.system(size: 11, weight: .medium))
-                    Spacer()
-                    Text("+\(state.stepSize)")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(accentColor)
-                }
-
-                Stepper("", value: $state.stepSize, in: 1...10)
-                    .labelsHidden()
-            }
-
-            Divider()
-
-            // Host Actions Test Controls
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Host SDK Bridge Actions")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.secondary)
-
-                HStack(spacing: 8) {
-                    Button {
-                        PurahHostBridge.shared.showToast(pluginId: pluginId, message: "Target goal saved: \(state.targetGoal) cycles")
-                        PurahHostBridge.shared.performHaptic(pluginId: pluginId, type: "levelChange")
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "sparkles")
-                            Text("Test Toast")
-                        }
-                        .font(.system(size: 10, weight: .medium))
-                    }
-
-                    Button {
-                        PurahHostBridge.shared.togglePin(pluginId: pluginId)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "pin")
-                            Text("Toggle Pin")
-                        }
-                        .font(.system(size: 10, weight: .medium))
-                    }
+                PurahExternalSettingActionRow(
+                    title: "Toggle Drawer Pin",
+                    subtitle: "Pin or unpin this drawer card on screen",
+                    buttonTitle: "Toggle Pin",
+                    systemIcon: "pin.fill"
+                ) {
+                    PurahHostBridge.shared.togglePin(pluginId: pluginId)
                 }
             }
-
-            Spacer()
         }
-        .padding(14)
-        .frame(minWidth: 260, minHeight: 220)
     }
 }
 
@@ -344,17 +300,20 @@ public func purahPluginManifestJSON() -> UnsafePointer<CChar> {
     return (manifestJSON as NSString).utf8String!
 }
 
+/// Composite rail bar state: Purah owns the 8pt edge bar and renders a vertical
+/// gauge fill from this JSON descriptor. Plugins never return an `NSView` for the rail.
 @MainActor
-@_cdecl("purahCreateRailView")
-public func purahCreateRailView() -> UnsafeMutableRawPointer {
-    PurahViewHost.retain(ZenRailView())
-}
-
-@MainActor
-@_cdecl("purahCreateRailViewWithContext")
-public func purahCreateRailViewWithContext(contextJSON: UnsafePointer<CChar>) -> UnsafeMutableRawPointer {
+@_cdecl("purahRailBarStateJSON")
+public func purahRailBarStateJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
     _ = PurahExternalContext.decode(from: contextJSON)
-    return PurahViewHost.retain(ZenRailView())
+    let state = ZenCounterState.shared
+    let ratio = Double(state.count) / Double(max(state.targetGoal, 1))
+    return PurahExternalRailBarState(
+        style: "gauge",
+        ratio: min(max(ratio, 0.0), 1.0),
+        minimumVisibleFill: 4.0,
+        accessibilityValueLabel: "\(state.count) of \(state.targetGoal) cycles"
+    ).toCString()
 }
 
 @MainActor
@@ -393,6 +352,43 @@ public func purahCreateHeaderAccessoryView() -> UnsafeMutableRawPointer {
 @_cdecl("purahCreateHeaderTrailingView")
 public func purahCreateHeaderTrailingView() -> UnsafeMutableRawPointer {
     PurahViewHost.retain(ZenHeaderTrailingView())
+}
+
+@MainActor
+@_cdecl("purahHeaderAccessoryJSON")
+public func purahHeaderAccessoryJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let state = ZenCounterState.shared
+    return PurahExternalHeaderAccessory.badge("\(state.count) ZEN", colorHex: "#FF6B6B").toCString()
+}
+
+@MainActor
+@_cdecl("purahHeaderTrailingItemsJSON")
+public func purahHeaderTrailingItemsJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let state = ZenCounterState.shared
+    let items = [
+        PurahExternalHeaderTrailingItem.button(
+            id: "increment",
+            systemIcon: "plus",
+            help: "Quick increment +\(state.stepSize)",
+            colorHex: "#FF6B6B"
+        )
+    ]
+    return PurahExternalHeaderTrailingItem.encodeListToCString(items)
+}
+
+@MainActor
+@_cdecl("purahOnHeaderAction")
+public func purahOnHeaderAction(
+    contextJSON: UnsafePointer<CChar>,
+    actionIdPtr: UnsafePointer<CChar>
+) {
+    let actionId = String(cString: actionIdPtr)
+    if actionId == "increment" {
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .default)
+        ZenCounterState.shared.increment()
+    }
 }
 
 @MainActor
@@ -467,8 +463,10 @@ public func purahOnRailBarTapWithContext(
 // MARK: - Stepped Mode (per-session chips)
 //
 // Demonstrates the optional stepped ABI: three focus sessions rendered as
-// individual rail chips, each with its own drawer. A plugin that exports none
-// of these symbols simply has no stepped mode.
+// individual rail chips. Purah owns the 8pt chip bars AND the expanded
+// single-row card chrome (icon block, title, badge, subtitle, gear/pin).
+// The plugin contributes an inline row accessory button and optional
+// progressive-disclosure body content when the chip is stretched tall.
 
 struct ZenSession: Identifiable {
     let id: String
@@ -494,22 +492,19 @@ enum ZenSessions {
 public func purahSteppedItemsJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
     _ = PurahExternalContext.decode(from: contextJSON)
 
-    let payload: [[String: Any]] = ZenSessions.all.map { session in
-        [
-            "id": "com.example.focus-\(session.id)",
-            "title": session.title,
-            "subtitle": "\(session.minutes) min",
-            "systemIcon": "timer",
-            "badge": "\(session.minutes)m",
-            "state": "normal",
-            "gaugeRatio": Double(session.minutes) / 50.0,
-            "gaugeStyle": "solid"
-        ]
+    let items = ZenSessions.all.map { session in
+        PurahExternalSubItem(
+            id: "com.example.focus-\(session.id)",
+            title: session.title,
+            subtitle: "\(session.minutes) min session",
+            systemIcon: "timer",
+            badge: "\(session.minutes)m",
+            state: "normal",
+            gaugeRatio: Double(session.minutes) / 50.0,
+            gaugeStyle: "solid"
+        )
     }
-
-    guard let data = try? JSONSerialization.data(withJSONObject: payload),
-          let json = String(data: data, encoding: .utf8) else { return nil }
-    return (json as NSString).utf8String
+    return PurahExternalSubItem.encodeListToCString(items)
 }
 
 @MainActor
@@ -517,28 +512,42 @@ public func purahSteppedItemsJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePo
 public func purahDecomposedPolicyJSON(contextJSON: UnsafePointer<CChar>) -> UnsafePointer<CChar>? {
     _ = PurahExternalContext.decode(from: contextJSON)
 
-    let policy: [String: Any] = [
-        "maxRailItems": 3,
-        "minChipHeight": 56.0,
-        "maxChipHeight": 185.0,
-        "spacing": 2.5,
-        "overflowStrategy": "smartFold"
-    ]
-    guard let data = try? JSONSerialization.data(withJSONObject: policy),
-          let json = String(data: data, encoding: .utf8) else { return nil }
-    return (json as NSString).utf8String
+    return PurahExternalDecomposedPolicy(
+        maxRailItems: 3,
+        minChipHeight: 56.0,
+        maxChipHeight: 185.0,
+        spacing: 2.5,
+        overflowStrategy: "smartFold"
+    ).toCString()
 }
 
+/// Inline row accessory placed inside the host's single-row stepped card,
+/// immediately to the left of the host's gear/pin tools.
 @MainActor
-@_cdecl("purahCreateSteppedDrawerViewWithContext")
-public func purahCreateSteppedDrawerViewWithContext(
+@_cdecl("purahCreateSteppedRowAccessoryWithContext")
+public func purahCreateSteppedRowAccessoryWithContext(
     contextJSON: UnsafePointer<CChar>,
     subItemId: UnsafePointer<CChar>
 ) -> UnsafeMutableRawPointer? {
     _ = PurahExternalContext.decode(from: contextJSON)
     let id = String(cString: subItemId)
     guard let session = ZenSessions.session(for: id) else { return nil }
-    return PurahViewHost.retain(ZenSessionDrawerView(session: session))
+    return PurahViewHost.retain(ZenSessionRowAccessoryView(session: session))
+}
+
+/// Progressive-disclosure body content rendered below the host's stepped row
+/// ONLY when the chip is stretched tall (`bodyHeight >= 48pt`). Never repeat
+/// the chip's icon, title, or badge here — the host row already draws them.
+@MainActor
+@_cdecl("purahCreateSteppedDrawerContentWithContext")
+public func purahCreateSteppedDrawerContentWithContext(
+    contextJSON: UnsafePointer<CChar>,
+    subItemId: UnsafePointer<CChar>
+) -> UnsafeMutableRawPointer? {
+    _ = PurahExternalContext.decode(from: contextJSON)
+    let id = String(cString: subItemId)
+    guard let session = ZenSessions.session(for: id) else { return nil }
+    return PurahViewHost.retain(ZenSessionBodyView(session: session))
 }
 
 /// Dynamic telemetry: the bar turns amber once the session goal is reached.
@@ -560,32 +569,44 @@ public func purahDynamicAccentColorHex(contextJSON: UnsafePointer<CChar>) -> Uns
     return (reachedGoal ? "#FFD166" : "#FF6B6B" as NSString).utf8String
 }
 
-struct ZenSessionDrawerView: View {
+struct ZenSessionRowAccessoryView: View {
     let session: ZenSession
     private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "timer")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(accentColor)
-                Text(session.title)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                Spacer()
-                Text("\(session.minutes)m")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.secondary)
+        Button {
+            ZenCounterState.shared.startSession(session)
+            ZenCounterState.shared.increment()
+            PurahHostBridge.shared.performHaptic(pluginId: "com.example.focus", type: "alignment")
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 8, weight: .bold))
+                Text("Start")
+                    .font(.system(size: 9.5, weight: .semibold))
             }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(accentColor.opacity(0.18)))
+            .foregroundColor(accentColor)
+        }
+        .buttonStyle(.plain)
+    }
+}
 
-            Text("Focus for \(session.minutes) minutes. Chips like this one are contributed per sub-item through the stepped ABI.")
+struct ZenSessionBodyView: View {
+    let session: ZenSession
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Focus for \(session.minutes) minutes without context switching.")
                 .font(.system(size: 10.5))
                 .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(2)
 
             Spacer(minLength: 0)
         }
-        .padding(8)
+        .padding(.top, 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }

@@ -58,38 +58,12 @@ public struct ScriptItemDrawerView: View {
 
     public var body: some View {
         let cardH = height
-        let barRadius = min(CGFloat(store.railBarWidth) / 2, 4)
         let barW = CGFloat(store.railBarWidth)
-        let isRunning = runway.isRunning && runway.lastExecutedActionId == action.id
-
         let isExpanded = (state == .expandedDrawer)
 
         ZStack(alignment: edge == .right ? .trailing : .leading) {
-            // Rail-anchored indicator bar (micro icon, execution state indicator, and tactile feedback)
-            ZStack(alignment: .center) {
-                RoundedRectangle(cornerRadius: barRadius)
-                    .fill(podColor.opacity(isHovered ? 1.0 : (isRunning ? 0.95 : 0.85)))
-                    .frame(width: barW, height: cardH)
-                    .shadow(color: isRunning ? podColor.opacity(0.85) : (isHovered ? podColor.opacity(0.4) : .clear), radius: isRunning ? 4 : 2)
-
-                if isRunning {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: min(max(barW - 2, 3), 5), height: min(max(barW - 2, 3), 5))
-                } else if barW >= 10 {
-                    Image(systemName: action.systemIcon)
-                        .font(.system(size: min(barW - 2, 8)))
-                        .foregroundColor(.white.opacity(0.9))
-                }
-            }
-            .frame(width: barW, height: cardH)
-            .scaleEffect(isHovered ? 1.02 : 1.0)
-            .animation(PurahMotionPolicy.hover, value: isHovered)
-            .transaction { t in
-                if !store.isBreathingActive(for: edge) {
-                    t.animation = nil
-                }
-            }
+            Color.clear
+                .frame(width: barW, height: cardH)
 
             if isExpanded {
                 expandedCard(cardH: cardH)

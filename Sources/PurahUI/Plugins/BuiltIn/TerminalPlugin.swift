@@ -28,8 +28,8 @@ public struct TerminalPlugin: PurahPodPlugin {
         self.state = state
     }
 
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        AnyView(TerminalRailBarPluginView(context: context))
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        .solid(color: context.accentColor, hasContent: true)
     }
 
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {

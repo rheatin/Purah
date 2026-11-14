@@ -388,3 +388,277 @@ public struct PurahHeaderDivider: View {
             .padding(.horizontal, 2)
     }
 }
+
+// MARK: - Declarative Header Models & Host Renderers
+
+public struct PurahHeaderMenuOption: Identifiable, Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String
+    public var systemIcon: String?
+    public var isSelected: Bool
+    public var isDisabled: Bool
+
+    public init(
+        id: String,
+        title: String,
+        systemIcon: String? = nil,
+        isSelected: Bool = false,
+        isDisabled: Bool = false
+    ) {
+        self.id = id
+        self.title = title
+        self.systemIcon = systemIcon
+        self.isSelected = isSelected
+        self.isDisabled = isDisabled
+    }
+}
+
+public struct PurahHeaderAccessoryDescriptor: Codable, Sendable, Equatable {
+    public var text: String
+    public var systemIcon: String?
+    public var colorHex: String?
+    public var isSelected: Bool
+    public var isEmphasized: Bool
+    public var menuOptions: [PurahHeaderMenuOption]?
+
+    public init(
+        text: String,
+        systemIcon: String? = nil,
+        colorHex: String? = nil,
+        isSelected: Bool = false,
+        isEmphasized: Bool = false,
+        menuOptions: [PurahHeaderMenuOption]? = nil
+    ) {
+        self.text = text
+        self.systemIcon = systemIcon
+        self.colorHex = colorHex
+        self.isSelected = isSelected
+        self.isEmphasized = isEmphasized
+        self.menuOptions = menuOptions
+    }
+
+    public static func badge(
+        _ text: String,
+        colorHex: String? = nil,
+        isSelected: Bool = false
+    ) -> PurahHeaderAccessoryDescriptor {
+        PurahHeaderAccessoryDescriptor(
+            text: text,
+            colorHex: colorHex,
+            isSelected: isSelected
+        )
+    }
+
+    public static func menu(
+        text: String,
+        systemIcon: String? = nil,
+        colorHex: String? = nil,
+        isEmphasized: Bool = false,
+        options: [PurahHeaderMenuOption]
+    ) -> PurahHeaderAccessoryDescriptor {
+        PurahHeaderAccessoryDescriptor(
+            text: text,
+            systemIcon: systemIcon,
+            colorHex: colorHex,
+            isEmphasized: isEmphasized,
+            menuOptions: options
+        )
+    }
+
+    public static func decode(_ json: String) -> PurahHeaderAccessoryDescriptor? {
+        guard let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(PurahHeaderAccessoryDescriptor.self, from: data)
+    }
+}
+
+public struct PurahHeaderTrailingItem: Identifiable, Codable, Sendable, Equatable {
+    public var id: String
+    public var systemIcon: String
+    public var help: String
+    public var colorHex: String?
+    public var isActive: Bool
+    public var isEmphasized: Bool
+    public var isDestructive: Bool
+    public var menuOptions: [PurahHeaderMenuOption]?
+
+    public init(
+        id: String,
+        systemIcon: String,
+        help: String,
+        colorHex: String? = nil,
+        isActive: Bool = false,
+        isEmphasized: Bool = false,
+        isDestructive: Bool = false,
+        menuOptions: [PurahHeaderMenuOption]? = nil
+    ) {
+        self.id = id
+        self.systemIcon = systemIcon
+        self.help = help
+        self.colorHex = colorHex
+        self.isActive = isActive
+        self.isEmphasized = isEmphasized
+        self.isDestructive = isDestructive
+        self.menuOptions = menuOptions
+    }
+
+    public static func button(
+        id: String,
+        systemIcon: String,
+        help: String,
+        colorHex: String? = nil,
+        isActive: Bool = false,
+        isEmphasized: Bool = false,
+        isDestructive: Bool = false
+    ) -> PurahHeaderTrailingItem {
+        PurahHeaderTrailingItem(
+            id: id,
+            systemIcon: systemIcon,
+            help: help,
+            colorHex: colorHex,
+            isActive: isActive,
+            isEmphasized: isEmphasized,
+            isDestructive: isDestructive
+        )
+    }
+
+    public static func menu(
+        id: String,
+        systemIcon: String,
+        help: String,
+        colorHex: String? = nil,
+        isActive: Bool = false,
+        isEmphasized: Bool = false,
+        options: [PurahHeaderMenuOption]
+    ) -> PurahHeaderTrailingItem {
+        PurahHeaderTrailingItem(
+            id: id,
+            systemIcon: systemIcon,
+            help: help,
+            colorHex: colorHex,
+            isActive: isActive,
+            isEmphasized: isEmphasized,
+            menuOptions: options
+        )
+    }
+
+    public static func decodeList(_ json: String) -> [PurahHeaderTrailingItem] {
+        guard let data = json.data(using: .utf8) else { return [] }
+        return (try? JSONDecoder().decode([PurahHeaderTrailingItem].self, from: data)) ?? []
+    }
+}
+
+public struct PurahHostHeaderAccessoryView: View {
+    public let descriptor: PurahHeaderAccessoryDescriptor
+    public let context: PurahPluginContext
+    public let onAction: (String) -> Void
+
+    public init(
+        descriptor: PurahHeaderAccessoryDescriptor,
+        context: PurahPluginContext,
+        onAction: @escaping (String) -> Void = { _ in }
+    ) {
+        self.descriptor = descriptor
+        self.context = context
+        self.onAction = onAction
+    }
+
+    public var body: some View {
+        let tint = descriptor.colorHex.flatMap { Color(hex: $0) } ?? context.accentColor
+        if let options = descriptor.menuOptions, !options.isEmpty {
+            Menu {
+                ForEach(options) { opt in
+                    Button {
+                        onAction(opt.id)
+                    } label: {
+                        HStack {
+                            if let icon = opt.systemIcon {
+                                Image(systemName: icon)
+                            }
+                            Text(opt.title)
+                            if opt.isSelected {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .disabled(opt.isDisabled)
+                }
+            } label: {
+                PurahHeaderMenuLabel(
+                    text: descriptor.text,
+                    icon: descriptor.systemIcon,
+                    tint: tint,
+                    isEmphasized: descriptor.isEmphasized
+                )
+            }
+            .purahHeaderMenuStyle()
+            .fixedSize()
+        } else {
+            PurahHeaderBadge(
+                descriptor.text,
+                tint: tint,
+                isSelected: descriptor.isSelected
+            )
+        }
+    }
+}
+
+public struct PurahHostHeaderTrailingView: View {
+    public let items: [PurahHeaderTrailingItem]
+    public let context: PurahPluginContext
+    public let onAction: (String) -> Void
+
+    public init(
+        items: [PurahHeaderTrailingItem],
+        context: PurahPluginContext,
+        onAction: @escaping (String) -> Void
+    ) {
+        self.items = items
+        self.context = context
+        self.onAction = onAction
+    }
+
+    public var body: some View {
+        PurahHeaderGroup {
+            ForEach(items) { item in
+                let tint = item.colorHex.flatMap { Color(hex: $0) } ?? context.accentColor
+                if let options = item.menuOptions, !options.isEmpty {
+                    PurahHeaderMenuButton(
+                        systemImage: item.systemIcon,
+                        help: item.help,
+                        tint: tint,
+                        isActive: item.isActive,
+                        isEmphasized: item.isEmphasized
+                    ) {
+                        ForEach(options) { opt in
+                            Button {
+                                onAction(opt.id)
+                            } label: {
+                                HStack {
+                                    if let icon = opt.systemIcon {
+                                        Image(systemName: icon)
+                                    }
+                                    Text(opt.title)
+                                    if opt.isSelected {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                            .disabled(opt.isDisabled)
+                        }
+                    }
+                } else {
+                    PurahHeaderButton(
+                        systemImage: item.systemIcon,
+                        help: item.help,
+                        tint: tint,
+                        isActive: item.isActive,
+                        isEmphasized: item.isEmphasized,
+                        role: item.isDestructive ? .destructive : .normal
+                    ) {
+                        onAction(item.id)
+                    }
+                }
+            }
+        }
+    }
+}
