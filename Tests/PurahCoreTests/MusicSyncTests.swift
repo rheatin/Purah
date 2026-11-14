@@ -495,4 +495,150 @@ struct MusicSyncTests {
             #expect(!fallback.bundleId.isEmpty)
         }
     }
+
+    @Test("Placeholder artist guard detects browser and player names accurately")
+    func testPlaceholderArtistDetection() {
+        #expect(SystemMusicSyncService.isPlaceholderArtist(""))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("   "))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("Apple Music"))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("spotify"))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("Google Chrome"))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("Safari"))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("Arc"))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("Unknown Artist"))
+        #expect(SystemMusicSyncService.isPlaceholderArtist("Media Player", sourceApp: "Media Player"))
+
+        #expect(!SystemMusicSyncService.isPlaceholderArtist("Jay Chou"))
+        #expect(!SystemMusicSyncService.isPlaceholderArtist("Taylor Swift"))
+        #expect(!SystemMusicSyncService.isPlaceholderArtist("周杰伦"))
+        #expect(!SystemMusicSyncService.isPlaceholderArtist("Coldplay"))
+
+        // Inferred artist and title from string containing " - "
+        let inferred = SystemMusicSyncService.inferArtistAndTitle(from: "Jay Chou - Nocturne")
+        #expect(inferred?.artist == "Jay Chou")
+        #expect(inferred?.title == "Nocturne")
+
+        let clean = SystemMusicSyncService.normalizeTrackTitleForSearch("Nocturne (feat. Artist) - Remastered 2020 (Official MV)")
+        #expect(clean == "Nocturne")
+    }
+
+    @Test("Candidate scoring engine prioritizes exact studio version over live, remix, or duration mismatch")
+    func testScoreLyricsCandidate() {
+        let studioScore = SystemMusicSyncService.scoreLyricsCandidate(
+            candidateTitle: "晴天",
+            candidateArtist: "周杰伦",
+            candidateDuration: 269.0,
+            hasSyncedLyrics: true,
+            targetTitle: "晴天",
+            targetArtist: "周杰伦",
+            targetDuration: 269.0
+        )
+
+        let liveScore = SystemMusicSyncService.scoreLyricsCandidate(
+            candidateTitle: "晴天 (Live)",
+            candidateArtist: "周杰伦",
+            candidateDuration: 285.0,
+            hasSyncedLyrics: true,
+            targetTitle: "晴天",
+            targetArtist: "周杰伦",
+            targetDuration: 269.0
+        )
+
+        let instrumentalScore = SystemMusicSyncService.scoreLyricsCandidate(
+            candidateTitle: "晴天 (伴奏)",
+            candidateArtist: "周杰伦",
+            candidateDuration: 269.0,
+            hasSyncedLyrics: false,
+            targetTitle: "晴天",
+            targetArtist: "周杰伦",
+            targetDuration: 269.0
+        )
+
+        let unrelatedScore = SystemMusicSyncService.scoreLyricsCandidate(
+            candidateTitle: "青花瓷",
+            candidateArtist: "周杰伦",
+            candidateDuration: 239.0,
+            hasSyncedLyrics: true,
+            targetTitle: "晴天",
+            targetArtist: "周杰伦",
+            targetDuration: 269.0
+        )
+
+        #expect(studioScore > liveScore)
+        #expect(studioScore > instrumentalScore)
+        #expect(liveScore > unrelatedScore)
+        #expect(unrelatedScore < 0)
+    }
+
+    @Test("MusicPluginState lyrics candidate switching and timing adjustment")
+    func testMusicPluginStateLyricsControls() {
+        let suiteName = "test_music_lyrics_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore()
+        let state = MusicPluginState(
+            storage: ScopedPluginStorage(pluginId: "music", defaults: defaults)
+        )
+        state.mount(store: store)
+
+        let candidateA = LyricsCandidate(
+            id: "cand-1",
+            title: "Song A",
+            artist: "Artist A",
+            source: "LRCLIB",
+            plainLyrics: "Line 1\nLine 2",
+            syncedLyrics: "[00:01.00]Line 1\n[00:03.00]Line 2",
+            score: 95.0
+        )
+        let candidateB = LyricsCandidate(
+            id: "cand-2",
+            title: "Song A (Alt)",
+            artist: "Artist A",
+            source: "NetEase",
+            plainLyrics: "Line 1 Alt\nLine 2 Alt",
+            syncedLyrics: "[00:01.50]Line 1 Alt\n[00:03.50]Line 2 Alt",
+            score: 80.0
+        )
+
+        state.track = MusicTrackInfo(
+            title: "Song A",
+            artist: "Artist A",
+            lyrics: candidateA.plainLyrics,
+            syncedLyrics: candidateA.syncedLyrics,
+            selectedLyricsCandidateId: candidateA.id,
+            lyricsCandidates: [candidateA, candidateB]
+        )
+        store._musicTrack = state.track
+
+        #expect(state.track.selectedLyricsCandidateId == "cand-1")
+        #expect(state.track.lyrics?.contains("Line 1") == true)
+
+        // Switch to Candidate B
+        state.selectLyricsCandidate(candidateB, store: store)
+        #expect(state.track.selectedLyricsCandidateId == "cand-2")
+        #expect(state.track.lyrics?.contains("Alt") == true)
+        #expect(store._musicTrack.selectedLyricsCandidateId == "cand-2")
+
+        // Timing adjustment
+        #expect(state.track.lyricsOffsetSeconds == 0.0)
+        state.adjustLyricsOffset(by: 0.5, store: store)
+        #expect(state.track.lyricsOffsetSeconds == 0.5)
+        #expect(store._musicTrack.lyricsOffsetSeconds == 0.5)
+
+        state.adjustLyricsOffset(by: -1.0, store: store)
+        #expect(state.track.lyricsOffsetSeconds == -0.5)
+
+        state.resetLyricsOffset(store: store)
+        #expect(state.track.lyricsOffsetSeconds == 0.0)
+
+        // Hide lyrics
+        #expect(state.track.isLyricsHidden == false)
+        state.setLyricsHidden(true, store: store)
+        #expect(state.track.isLyricsHidden == true)
+        #expect(store._musicTrack.isLyricsHidden == true)
+
+        state.setLyricsHidden(false, store: store)
+        #expect(state.track.isLyricsHidden == false)
+    }
 }

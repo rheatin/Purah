@@ -8,10 +8,19 @@ import Darwin
 public struct OnlineLyricsResult: Sendable {
     public let plainLyrics: String?
     public let syncedLyrics: String?
+    public let candidates: [LyricsCandidate]
+    public let selectedCandidateId: String?
 
-    public init(plainLyrics: String?, syncedLyrics: String?) {
+    public init(
+        plainLyrics: String?,
+        syncedLyrics: String?,
+        candidates: [LyricsCandidate] = [],
+        selectedCandidateId: String? = nil
+    ) {
         self.plainLyrics = plainLyrics
         self.syncedLyrics = syncedLyrics
+        self.candidates = candidates
+        self.selectedCandidateId = selectedCandidateId
     }
 }
 
@@ -265,6 +274,10 @@ public final class SystemMusicSyncService {
         let cachedLyr = cachedLyrics(for: title, artist: artist)
         let existingLyrics = (isSameTrack ? store?._musicTrack.lyrics : nil) ?? cachedLyr?.plainLyrics
         let existingSyncedLyrics = (isSameTrack ? store?._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
+        let existingOffset = isSameTrack ? (store?._musicTrack.lyricsOffsetSeconds ?? 0.0) : 0.0
+        let existingHidden = isSameTrack ? (store?._musicTrack.isLyricsHidden ?? false) : false
+        let existingSelectedCandidateId = isSameTrack ? store?._musicTrack.selectedLyricsCandidateId : cachedLyr?.selectedCandidateId
+        let existingCandidates = isSameTrack ? (store?._musicTrack.lyricsCandidates ?? []) : (cachedLyr?.candidates ?? [])
 
         if let store = store {
             store._musicTrack = MusicTrackInfo(
@@ -282,7 +295,11 @@ public final class SystemMusicSyncService {
                 lyrics: existingLyrics,
                 syncedLyrics: existingSyncedLyrics,
                 sourceApp: sourceApp,
-                sourceBundleId: sourceBundleId
+                sourceBundleId: sourceBundleId,
+                lyricsOffsetSeconds: existingOffset,
+                isLyricsHidden: existingHidden,
+                selectedLyricsCandidateId: existingSelectedCandidateId,
+                lyricsCandidates: existingCandidates
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
             onTrackChanged?(store._musicTrack)
@@ -311,13 +328,15 @@ public final class SystemMusicSyncService {
             attemptedLyricsKeys.insert(lyricsKey)
             lyricFetchAttempts += 1
             Task { [weak self, weak store] in
-                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist) {
+                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: artist, album: album, durationSeconds: totalSec) {
                     await MainActor.run {
                         if let store = store,
                            store._musicTrack.title == title,
                            store._musicTrack.artist == artist {
                             store._musicTrack.lyrics = lyr.plainLyrics
                             store._musicTrack.syncedLyrics = lyr.syncedLyrics
+                            store._musicTrack.lyricsCandidates = lyr.candidates
+                            store._musicTrack.selectedLyricsCandidateId = lyr.selectedCandidateId
                             self?.onTrackChanged?(store._musicTrack)
                         }
                     }
@@ -438,6 +457,10 @@ public final class SystemMusicSyncService {
         let cachedLyr = cachedLyrics(for: title, artist: resolvedArtist) ?? cachedLyrics(for: title, artist: artist)
         let existingLyrics = (isSameTrack ? store?._musicTrack.lyrics : nil) ?? cachedLyr?.plainLyrics
         let existingSyncedLyrics = (isSameTrack ? store?._musicTrack.syncedLyrics : nil) ?? cachedLyr?.syncedLyrics
+        let existingOffset = isSameTrack ? (store?._musicTrack.lyricsOffsetSeconds ?? 0.0) : 0.0
+        let existingHidden = isSameTrack ? (store?._musicTrack.isLyricsHidden ?? false) : false
+        let existingSelectedCandidateId = isSameTrack ? store?._musicTrack.selectedLyricsCandidateId : cachedLyr?.selectedCandidateId
+        let existingCandidates = isSameTrack ? (store?._musicTrack.lyricsCandidates ?? []) : (cachedLyr?.candidates ?? [])
 
         if let store = store {
             let next = MusicTrackInfo(
@@ -455,7 +478,11 @@ public final class SystemMusicSyncService {
                 lyrics: existingLyrics,
                 syncedLyrics: existingSyncedLyrics,
                 sourceApp: appName,
-                sourceBundleId: bundleId
+                sourceBundleId: bundleId,
+                lyricsOffsetSeconds: existingOffset,
+                isLyricsHidden: existingHidden,
+                selectedLyricsCandidateId: existingSelectedCandidateId,
+                lyricsCandidates: existingCandidates
             )
             // Reassigning `_musicTrack` invalidates every view that reads it, so
             // a paused player was repainting the rail on every 2s heartbeat with
@@ -490,13 +517,15 @@ public final class SystemMusicSyncService {
             attemptedLyricsKeys.insert(lyricsKey)
             lyricFetchAttempts += 1
             Task { [weak self, weak store] in
-                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: resolvedArtist) {
+                if let lyr = await self?.fetchOnlineLyrics(title: title, artist: resolvedArtist, album: album, durationSeconds: totalSec) {
                     await MainActor.run {
                         if let store = store,
                            store._musicTrack.title == title,
                            store._musicTrack.artist == resolvedArtist {
                             store._musicTrack.lyrics = lyr.plainLyrics
                             store._musicTrack.syncedLyrics = lyr.syncedLyrics
+                            store._musicTrack.lyricsCandidates = lyr.candidates
+                            store._musicTrack.selectedLyricsCandidateId = lyr.selectedCandidateId
                             self?.onTrackChanged?(store._musicTrack)
                         }
                     }
@@ -551,6 +580,11 @@ public final class SystemMusicSyncService {
             needsArtworkFetch = (existingArtwork == nil)
             needsLyricsFetch = (existingLyrics == nil && existingSyncedLyrics == nil && !title.isEmpty && title != "Unknown Track")
 
+            let existingOffset = isSameTrack ? (store._musicTrack.lyricsOffsetSeconds) : 0.0
+            let existingHidden = isSameTrack ? (store._musicTrack.isLyricsHidden) : false
+            let existingSelectedCandidateId = isSameTrack ? store._musicTrack.selectedLyricsCandidateId : cachedLyr?.selectedCandidateId
+            let existingCandidates = isSameTrack ? store._musicTrack.lyricsCandidates : (cachedLyr?.candidates ?? [])
+
             store._musicTrack = MusicTrackInfo(
                 title: title,
                 artist: artist,
@@ -565,7 +599,11 @@ public final class SystemMusicSyncService {
                 lyrics: existingLyrics,
                 syncedLyrics: existingSyncedLyrics,
                 sourceApp: "Apple Music",
-                sourceBundleId: "com.apple.Music"
+                sourceBundleId: "com.apple.Music",
+                lyricsOffsetSeconds: existingOffset,
+                isLyricsHidden: existingHidden,
+                selectedLyricsCandidateId: existingSelectedCandidateId,
+                lyricsCandidates: existingCandidates
             )
             updatePlaybackTimer(store: store, isPlaying: isPlaying)
             onTrackChanged?(store._musicTrack)
@@ -582,13 +620,15 @@ public final class SystemMusicSyncService {
             }
         }
 
-        if needsLyricsFetch, let lyr = await fetchOnlineLyrics(title: title, artist: artist) {
+        if needsLyricsFetch, let lyr = await fetchOnlineLyrics(title: title, artist: artist, album: album, durationSeconds: dur) {
             await MainActor.run {
                 if let store = store,
                    store._musicTrack.title == title,
                    store._musicTrack.artist == artist {
                     store._musicTrack.lyrics = lyr.plainLyrics
                     store._musicTrack.syncedLyrics = lyr.syncedLyrics
+                    store._musicTrack.lyricsCandidates = lyr.candidates
+                    store._musicTrack.selectedLyricsCandidateId = lyr.selectedCandidateId
                     onTrackChanged?(store._musicTrack)
                 }
             }
@@ -648,6 +688,126 @@ public final class SystemMusicSyncService {
     }
 
     // MARK: - Online Lyrics Fetching Engine (LRCLIB + NetEase Open APIs)
+    private static let placeholderArtists: Set<String> = [
+        "apple music", "music", "spotify", "google chrome", "chrome", "safari",
+        "arc", "firefox", "microsoft edge", "brave browser", "media player",
+        "unknown artist", "unknown", "neteasemusic", "qqmusic"
+    ]
+
+    public static func isPlaceholderArtist(_ artist: String, sourceApp: String = "") -> Bool {
+        let trimmed = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if trimmed.isEmpty { return true }
+        if placeholderArtists.contains(trimmed) { return true }
+        if !sourceApp.isEmpty && trimmed == sourceApp.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            return true
+        }
+        return false
+    }
+
+    public static func inferArtistAndTitle(from rawTitle: String) -> (artist: String, title: String)? {
+        let parts = rawTitle.components(separatedBy: " - ")
+        if parts.count >= 2 {
+            let artist = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = parts[1...].joined(separator: " - ").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !artist.isEmpty && !title.isEmpty {
+                return (artist, title)
+            }
+        }
+        return nil
+    }
+
+    public static func normalizeTrackTitleForSearch(_ rawTitle: String) -> String {
+        var clean = rawTitle
+        clean = clean.replacingOccurrences(of: #"(?i)\s*[\(\[](feat\.|ft\.)[^\)\]]+[\)\]]"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #"(?i)\s*[-–—]\s*remaster(ed)?\b.*"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #"(?i)\s*[\(\[]remaster(ed)?[^\)\]]*[\)\]]"#, with: "", options: .regularExpression)
+        clean = clean.replacingOccurrences(of: #"(?i)\s*[\(\[](official\s+(video|audio|music\s+video)|mv|explicit)[\)\]]"#, with: "", options: .regularExpression)
+        return clean.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static let versionPenaltyKeywords = [
+        "live", "remix", "伴奏", "instrumental", "karaoke", "翻唱", "cover", "dj版", "acoustic"
+    ]
+
+    public static func scoreLyricsCandidate(
+        candidateTitle: String,
+        candidateArtist: String,
+        candidateDuration: Double?,
+        hasSyncedLyrics: Bool,
+        targetTitle: String,
+        targetArtist: String,
+        targetDuration: Double?
+    ) -> Double {
+        var score: Double = 0.0
+
+        let normCandTitle = normalizeTrackTitleForSearch(candidateTitle).lowercased()
+        let normTargTitle = normalizeTrackTitleForSearch(targetTitle).lowercased()
+
+        let strippedCandTitle = normCandTitle.filter { $0.isLetter || $0.isNumber }
+        let strippedTargTitle = normTargTitle.filter { $0.isLetter || $0.isNumber }
+
+        // Title matching
+        if normCandTitle == normTargTitle || (!strippedCandTitle.isEmpty && strippedCandTitle == strippedTargTitle) {
+            score += 50.0
+        } else if normCandTitle.contains(normTargTitle) || normTargTitle.contains(normCandTitle) ||
+                  (!strippedCandTitle.isEmpty && !strippedTargTitle.isEmpty && (strippedCandTitle.contains(strippedTargTitle) || strippedTargTitle.contains(strippedCandTitle))) {
+            score += 25.0
+        } else {
+            score -= 60.0
+        }
+
+        // Version keyword guard
+        let candTitleLower = candidateTitle.lowercased()
+        let candArtistLower = candidateArtist.lowercased()
+        let targTitleLower = targetTitle.lowercased()
+        for kw in versionPenaltyKeywords {
+            let kwInCand = candTitleLower.contains(kw) || candArtistLower.contains(kw)
+            let kwInTarg = targTitleLower.contains(kw)
+            if kwInCand && !kwInTarg {
+                score -= 45.0
+            }
+        }
+
+        // Artist similarity (only when target artist is not a placeholder)
+        if !isPlaceholderArtist(targetArtist) {
+            let candArtLower = candidateArtist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let targArtLower = targetArtist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let strippedCandArt = candArtLower.filter { $0.isLetter || $0.isNumber }
+            let strippedTargArt = targArtLower.filter { $0.isLetter || $0.isNumber }
+
+            if candArtLower == targArtLower || (!strippedCandArt.isEmpty && strippedCandArt == strippedTargArt) ||
+                candArtLower.contains(targArtLower) || targArtLower.contains(candArtLower) {
+                score += 35.0
+            } else {
+                score -= 25.0
+            }
+        }
+
+        // Duration proximity
+        if let targetDur = targetDuration, targetDur > 15.0,
+           let candDur = candidateDuration, candDur > 15.0 {
+            let diff = abs(candDur - targetDur)
+            if diff <= 3.0 {
+                score += 30.0
+            } else if diff <= 8.0 {
+                score += 15.0
+            } else if diff <= 15.0 {
+                score += 0.0
+            } else if diff <= 30.0 {
+                score -= 35.0
+            } else {
+                score -= 75.0
+            }
+        }
+
+        // Synced lyrics bonus
+        if hasSyncedLyrics {
+            score += 15.0
+        }
+
+        return score
+    }
+
     public func cachedLyrics(for title: String, artist: String) -> OnlineLyricsResult? {
         let key = "\(title)|\(artist)"
         return cachedLyricsKey == key ? cachedLyricsResult : nil
@@ -658,69 +818,267 @@ public final class SystemMusicSyncService {
         cachedLyricsResult = result
     }
 
-    public func fetchOnlineLyrics(title: String, artist: String) async -> OnlineLyricsResult? {
-        guard !title.isEmpty && !artist.isEmpty else { return nil }
+    public func fetchOnlineLyrics(
+        title: String,
+        artist: String,
+        album: String = "",
+        durationSeconds: Double = 0,
+        forceRefresh: Bool = false
+    ) async -> OnlineLyricsResult? {
+        guard !title.isEmpty else { return nil }
         let key = "\(title)|\(artist)"
-        if key == cachedLyricsKey, let cached = cachedLyricsResult {
+
+        if forceRefresh {
+            if cachedLyricsKey == key {
+                cachedLyricsKey = nil
+                cachedLyricsResult = nil
+            }
+            attemptedLyricsKeys.remove(key)
+        } else if key == cachedLyricsKey, let cached = cachedLyricsResult {
             return cached
         }
+
         guard !Self.isTestingEnvironment else { return nil }
 
-        // 1. First attempt: LRCLIB open-source REST API
-        let encodedArtist = artist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encodedTitle = title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        if let lrclibURL = URL(string: "https://lrclib.net/api/get?artist_name=\(encodedArtist)&track_name=\(encodedTitle)") {
-            var request = URLRequest(url: lrclibURL)
-            request.timeoutInterval = 4.0
-            request.setValue("Purah/2.0 (macOS Ambient Rail Kernel)", forHTTPHeaderField: "User-Agent")
-            if let (data, resp) = try? await URLSession.shared.data(for: request),
-               let http = resp as? HTTPURLResponse, http.statusCode == 200,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let plain = (json["plainLyrics"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let synced = (json["syncedLyrics"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                if (plain != nil && !plain!.isEmpty) || (synced != nil && !synced!.isEmpty) {
-                    let result = OnlineLyricsResult(plainLyrics: plain, syncedLyrics: synced)
-                    cachedLyricsKey = key
-                    cachedLyricsResult = result
-                    return result
-                }
-            }
+        var candidates: [LyricsCandidate] = []
+        var seenCandidateIds: Set<String> = []
+
+        let isPlaceholder = Self.isPlaceholderArtist(artist)
+        let cleanTitle = Self.normalizeTrackTitleForSearch(title)
+
+        var searchArtist = isPlaceholder ? "" : artist
+        var searchTitle = cleanTitle
+
+        if isPlaceholder, let inferred = Self.inferArtistAndTitle(from: title) {
+            searchArtist = inferred.artist
+            searchTitle = Self.normalizeTrackTitleForSearch(inferred.title)
         }
 
-        // 2. Fallback: NetEase Cloud Music Search & Lyric API
-        let neteaseSearch = "\(title) \(artist)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        if let searchURL = URL(string: "https://music.163.com/api/search/get/web?s=\(neteaseSearch)&type=1&offset=0&total=true&limit=1") {
-            var request = URLRequest(url: searchURL)
-            request.timeoutInterval = 4.0
-            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
-            if let (data, resp) = try? await URLSession.shared.data(for: request),
-               let http = resp as? HTTPURLResponse, http.statusCode == 200,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let result = json["result"] as? [String: Any],
-               let songs = result["songs"] as? [[String: Any]],
-               let firstSong = songs.first,
-               let songId = firstSong["id"] as? Int {
-                if let lyricURL = URL(string: "https://music.163.com/api/song/lyric?os=osx&id=\(songId)&lv=-1&kv=-1&tv=-1") {
-                    var lrcReq = URLRequest(url: lyricURL)
-                    lrcReq.timeoutInterval = 4.0
-                    if let (lrcData, lrcResp) = try? await URLSession.shared.data(for: lrcReq),
-                       let lrcHttp = lrcResp as? HTTPURLResponse, lrcHttp.statusCode == 200,
-                       let lrcJson = try? JSONSerialization.jsonObject(with: lrcData) as? [String: Any],
-                       let lrcObj = lrcJson["lrc"] as? [String: Any],
-                       let rawLrc = lrcObj["lyric"] as? String {
-                        let cleaned = cleanLrcTimestamps(rawLrc)
-                        if !cleaned.isEmpty {
-                            let result = OnlineLyricsResult(plainLyrics: cleaned, syncedLyrics: rawLrc)
-                            cachedLyricsKey = key
-                            cachedLyricsResult = result
-                            return result
+        // 1. LRCLIB
+        // 1a. /api/get (exact lookup) if we have an artist
+        if !searchArtist.isEmpty {
+            let encArtist = searchArtist.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let encTitle = searchTitle.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            var getUrlStr = "https://lrclib.net/api/get?artist_name=\(encArtist)&track_name=\(encTitle)"
+            if !album.isEmpty, let encAlbum = album.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                getUrlStr += "&album_name=\(encAlbum)"
+            }
+            if durationSeconds > 15 {
+                getUrlStr += "&duration=\(Int(durationSeconds))"
+            }
+
+            if let url = URL(string: getUrlStr) {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 4.0
+                request.setValue("Purah/2.0 (macOS Ambient Rail Kernel)", forHTTPHeaderField: "User-Agent")
+                if let (data, resp) = try? await URLSession.shared.data(for: request),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    if let cand = parseLRCLIBCandidate(json, targetTitle: title, targetArtist: searchArtist, targetDuration: durationSeconds) {
+                        if cand.score > 0 && !seenCandidateIds.contains(cand.id) {
+                            candidates.append(cand)
+                            seenCandidateIds.insert(cand.id)
                         }
                     }
                 }
             }
         }
 
-        return nil
+        // 1b. LRCLIB /api/search if best score < 75
+        let bestScoreSoFar = candidates.map(\.score).max() ?? -100.0
+        if bestScoreSoFar < 75.0 {
+            let query = (!searchArtist.isEmpty ? "\(searchTitle) \(searchArtist)" : searchTitle)
+                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let searchUrl = URL(string: "https://lrclib.net/api/search?q=\(query)") {
+                var request = URLRequest(url: searchUrl)
+                request.timeoutInterval = 4.0
+                request.setValue("Purah/2.0 (macOS Ambient Rail Kernel)", forHTTPHeaderField: "User-Agent")
+                if let (data, resp) = try? await URLSession.shared.data(for: request),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                   let jsonList = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                    for item in jsonList.prefix(5) {
+                        if let cand = parseLRCLIBCandidate(item, targetTitle: title, targetArtist: searchArtist, targetDuration: durationSeconds) {
+                            if cand.score > 0 && !seenCandidateIds.contains(cand.id) {
+                                candidates.append(cand)
+                                seenCandidateIds.insert(cand.id)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. NetEase Fallback if candidates < 2 or best score < 70
+        let currentBest = candidates.map(\.score).max() ?? -100.0
+        if candidates.count < 2 || currentBest < 70.0 {
+            let query = (!searchArtist.isEmpty ? "\(searchTitle) \(searchArtist)" : searchTitle)
+                .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let neteaseUrl = URL(string: "https://music.163.com/api/search/get/web?s=\(query)&type=1&offset=0&total=true&limit=8") {
+                var request = URLRequest(url: neteaseUrl)
+                request.timeoutInterval = 4.0
+                request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", forHTTPHeaderField: "User-Agent")
+                if let (data, resp) = try? await URLSession.shared.data(for: request),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let resultObj = json["result"] as? [String: Any],
+                   let songs = resultObj["songs"] as? [[String: Any]] {
+
+                    struct PreScoredSong {
+                        let id: Int
+                        let name: String
+                        let artistName: String
+                        let albumName: String?
+                        let durationSec: Double
+                        let preScore: Double
+                    }
+
+                    var scoredSongs: [PreScoredSong] = []
+                    for song in songs {
+                        guard let id = song["id"] as? Int,
+                              let name = song["name"] as? String else { continue }
+
+                        let artistsList = (song["artists"] as? [[String: Any]]) ?? (song["ar"] as? [[String: Any]]) ?? []
+                        let artistNames = artistsList.compactMap { $0["name"] as? String }.joined(separator: ", ")
+                        let albumObj = (song["album"] as? [String: Any]) ?? (song["al"] as? [String: Any])
+                        let albumName = albumObj?["name"] as? String
+                        let durMs = Self.extractNumericValue(from: song["duration"]) ?? Self.extractNumericValue(from: song["dt"]) ?? 0.0
+                        let durSec = durMs > 0 ? (durMs / 1000.0) : 0.0
+
+                        let preScore = Self.scoreLyricsCandidate(
+                            candidateTitle: name,
+                            candidateArtist: artistNames,
+                            candidateDuration: durSec > 0 ? durSec : nil,
+                            hasSyncedLyrics: true,
+                            targetTitle: title,
+                            targetArtist: searchArtist,
+                            targetDuration: durationSeconds > 0 ? durationSeconds : nil
+                        )
+
+                        if preScore > 0 {
+                            scoredSongs.append(PreScoredSong(
+                                id: id,
+                                name: name,
+                                artistName: artistNames,
+                                albumName: albumName,
+                                durationSec: durSec,
+                                preScore: preScore
+                            ))
+                        }
+                    }
+
+                    scoredSongs.sort { $0.preScore > $1.preScore }
+
+                    for song in scoredSongs.prefix(3) {
+                        let candId = "netease-\(song.id)"
+                        if seenCandidateIds.contains(candId) { continue }
+                        if let lyricUrl = URL(string: "https://music.163.com/api/song/lyric?os=osx&id=\(song.id)&lv=-1&kv=-1&tv=-1") {
+                            var lrcReq = URLRequest(url: lyricUrl)
+                            lrcReq.timeoutInterval = 4.0
+                            if let (lrcData, lrcResp) = try? await URLSession.shared.data(for: lrcReq),
+                               let lrcHttp = lrcResp as? HTTPURLResponse, lrcHttp.statusCode == 200,
+                               let lrcJson = try? JSONSerialization.jsonObject(with: lrcData) as? [String: Any],
+                               let lrcObj = lrcJson["lrc"] as? [String: Any],
+                               let rawLrc = lrcObj["lyric"] as? String, !rawLrc.isEmpty {
+                                let cleaned = cleanLrcTimestamps(rawLrc)
+                                let hasSynced = rawLrc.contains("[") && rawLrc.contains("]")
+                                let finalScore = Self.scoreLyricsCandidate(
+                                    candidateTitle: song.name,
+                                    candidateArtist: song.artistName,
+                                    candidateDuration: song.durationSec > 0 ? song.durationSec : nil,
+                                    hasSyncedLyrics: hasSynced,
+                                    targetTitle: title,
+                                    targetArtist: searchArtist,
+                                    targetDuration: durationSeconds > 0 ? durationSeconds : nil
+                                )
+
+                                if finalScore > 0 {
+                                    let cand = LyricsCandidate(
+                                        id: candId,
+                                        title: song.name,
+                                        artist: song.artistName,
+                                        album: song.albumName,
+                                        durationSeconds: song.durationSec > 0 ? song.durationSec : nil,
+                                        source: "NetEase",
+                                        plainLyrics: cleaned.isEmpty ? nil : cleaned,
+                                        syncedLyrics: hasSynced ? rawLrc : nil,
+                                        score: finalScore
+                                    )
+                                    candidates.append(cand)
+                                    seenCandidateIds.insert(candId)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        candidates.sort { $0.score > $1.score }
+        let topCandidates = Array(candidates.prefix(5))
+
+        guard let best = topCandidates.first else {
+            return nil
+        }
+
+        let result = OnlineLyricsResult(
+            plainLyrics: best.plainLyrics,
+            syncedLyrics: best.syncedLyrics,
+            candidates: topCandidates,
+            selectedCandidateId: best.id
+        )
+        cachedLyricsKey = key
+        cachedLyricsResult = result
+        return result
+    }
+
+    private func parseLRCLIBCandidate(
+        _ json: [String: Any],
+        targetTitle: String,
+        targetArtist: String,
+        targetDuration: Double
+    ) -> LyricsCandidate? {
+        guard let trackName = json["trackName"] as? String else { return nil }
+        let artistName = json["artistName"] as? String ?? ""
+        let albumName = json["albumName"] as? String
+        let durSec = Self.extractNumericValue(from: json["duration"])
+        let plain = (json["plainLyrics"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let synced = (json["syncedLyrics"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard (plain != nil && !plain!.isEmpty) || (synced != nil && !synced!.isEmpty) else {
+            return nil
+        }
+
+        let idVal: String
+        if let idInt = json["id"] as? Int {
+            idVal = "lrclib-\(idInt)"
+        } else if let idStr = json["id"] as? String {
+            idVal = "lrclib-\(idStr)"
+        } else {
+            idVal = "lrclib-\(UUID().uuidString)"
+        }
+
+        let hasSynced = (synced != nil && !synced!.isEmpty)
+        let score = Self.scoreLyricsCandidate(
+            candidateTitle: trackName,
+            candidateArtist: artistName,
+            candidateDuration: durSec,
+            hasSyncedLyrics: hasSynced,
+            targetTitle: targetTitle,
+            targetArtist: targetArtist,
+            targetDuration: targetDuration > 0 ? targetDuration : nil
+        )
+
+        return LyricsCandidate(
+            id: idVal,
+            title: trackName,
+            artist: artistName,
+            album: albumName,
+            durationSeconds: durSec,
+            source: "LRCLIB",
+            plainLyrics: plain,
+            syncedLyrics: synced,
+            score: score
+        )
     }
 
     private func cleanLrcTimestamps(_ rawLrc: String) -> String {

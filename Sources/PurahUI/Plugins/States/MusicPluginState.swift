@@ -153,6 +153,10 @@ public final class MusicPluginState: Sendable {
                 if merged.lyrics == nil { merged.lyrics = self.track.lyrics }
                 if merged.syncedLyrics == nil { merged.syncedLyrics = self.track.syncedLyrics }
                 if merged.artworkData == nil { merged.artworkData = self.track.artworkData }
+                merged.lyricsOffsetSeconds = self.track.lyricsOffsetSeconds
+                merged.isLyricsHidden = self.track.isLyricsHidden
+                if merged.selectedLyricsCandidateId == nil { merged.selectedLyricsCandidateId = self.track.selectedLyricsCandidateId }
+                if merged.lyricsCandidates.isEmpty { merged.lyricsCandidates = self.track.lyricsCandidates }
             }
             self.track = merged
         }
@@ -178,17 +182,100 @@ public final class MusicPluginState: Sendable {
             }
             if self.track.lyrics == nil && self.track.syncedLyrics == nil {
                 Task { [weak self] in
-                    if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(title: currentTitle, artist: currentArtist) {
+                    if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(
+                        title: currentTitle,
+                        artist: currentArtist,
+                        album: currentAlbum,
+                        durationSeconds: self?.track.durationSeconds ?? 0
+                    ) {
                         await MainActor.run {
                             if self?.track.title == currentTitle,
                                self?.track.artist == currentArtist {
                                 self?.track.lyrics = lyrResult.plainLyrics
                                 self?.track.syncedLyrics = lyrResult.syncedLyrics
+                                self?.track.lyricsCandidates = lyrResult.candidates
+                                self?.track.selectedLyricsCandidateId = lyrResult.selectedCandidateId
                                 self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
                                 self?.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
+                                self?.boundStore?._musicTrack.lyricsCandidates = lyrResult.candidates
+                                self?.boundStore?._musicTrack.selectedLyricsCandidateId = lyrResult.selectedCandidateId
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    public func selectLyricsCandidate(_ candidate: LyricsCandidate, store: PurahWorkspaceStore? = nil) {
+        track.selectedLyricsCandidateId = candidate.id
+        track.lyrics = candidate.plainLyrics
+        track.syncedLyrics = candidate.syncedLyrics
+        let targetStore = store ?? boundStore
+        targetStore?._musicTrack.selectedLyricsCandidateId = candidate.id
+        targetStore?._musicTrack.lyrics = candidate.plainLyrics
+        targetStore?._musicTrack.syncedLyrics = candidate.syncedLyrics
+        SystemMusicSyncService.shared.cacheLyrics(
+            for: track.title,
+            artist: track.artist,
+            result: OnlineLyricsResult(
+                plainLyrics: candidate.plainLyrics,
+                syncedLyrics: candidate.syncedLyrics,
+                candidates: track.lyricsCandidates,
+                selectedCandidateId: candidate.id
+            )
+        )
+    }
+
+    public func adjustLyricsOffset(by delta: Double, store: PurahWorkspaceStore? = nil) {
+        let newOffset = min(max(track.lyricsOffsetSeconds + delta, -10.0), 10.0)
+        track.lyricsOffsetSeconds = (newOffset * 10).rounded() / 10
+        let targetStore = store ?? boundStore
+        targetStore?._musicTrack.lyricsOffsetSeconds = track.lyricsOffsetSeconds
+    }
+
+    public func resetLyricsOffset(store: PurahWorkspaceStore? = nil) {
+        track.lyricsOffsetSeconds = 0.0
+        let targetStore = store ?? boundStore
+        targetStore?._musicTrack.lyricsOffsetSeconds = 0.0
+    }
+
+    public func setLyricsHidden(_ hidden: Bool, store: PurahWorkspaceStore? = nil) {
+        track.isLyricsHidden = hidden
+        let targetStore = store ?? boundStore
+        targetStore?._musicTrack.isLyricsHidden = hidden
+    }
+
+    public func reloadLyrics(store: PurahWorkspaceStore? = nil) {
+        let currentTitle = track.title
+        let currentArtist = track.artist
+        let currentAlbum = track.album
+        let currentDur = track.durationSeconds
+        guard !currentTitle.isEmpty else { return }
+
+        Task { [weak self] in
+            if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(
+                title: currentTitle,
+                artist: currentArtist,
+                album: currentAlbum,
+                durationSeconds: currentDur,
+                forceRefresh: true
+            ) {
+                await MainActor.run {
+                    guard let self = self,
+                          self.track.title == currentTitle,
+                          self.track.artist == currentArtist else { return }
+                    self.track.lyrics = lyrResult.plainLyrics
+                    self.track.syncedLyrics = lyrResult.syncedLyrics
+                    self.track.lyricsCandidates = lyrResult.candidates
+                    self.track.selectedLyricsCandidateId = lyrResult.selectedCandidateId
+                    self.track.isLyricsHidden = false
+                    let targetStore = store ?? self.boundStore
+                    targetStore?._musicTrack.lyrics = lyrResult.plainLyrics
+                    targetStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
+                    targetStore?._musicTrack.lyricsCandidates = lyrResult.candidates
+                    targetStore?._musicTrack.selectedLyricsCandidateId = lyrResult.selectedCandidateId
+                    targetStore?._musicTrack.isLyricsHidden = false
                 }
             }
         }

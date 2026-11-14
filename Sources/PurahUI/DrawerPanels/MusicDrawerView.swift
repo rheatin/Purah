@@ -307,10 +307,12 @@ public struct MusicDrawerView: View {
                 }
 
                 // Live 1-line Synced Lyric Preview when space permits (>= 90pt inner height)
-                if availableHeight >= 90.0,
+                let effectiveLyricsSec = max(0.0, displaySec + state.track.lyricsOffsetSeconds)
+                if !state.track.isLyricsHidden,
+                   availableHeight >= 90.0,
                    let rawLyrics = state.track.syncedLyrics ?? state.track.lyrics,
                    !rawLyrics.isEmpty,
-                   let activeLine = LyricsDisplayView.activeLyricLine(in: rawLyrics, at: displaySec) {
+                   let activeLine = LyricsDisplayView.activeLyricLine(in: rawLyrics, at: effectiveLyricsSec) {
                     HStack(spacing: 4) {
                         Image(systemName: "quote.opening")
                             .font(.system(size: 7.0, weight: .bold))
@@ -388,9 +390,11 @@ public struct MusicDrawerView: View {
             }
 
             // Live 1-line Synced Lyric Bar (when lyrics are available in Standard mode)
-            if let rawLyrics = state.track.syncedLyrics ?? state.track.lyrics,
+            let effectiveLyricsSec = max(0.0, displaySec + state.track.lyricsOffsetSeconds)
+            if !state.track.isLyricsHidden,
+               let rawLyrics = state.track.syncedLyrics ?? state.track.lyrics,
                !rawLyrics.isEmpty,
-               let activeLine = LyricsDisplayView.activeLyricLine(in: rawLyrics, at: displaySec) {
+               let activeLine = LyricsDisplayView.activeLyricLine(in: rawLyrics, at: effectiveLyricsSec) {
                 HStack(spacing: 5) {
                     Image(systemName: "quote.opening")
                         .font(.system(size: 7.5, weight: .bold))
@@ -502,9 +506,13 @@ public struct MusicDrawerView: View {
     @ViewBuilder
     private func immersiveVinylView(displayProgress: Double, displaySec: Double, isPlaying: Bool, availableHeight: CGFloat) -> some View {
         let dynamicArtSize = min(max((availableHeight - 150) * 0.50, 56.0), 160.0)
+        let effectiveLyricsSec = max(0.0, displaySec + state.track.lyricsOffsetSeconds)
+        let rawLyrics = state.track.syncedLyrics ?? state.track.lyrics
+        let hasLyrics = (rawLyrics != nil && !rawLyrics!.isEmpty)
+        let showsLyrics = hasLyrics && !state.track.isLyricsHidden
 
         VStack(spacing: 6) {
-            if let lyrics = state.track.syncedLyrics ?? state.track.lyrics, !lyrics.isEmpty {
+            if showsLyrics, let lyrics = rawLyrics {
                 // Direct Lyrics Showcase: Compact Track Bar + Flowing Lyrics Sheet
                 VStack(spacing: 6) {
                     HStack(spacing: 8) {
@@ -533,16 +541,14 @@ public struct MusicDrawerView: View {
 
                         Spacer()
 
-                        Image(systemName: "quote.bubble.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(musicColor)
+                        lyricsMenu(hasLyrics: true)
                     }
                     .padding(.horizontal, 2)
 
                     let lyricsText = state.track.syncedLyrics ?? state.track.lyrics ?? lyrics
                     LyricsDisplayView(
                         rawLyrics: lyricsText,
-                        currentTime: displaySec,
+                        currentTime: effectiveLyricsSec,
                         duration: max(state.track.durationSeconds, 1.0),
                         isPlaying: isPlaying,
                         accentColor: musicColor,
@@ -556,36 +562,44 @@ public struct MusicDrawerView: View {
                 .transition(.opacity)
             } else {
                 // Center Artwork & Ambient Glow Showcase
-                Button {
-                    activateMusicPlayerApp()
-                } label: {
-                    VStack(spacing: 6) {
-                        ZStack {
-                            // Ambient dynamic radial glow
-                            Circle()
-                                .fill(musicColor.opacity(isPlaying ? 0.32 : 0.12))
-                                .frame(width: dynamicArtSize + 8, height: dynamicArtSize + 8)
-                                .blur(radius: 12)
+                VStack(spacing: 4) {
+                    HStack {
+                        Spacer()
+                        lyricsMenu(hasLyrics: hasLyrics)
+                    }
+                    .padding(.horizontal, 4)
 
-                            artworkThumbnail(size: dynamicArtSize, cornerRadius: 10)
-                        }
+                    Button {
+                        activateMusicPlayerApp()
+                    } label: {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                // Ambient dynamic radial glow
+                                Circle()
+                                    .fill(musicColor.opacity(isPlaying ? 0.32 : 0.12))
+                                    .frame(width: dynamicArtSize + 8, height: dynamicArtSize + 8)
+                                    .blur(radius: 12)
 
-                        VStack(spacing: 2) {
-                            Text(state.track.title)
-                                .purahTitle(size: 13, weight: .bold, design: .rounded)
-                                .foregroundColor(palette.style == .native ? Color.primary : .white)
-                                .lineLimit(1)
+                                artworkThumbnail(size: dynamicArtSize, cornerRadius: 10)
+                            }
 
-                            Text(state.track.artist)
-                                .purahBody(size: 10.5, weight: .medium, design: .rounded)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
+                            VStack(spacing: 2) {
+                                Text(state.track.title)
+                                    .purahTitle(size: 13, weight: .bold, design: .rounded)
+                                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                                    .lineLimit(1)
+
+                                Text(state.track.artist)
+                                    .purahBody(size: 10.5, weight: .medium, design: .rounded)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .help("music.activatePlayer".localized)
                 }
-                .buttonStyle(.plain)
-                .contentShape(Rectangle())
-                .help("music.activatePlayer".localized)
                 .transition(.opacity)
             }
 
@@ -668,6 +682,78 @@ public struct MusicDrawerView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    // MARK: - In-Drawer Lyrics Control Menu
+    @ViewBuilder
+    private func lyricsMenu(hasLyrics: Bool) -> some View {
+        Menu {
+            if hasLyrics && !state.track.lyricsCandidates.isEmpty {
+                Section("Switch Lyrics Version") {
+                    ForEach(state.track.lyricsCandidates) { candidate in
+                        Button {
+                            state.selectLyricsCandidate(candidate, store: store)
+                        } label: {
+                            HStack {
+                                Text(candidate.displayLabel)
+                                if candidate.id == state.track.selectedLyricsCandidateId {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if hasLyrics {
+                Section("Timing Adjustment") {
+                    Button("Timing: Earlier (-0.5s)") {
+                        state.adjustLyricsOffset(by: -0.5, store: store)
+                    }
+                    Button("Timing: Later (+0.5s)") {
+                        state.adjustLyricsOffset(by: 0.5, store: store)
+                    }
+                    if abs(state.track.lyricsOffsetSeconds) >= 0.05 {
+                        Button("Reset Timing (\(String(format: "%+.1fs", state.track.lyricsOffsetSeconds)))") {
+                            state.resetLyricsOffset(store: store)
+                        }
+                    }
+                }
+            }
+
+            Section {
+                if state.track.isLyricsHidden {
+                    Button("Show Lyrics") {
+                        state.setLyricsHidden(false, store: store)
+                    }
+                } else if hasLyrics {
+                    Button("Hide Lyrics for This Track") {
+                        state.setLyricsHidden(true, store: store)
+                    }
+                }
+                Button("Re-fetch Lyrics") {
+                    state.reloadLyrics(store: store)
+                }
+            }
+        } label: {
+            HStack(spacing: 3) {
+                Image(systemName: hasLyrics && !state.track.isLyricsHidden ? "quote.bubble.fill" : "quote.bubble")
+                    .font(.system(size: 10, weight: .semibold))
+                if hasLyrics && !state.track.isLyricsHidden && abs(state.track.lyricsOffsetSeconds) >= 0.05 {
+                    Text(String(format: "%+.1fs", state.track.lyricsOffsetSeconds))
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                }
+            }
+            .foregroundColor(hasLyrics && !state.track.isLyricsHidden ? musicColor : .secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2.5)
+            .background((hasLyrics && !state.track.isLyricsHidden ? musicColor : Color.primary).opacity(0.10))
+            .cornerRadius(4)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .help("Lyrics Options & Timing")
     }
 
     // MARK: - Reusable Artwork Thumbnail

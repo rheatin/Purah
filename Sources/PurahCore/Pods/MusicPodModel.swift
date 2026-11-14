@@ -1,6 +1,52 @@
 // Sources/PurahCore/Pods/MusicPodModel.swift
 import Foundation
 
+public struct LyricsCandidate: Identifiable, Codable, Sendable, Equatable {
+    public var id: String
+    public var title: String
+    public var artist: String
+    public var album: String?
+    public var durationSeconds: Double?
+    public var source: String // "LRCLIB" or "NetEase"
+    public var plainLyrics: String?
+    public var syncedLyrics: String?
+    public var score: Double
+
+    public init(
+        id: String,
+        title: String,
+        artist: String,
+        album: String? = nil,
+        durationSeconds: Double? = nil,
+        source: String,
+        plainLyrics: String? = nil,
+        syncedLyrics: String? = nil,
+        score: Double = 0.0
+    ) {
+        self.id = id
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.durationSeconds = durationSeconds
+        self.source = source
+        self.plainLyrics = plainLyrics
+        self.syncedLyrics = syncedLyrics
+        self.score = score
+    }
+
+    public var displayLabel: String {
+        let durationStr: String
+        if let dur = durationSeconds, dur > 0 {
+            let m = Int(dur) / 60
+            let s = Int(dur) % 60
+            durationStr = String(format: " (%d:%02d)", m, s)
+        } else {
+            durationStr = ""
+        }
+        return "\(title) - \(artist)\(durationStr) · \(source)"
+    }
+}
+
 public struct MusicTrackInfo: Codable, Sendable {
     public var title: String
     public var artist: String
@@ -17,6 +63,10 @@ public struct MusicTrackInfo: Codable, Sendable {
     public var syncedLyrics: String?
     public var sourceApp: String // "Apple Music", "Spotify", "Chrome", etc.
     public var sourceBundleId: String // "com.apple.Music", etc.
+    public var lyricsOffsetSeconds: Double
+    public var isLyricsHidden: Bool
+    public var selectedLyricsCandidateId: String?
+    public var lyricsCandidates: [LyricsCandidate]
 
     public static let defaultSampleSyncedLyrics: String = """
     [00:00.00] ♪ Ambient Sheikah Slate Resonance ♪
@@ -76,7 +126,11 @@ public struct MusicTrackInfo: Codable, Sendable {
         lyrics: String? = nil,
         syncedLyrics: String? = nil,
         sourceApp: String = "Apple Music",
-        sourceBundleId: String = "com.apple.Music"
+        sourceBundleId: String = "com.apple.Music",
+        lyricsOffsetSeconds: Double = 0.0,
+        isLyricsHidden: Bool = false,
+        selectedLyricsCandidateId: String? = nil,
+        lyricsCandidates: [LyricsCandidate] = []
     ) {
         self.title = title
         self.artist = artist
@@ -99,6 +153,40 @@ public struct MusicTrackInfo: Codable, Sendable {
         }
         self.sourceApp = sourceApp
         self.sourceBundleId = sourceBundleId
+        self.lyricsOffsetSeconds = lyricsOffsetSeconds
+        self.isLyricsHidden = isLyricsHidden
+        self.selectedLyricsCandidateId = selectedLyricsCandidateId
+        self.lyricsCandidates = lyricsCandidates
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case title, artist, album, isPlaying, playbackProgress, currentPositionSeconds
+        case durationSeconds, lastUpdated, playbackRate, waveformSamples, artworkData
+        case lyrics, syncedLyrics, sourceApp, sourceBundleId
+        case lyricsOffsetSeconds, isLyricsHidden, selectedLyricsCandidateId, lyricsCandidates
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.title = try c.decode(String.self, forKey: .title)
+        self.artist = try c.decode(String.self, forKey: .artist)
+        self.album = try c.decode(String.self, forKey: .album)
+        self.isPlaying = try c.decode(Bool.self, forKey: .isPlaying)
+        self.playbackProgress = try c.decode(Double.self, forKey: .playbackProgress)
+        self.currentPositionSeconds = try c.decode(Double.self, forKey: .currentPositionSeconds)
+        self.durationSeconds = try c.decode(Double.self, forKey: .durationSeconds)
+        self.lastUpdated = try c.decode(Date.self, forKey: .lastUpdated)
+        self.playbackRate = try c.decode(Double.self, forKey: .playbackRate)
+        self.waveformSamples = try c.decode([Double].self, forKey: .waveformSamples)
+        self.artworkData = try c.decodeIfPresent(Data.self, forKey: .artworkData)
+        self.lyrics = try c.decodeIfPresent(String.self, forKey: .lyrics)
+        self.syncedLyrics = try c.decodeIfPresent(String.self, forKey: .syncedLyrics)
+        self.sourceApp = try c.decode(String.self, forKey: .sourceApp)
+        self.sourceBundleId = try c.decode(String.self, forKey: .sourceBundleId)
+        self.lyricsOffsetSeconds = try c.decodeIfPresent(Double.self, forKey: .lyricsOffsetSeconds) ?? 0.0
+        self.isLyricsHidden = try c.decodeIfPresent(Bool.self, forKey: .isLyricsHidden) ?? false
+        self.selectedLyricsCandidateId = try c.decodeIfPresent(String.self, forKey: .selectedLyricsCandidateId)
+        self.lyricsCandidates = try c.decodeIfPresent([LyricsCandidate].self, forKey: .lyricsCandidates) ?? []
     }
 
     /// Whether two snapshots would render the same thing.
@@ -122,6 +210,10 @@ public struct MusicTrackInfo: Codable, Sendable {
             && syncedLyrics == other.syncedLyrics
             && sourceApp == other.sourceApp
             && sourceBundleId == other.sourceBundleId
+            && lyricsOffsetSeconds == other.lyricsOffsetSeconds
+            && isLyricsHidden == other.isLyricsHidden
+            && selectedLyricsCandidateId == other.selectedLyricsCandidateId
+            && lyricsCandidates.count == other.lyricsCandidates.count
     }
 
     public var calculatedCurrentTime: Double {
