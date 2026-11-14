@@ -428,28 +428,14 @@ public final class ScriptRunwayService {
         runID: Int,
         onStreamUpdate: (@MainActor @Sendable (String) -> Void)? = nil
     ) async -> (success: Bool, message: String) {
-        DiagnosticLogger.shared.info("ScriptRunway", "Executing AppleScript (\(script.count) chars)")
-        return await Task.detached(priority: .userInitiated) {
-            guard let appleScript = NSAppleScript(source: script) else {
-                DiagnosticLogger.shared.error("ScriptRunway", "AppleScript syntax error")
-                return (false, "AppleScript syntax error")
-            }
-            var errorDict: NSDictionary?
-            let descriptor = appleScript.executeAndReturnError(&errorDict)
-            if let err = errorDict {
-                let msg = err[NSAppleScript.errorMessage] as? String ?? "Execution failed"
-                DiagnosticLogger.shared.warn("ScriptRunway", "AppleScript error: \(msg)")
-                return (false, msg)
-            }
-            let resultText = descriptor.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let msg = resultText.isEmpty ? "AppleScript executed successfully" : ScriptRunwayService.tailNonEmptyLines(from: resultText, maxLines: 4)
-            Task { @MainActor in
-                guard runID == self.currentRunID, !self.wasStoppedByUser else { return }
-                onStreamUpdate?(msg)
-            }
-            DiagnosticLogger.shared.info("ScriptRunway", "AppleScript completed successfully")
-            return (true, msg)
-        }.value
+        DiagnosticLogger.shared.info("ScriptRunway", "Executing AppleScript via osascript (\(script.count) chars)")
+        return await runShell(
+            command: script,
+            executable: "/usr/bin/osascript",
+            argv: ["-e", script],
+            runID: runID,
+            onStreamUpdate: onStreamUpdate
+        )
     }
 
     private func runShortcut(

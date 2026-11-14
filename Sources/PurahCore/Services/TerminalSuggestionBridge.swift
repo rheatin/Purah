@@ -46,6 +46,7 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "app.purah.terminal.suggestion-bridge")
     private let lock = NSLock()
+    private let readyCondition = NSCondition()
     private var listener: NWListener?
     private var endpoint: Endpoint?
     private var isListening = false
@@ -98,12 +99,18 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
                     self.endpoint = Endpoint(port: port, token: token)
                 }
                 self.lock.unlock()
+                self.readyCondition.lock()
+                self.readyCondition.broadcast()
+                self.readyCondition.unlock()
             case .failed, .cancelled:
                 self.lock.lock()
                 if self.generation == generation {
                     self.isListening = false
                 }
                 self.lock.unlock()
+                self.readyCondition.lock()
+                self.readyCondition.broadcast()
+                self.readyCondition.unlock()
             default:
                 break
             }
@@ -126,15 +133,62 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         // enough headroom for a loaded machine without making a failed start
         // stall the caller; callers that know they need more can pass a
         // longer timeout explicitly.
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        guard timeout > 0 else {
             lock.lock()
             let ready = isListening ? endpoint : nil
             lock.unlock()
-            if let ready { return ready }
-            Thread.sleep(forTimeInterval: 0.02)
+            return ready
         }
-        return nil
+
+        let deadline = Date().addingTimeInterval(timeout)
+        if Thread.isMainThread {
+            while Date() < deadline {
+                lock.lock()
+                let ready = isListening ? endpoint : nil
+                lock.unlock()
+                if let ready { return ready }
+                RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+            }
+        } else {
+            readyCondition.lock()
+            while Date() < deadline {
+                lock.lock()
+                let ready = isListening ? endpoint : nil
+                lock.unlock()
+                if let ready {
+                    readyCondition.unlock()
+                    return ready
+                }
+                if !readyCondition.wait(until: deadline) {
+                    break
+                }
+            }
+            readyCondition.unlock()
+        }
+
+        lock.lock()
+        let ready = isListening ? endpoint : nil
+        lock.unlock()
+        return ready
+    }
+
+    private func checkEndpoint() -> Endpoint? {
+        lock.lock()
+        defer { lock.unlock() }
+        return isListening ? endpoint : nil
+    }
+
+    public func startIfNeededAsync(timeout: TimeInterval = 1.0) async -> Endpoint? {
+        if let immediate = checkEndpoint() {
+            return immediate
+        }
+        guard timeout > 0 else { return nil }
+        return await withCheckedContinuation { continuation in
+            queue.async { [weak self] in
+                let res = self?.startIfNeeded(timeout: timeout)
+                continuation.resume(returning: res)
+            }
+        }
     }
 
     public func stop() {
@@ -150,10 +204,10 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
     // MARK: - Requests
 
     private func accept(_ connection: NWConnection, token: String) {
-        let http = SuggestionHTTP(connection: connection, queue: queue)
+        let http = LoopbackHTTPConnection(connection: connection, queue: queue, maximumBodyBytes: TerminalSuggestionBridge.maximumRequestBytes)
         http.receive { [weak self] request in
             guard let self, let request else {
-                http.respond(status: 400, body: Self.failure("Malformed request."))
+                http.respond(status: 400, text: Self.failure("Malformed request."))
                 return
             }
             guard request.method == "POST",
@@ -161,40 +215,40 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
                     || request.path == "/v1/done"
                     || request.path == "/v1/start"
             else {
-                http.respond(status: 404, body: Self.failure("Not found."))
+                http.respond(status: 404, text: Self.failure("Not found."))
                 return
             }
             guard request.headers["authorization"] == "Bearer \(token)" else {
-                http.respond(status: 403, body: Self.failure("Not authorized."))
+                http.respond(status: 403, text: Self.failure("Not authorized."))
                 return
             }
             let form = Self.parseForm(request.body)
 
             if request.path == "/v1/start" {
                 self.onCommandStarted?()
-                http.respond(status: 200, body: "ok\n")
+                http.respond(status: 200, text: "ok\n")
                 return
             }
 
             if request.path == "/v1/done" {
                 self.onCommandFinished?(form)
-                http.respond(status: 200, body: "ok\n")
+                http.respond(status: 200, text: "ok\n")
                 return
             }
 
             let mode = CommandSuggestionMode(rawValue: form["mode"] ?? "") ?? .suggest
 
             guard let onSuggest = self.onSuggest else {
-                http.respond(status: 503, body: Self.failure("Purah has no assistant configured."))
+                http.respond(status: 503, text: Self.failure("Purah has no assistant configured."))
                 return
             }
 
             Task {
                 do {
                     let suggestion = try await onSuggest(mode, form)
-                    http.respond(status: 200, body: Self.success(suggestion))
+                    http.respond(status: 200, text: Self.success(suggestion))
                 } catch {
-                    http.respond(status: 200, body: Self.failure(error.localizedDescription))
+                    http.respond(status: 200, text: Self.failure(error.localizedDescription))
                 }
             }
         }
@@ -233,102 +287,4 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
     }
 }
 
-// MARK: - Minimal Loopback HTTP
 
-/// One request/response over a loopback connection.
-private final class SuggestionHTTP: @unchecked Sendable {
-    private let connection: NWConnection
-    private let queue: DispatchQueue
-    private var buffer = Data()
-    private var didFinish = false
-    private let lock = NSLock()
-
-    struct Request {
-        let method: String
-        let path: String
-        let headers: [String: String]
-        let body: Data
-    }
-
-    init(connection: NWConnection, queue: DispatchQueue) {
-        self.connection = connection
-        self.queue = queue
-    }
-
-    func receive(completion: @escaping @Sendable (Request?) -> Void) {
-        connection.start(queue: queue)
-        read(completion: completion)
-    }
-
-    private func read(completion: @escaping @Sendable (Request?) -> Void) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            if let data { self.buffer.append(data) }
-            if self.buffer.count > TerminalSuggestionBridge.maximumRequestBytes + 8 * 1024 {
-                completion(nil)
-                return
-            }
-            if error != nil {
-                completion(nil)
-                return
-            }
-            if let request = self.completeRequest() {
-                completion(request)
-                return
-            }
-            if isComplete {
-                completion(nil)
-                return
-            }
-            self.read(completion: completion)
-        }
-    }
-
-    private func completeRequest() -> Request? {
-        guard let headerEnd = buffer.range(of: Data("\r\n\r\n".utf8)) else { return nil }
-        let headerData = buffer[buffer.startIndex..<headerEnd.lowerBound]
-        guard let headerText = String(data: headerData, encoding: .utf8) else { return nil }
-
-        var lines = headerText.split(separator: "\r\n", omittingEmptySubsequences: false)
-        guard !lines.isEmpty else { return nil }
-        let requestLine = lines.removeFirst().split(separator: " ")
-        guard requestLine.count >= 2 else { return nil }
-        let method = String(requestLine[0]).uppercased()
-        let path = String(requestLine[1])
-
-        var headers: [String: String] = [:]
-        for line in lines {
-            let parts = line.split(separator: ":", maxSplits: 1)
-            guard parts.count == 2 else { continue }
-            headers[parts[0].trimmingCharacters(in: .whitespaces).lowercased()] =
-                parts[1].trimmingCharacters(in: .whitespaces)
-        }
-
-        let contentLength = Int(headers["content-length"] ?? "0") ?? 0
-        // A negative length traps in `prefix(_:)`, and this runs before the
-        // bearer check: one local process sending `Content-Length: -1` used to
-        // take the whole app down.
-        guard contentLength >= 0, contentLength <= TerminalSuggestionBridge.maximumRequestBytes else { return nil }
-        let body = buffer[headerEnd.upperBound...]
-        guard body.count >= contentLength else { return nil }
-
-        return Request(method: method, path: path, headers: headers, body: Data(body.prefix(contentLength)))
-    }
-
-    func respond(status: Int, body: String) {
-        lock.lock()
-        guard !didFinish else { lock.unlock(); return }
-        didFinish = true
-        lock.unlock()
-
-        let payload = Data(body.utf8)
-        let reason = status == 200 ? "OK" : (status == 403 ? "Forbidden" : (status == 404 ? "Not Found" : "Error"))
-        var response = Data("HTTP/1.1 \(status) \(reason)\r\nContent-Type: text/plain; charset=utf-8\r\n".utf8)
-        response.append(Data("Content-Length: \(payload.count)\r\nConnection: close\r\n\r\n".utf8))
-        response.append(payload)
-
-        connection.send(content: response, completion: .contentProcessed { [connection] _ in
-            connection.cancel()
-        })
-    }
-}

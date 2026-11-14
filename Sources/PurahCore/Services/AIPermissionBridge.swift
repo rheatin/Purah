@@ -44,6 +44,7 @@ public final class AIPermissionBridge: @unchecked Sendable {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "app.purah.ai.permission-bridge")
     private let lock = NSLock()
+    private let readyCondition = NSCondition()
     /// Requests awaiting a human answer, keyed by request id.
     private var waiting: [String: Waiter] = [:]
     /// Per-launch secret carried by the hook URL.
@@ -73,13 +74,13 @@ public final class AIPermissionBridge: @unchecked Sendable {
     }
 
     private final class Waiter: @unchecked Sendable {
-        let connection: HTTPConnection
+        let connection: LoopbackHTTPConnection
         /// The CLI's own suggestions, echoed back only for "always allow".
         /// They belong to the request, so they live on the waiter rather than
         /// travelling through every `resolve` call.
         let suggestions: Data?
 
-        init(connection: HTTPConnection, suggestions: Data?) {
+        init(connection: LoopbackHTTPConnection, suggestions: Data?) {
             self.connection = connection
             self.suggestions = suggestions
         }
@@ -114,10 +115,16 @@ public final class AIPermissionBridge: @unchecked Sendable {
                 self.lock.lock()
                 self.isListening = true
                 self.lock.unlock()
+                self.readyCondition.lock()
+                self.readyCondition.broadcast()
+                self.readyCondition.unlock()
             case .failed, .cancelled:
                 self.lock.lock()
                 self.isListening = false
                 self.lock.unlock()
+                self.readyCondition.lock()
+                self.readyCondition.broadcast()
+                self.readyCondition.unlock()
             default:
                 break
             }
@@ -135,15 +142,63 @@ public final class AIPermissionBridge: @unchecked Sendable {
     /// assume `start()` returned a usable bridge.
     @discardableResult
     public func waitUntilListening(timeout: TimeInterval = 3) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
+        guard timeout > 0 else {
             lock.lock()
             let ready = isListening
             lock.unlock()
-            if ready { return true }
-            Thread.sleep(forTimeInterval: 0.02)
+            return ready
         }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        if Thread.isMainThread {
+            while Date() < deadline {
+                lock.lock()
+                let ready = isListening
+                lock.unlock()
+                if ready { return true }
+                RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.01))
+            }
+        } else {
+            readyCondition.lock()
+            while Date() < deadline {
+                lock.lock()
+                let ready = isListening
+                lock.unlock()
+                if ready {
+                    readyCondition.unlock()
+                    return true
+                }
+                if !readyCondition.wait(until: deadline) {
+                    break
+                }
+            }
+            readyCondition.unlock()
+        }
+
+        lock.lock()
+        let ready = isListening
+        lock.unlock()
+        return ready
+    }
+
+    private func checkIsListening() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
         return isListening
+    }
+
+    @discardableResult
+    public func waitUntilListeningAsync(timeout: TimeInterval = 3) async -> Bool {
+        if checkIsListening() {
+            return true
+        }
+        guard timeout > 0 else { return false }
+        return await withCheckedContinuation { continuation in
+            queue.async { [weak self] in
+                let ready = self?.waitUntilListening(timeout: timeout) ?? false
+                continuation.resume(returning: ready)
+            }
+        }
     }
 
     public func stop() {
@@ -156,7 +211,7 @@ public final class AIPermissionBridge: @unchecked Sendable {
         lock.unlock()
         // Nobody is going to answer these now; fail closed.
         for (_, waiter) in pending {
-            waiter.connection.respond(decision: .deny, suggestions: nil)
+            Self.respond(to: waiter.connection, decision: .deny, suggestions: nil)
         }
     }
 
@@ -166,44 +221,42 @@ public final class AIPermissionBridge: @unchecked Sendable {
         lock.lock()
         let waiter = waiting.removeValue(forKey: requestId)
         lock.unlock()
-        waiter?.connection.respond(decision: decision, suggestions: waiter?.suggestions)
+        if let waiter {
+            Self.respond(to: waiter.connection, decision: decision, suggestions: waiter.suggestions)
+        }
     }
 
     // MARK: - Accepting
 
     private func accept(_ connection: NWConnection) {
-        let http = HTTPConnection(connection: connection, queue: queue)
-        http.receive { [weak self] body in
-            guard let self, let body else {
-                http.respond(decision: .deny, suggestions: nil)
+        let http = LoopbackHTTPConnection(connection: connection, queue: queue, maximumBodyBytes: Self.maximumRequestBytes)
+        http.receive { [weak self] request in
+            guard let self, let request else {
                 return
             }
-            guard http.path == self.permissionPath else {
+            guard request.path == self.permissionPath else {
                 DiagnosticLogger.shared.warn("AI", "Permission bridge rejected a request on an unknown path")
-                http.respond(decision: .deny, suggestions: nil)
+                Self.respond(to: http, decision: .deny, suggestions: nil)
                 return
             }
-            self.handle(body: body, http: http)
+            self.handle(body: request.body, http: http)
         }
     }
 
-    private func handle(body: Data, http: HTTPConnection) {
+    private func handle(body: Data, http: LoopbackHTTPConnection) {
         guard body.count <= Self.maximumRequestBytes else {
-            // The size is checked before the bytes are kept in memory (see
-            // `HTTPConnection.completeBody`), but an oversized body that got
-            // this far is never a real hook call.
-            http.respond(decision: .deny, suggestions: nil)
+            Self.respond(to: http, decision: .deny, suggestions: nil)
             return
         }
         guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
-            http.respond(decision: .deny, suggestions: nil)
+            Self.respond(to: http, decision: .deny, suggestions: nil)
             return
         }
         // Only the permission gate is answerable here. Anything else is a
         // misconfiguration, and answering it would be inventing a decision.
         guard object["hook_event_name"] as? String == "PermissionRequest",
               let toolName = object["tool_name"] as? String else {
-            http.respond(decision: .deny, suggestions: nil)
+            Self.respond(to: http, decision: .deny, suggestions: nil)
             return
         }
 
@@ -288,110 +341,17 @@ public final class AIPermissionBridge: @unchecked Sendable {
         }
         return nil
     }
-}
 
-// MARK: - Minimal Loopback HTTP
-
-/// One request/response over a loopback connection. Deliberately small: the
-/// only client is the CLI's hook, POSTing a known JSON body.
-private final class HTTPConnection: @unchecked Sendable {
-    private let connection: NWConnection
-    private let queue: DispatchQueue
-    private var buffer = Data()
-    private var didFinish = false
-    private let lock = NSLock()
-
-    /// The request target, e.g. `/permission/<token>`.
-    private(set) var path: String = ""
-
-    init(connection: NWConnection, queue: DispatchQueue) {
-        self.connection = connection
-        self.queue = queue
-    }
-
-    func receive(completion: @escaping @Sendable (Data?) -> Void) {
-        connection.stateUpdateHandler = { state in
-            if case .failed = state { completion(nil) }
-        }
-        connection.start(queue: queue)
-        read(completion: completion)
-    }
-
-    private func read(completion: @escaping @Sendable (Data?) -> Void) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
-            guard let self else { return }
-            if let data { self.buffer.append(data) }
-            // Stop before an oversized or endless request turns into memory
-            // pressure. Header slack covers the request line and headers.
-            if self.buffer.count > AIPermissionBridge.maximumRequestBytes + 64 * 1024 {
-                DiagnosticLogger.shared.warn("AI", "Permission bridge rejected an oversized request")
-                self.respond(decision: .deny, suggestions: nil)
-                return
-            }
-            if let error {
-                _ = error
-                completion(nil)
-                return
-            }
-            if let body = self.completeBody() {
-                completion(body)
-                return
-            }
-            if isComplete {
-                completion(nil)
-                return
-            }
-            self.read(completion: completion)
-        }
-    }
-
-    /// Returns the body once the full `Content-Length` has arrived.
-    private func completeBody() -> Data? {
-        guard let headerEnd = buffer.range(of: Data("\r\n\r\n".utf8)) else { return nil }
-        let headerData = buffer[buffer.startIndex..<headerEnd.lowerBound]
-        guard let headers = String(data: headerData, encoding: .utf8) else { return nil }
-
-        if path.isEmpty,
-           let requestLine = headers.split(separator: "\r\n").first?.split(separator: " "),
-           requestLine.count >= 2 {
-            path = String(requestLine[1])
-        }
-
-        var contentLength = 0
-        for line in headers.split(separator: "\r\n") {
-            let parts = line.split(separator: ":", maxSplits: 1)
-            guard parts.count == 2,
-                  parts[0].trimmingCharacters(in: .whitespaces).lowercased() == "content-length" else { continue }
-            contentLength = Int(parts[1].trimmingCharacters(in: .whitespaces)) ?? 0
-        }
-        // `>= 0` is load-bearing: a negative length reaches `prefix(_:)` and
-        // traps, and this runs before the path is checked, so any local
-        // process could take the app down with one header.
-        guard contentLength >= 0, contentLength <= AIPermissionBridge.maximumRequestBytes else { return nil }
-
-        let body = buffer[headerEnd.upperBound...]
-        guard body.count >= contentLength else { return nil }
-        return Data(body.prefix(contentLength))
-    }
-
-    func respond(decision: AIPermissionBridge.Decision, suggestions: Data?) {
-        lock.lock()
-        guard !didFinish else { lock.unlock(); return }
-        didFinish = true
-        lock.unlock()
-
+    static func respond(to connection: LoopbackHTTPConnection, decision: Decision, suggestions: Data?) {
         var decisionObject: [String: Any] = [:]
         switch decision {
-        case .allow:
-            decisionObject["behavior"] = "allow"
-        case .alwaysAllow:
+        case .allow, .alwaysAllow:
             decisionObject["behavior"] = "allow"
         case .deny:
             decisionObject["behavior"] = "deny"
             decisionObject["message"] = "The user declined this action in Purah."
         }
 
-        // Only "always allow" carries the CLI's own suggestions forward.
         if decision == .alwaysAllow,
            let suggestions,
            let parsed = try? JSONSerialization.jsonObject(with: suggestions) {
@@ -405,13 +365,6 @@ private final class HTTPConnection: @unchecked Sendable {
             ]
         ]
 
-        let body = (try? JSONSerialization.data(withJSONObject: payload)) ?? Data("{}".utf8)
-        var response = Data("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n".utf8)
-        response.append(Data("Content-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8))
-        response.append(body)
-
-        connection.send(content: response, completion: .contentProcessed { [connection] _ in
-            connection.cancel()
-        })
+        connection.respondJSON(status: 200, jsonObject: payload)
     }
 }
