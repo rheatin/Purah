@@ -140,16 +140,16 @@ Purah 纯粹驻留后台运行，不占据 Dock 栏，不抢夺输入焦点，�
 | :--- | :---: | :--- |
 | **AI 助理** | `sparkles` | 多模型 AI 工作台，原生支持端侧 Apple Intelligence (`FoundationModels`)、本地 CLI Agent (`claude`、`codex`、`ollama` 及自定义工具) 与 OpenAI / Anthropic / Ollama HTTP API。支持最前端文本/选区即时捕获、50/50 分割拖拽区（新会话 vs 追加上下文）、内联 Diff 润色、自定义角色提示词、内置本地文件 Skill 及 MCP 服务器联动。拆解后的角色 chip 可直接在行内作答；回答超出 chip 高度时，悬停即可在悬浮面板里读完全文，不会只剩一个省略号。 |
 | **硬件脉搏** | `waveform.path.ecg` | 深度 Darwin / IOKit 硬件遥测，提供统一 2x2 概览网格（CPU 用户态/系统态/负载、显卡、内存应用/联动/压缩/交换、电池健康度与循环）、机器信息行（芯片、核心数、系统、内存、固态盘、运行时长、负载、风扇）、CPU / GPU 温度时间图、全宽网络 I/O 与 Wi-Fi 区域（SSID、RSSI 时间图、速率、信道、延迟、丢包）、磁盘读写吞吐，以及每个标签页下方的进程排行。头部药丸可选择导轨仪表显示哪一项指标，选择会跨启动保留。 |
-| **临时收纳架** | `tray.fill` | 访达文件随手拖拽暂存，支持框选多选 (Rubber-band)、批量拖拽出轨、一键 ZIP 打包与隔空投送 (AirDrop)，以及固定交互式悬浮边车预览 (`👁`)。 |
+| **临时收纳架** | `tray.fill` | 访达文件随手拖拽暂存，支持三区拖拽分流（`引用 Link` / `移动 Move` 含一键撤销 / `隔空投送 AirDrop`）、框选多选 (Rubber-band)、批量拖拽出轨、一键 ZIP 打包，以及固定交互式悬浮边车预览 (`👁`)。 |
 | **智能剪贴板** | `doc.on.clipboard.fill` | 零内存常驻历史管理器，支持框选多选、批量拖拽、一键 ZIP 打包与 AirDrop、固定交互式悬浮边车预览 (`👁`)、颜色预览、图片快照与模糊快筛。 |
 | **即时便签** | `note.text` | Typora 式即时渲染 Markdown 编辑器，支持可调列宽表格、单标签归档与即时快搜、图片就地粘贴与一键导出 `.md`。 |
 | **交互终端** | `apple.terminal.fill` | 基于 [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) 打造的多标签页常驻后台终端，支持一键 `cd` 至当前访达目录、Starship / Nerd Font 与即时字体调节，并内置自然语言命令 (`??`)，用一句话写出你想要的命令。 |
-| **音乐律动** | `waveform` | Apple Music 播放控制与实时流体音频波形，支持平滑进度拖拽。 |
+| **音乐律动** | `waveform` | 全局媒体播放控制（Apple Music、Spotify 与系统正在播放媒体）及 60/120 FPS 实时流体波形，支持平滑进度拖拽与实时同步歌词（LRCLIB + 网易云多候选智能打分，内置版本切换、`±0.5s` 时间轴微调、强制重抓与隐藏菜单）。 |
 | **日程时间轴** | `calendar` | 当日日程纵览，自动提取会议链接（Zoom、腾讯会议、Google Meet 等）。 |
 | **待办清单** | `checklist` | 系统提醒事项深度整合，支持就地勾选完成。 |
 | **终端跑道** | `terminal.fill` | 一键执行常用维护脚本与开发者常用自动化指令，并支持一句话生成脚本：描述任务，审阅它写出的 zsh 再保存。 |
 
-> 🚀 **未来可期**：更多实用插件、自定义小组件及扩展生态正在持续开发扩充中。
+> 🔌 **开发你自己的插件**：Purah 内置零依赖 C-ABI 外部插件 SDK（`Examples/PurahExamplePlugin`）与 SPM 源码即时热编译加载（`Dev: Load Package...`），由宿主统一接管导轨条、胶囊卡片、声明式顶栏与声明式设置页。详见 [插件开发指南 (中文)](docs/PLUGIN_DEVELOPMENT_GUIDE.md) 或 [Plugin Development Guide (English)](docs/PLUGIN_DEVELOPMENT_GUIDE_EN.md)。
 
 ---
 
@@ -244,8 +244,8 @@ open build/Purah.app
 GitHub 的 Release 下载会跳转到 `objects.githubusercontent.com`，国内经常被重置。在下载链接前面加一个加速前缀即可：
 
 ```
-https://gh-proxy.com/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
-https://ghfast.top/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
+https://gh-proxy.com/https://github.com/rheatin/Purah/releases/download/v0.7.26/Purah-v0.7.26-macOS.dmg
+https://ghfast.top/https://github.com/rheatin/Purah/releases/download/v0.7.26/Purah-v0.7.26-macOS.dmg
 ```
 
 把版本号换成你要的版本。Purah 自带的更新器也是同一套逻辑：直连失败后会自动按同样的加速源重试，不需要额外设置。加速源是第三方服务，下载后仍可对照 Release 页面公布的 SHA-256 核对文件。

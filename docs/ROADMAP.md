@@ -4,7 +4,7 @@ The order below is not "what would be fun to build". It is the order in which
 things stop a stranger from using Purah, then stop them from trusting it, then
 stop them from keeping it.
 
-Last reviewed: 2026-11-07 (v0.7.18)
+Last reviewed: 2026-11-15 (v0.7.26)
 
 ---
 
@@ -13,9 +13,9 @@ Last reviewed: 2026-11-07 (v0.7.18)
 | Area | State |
 |---|---|
 | Features | 10 built-in plugins; the feature set is deeper than most tools in this space |
-| Quality | 1,197 tests in 137 suites, strict concurrency, source-level guards for tooltips and motion tokens, and a pixel-level render test for the header tint |
+| Quality | 1,250+ tests in 140+ suites, strict concurrency, source-level guards for tooltips, header anatomy, and motion tokens, and a pixel-level render test for the header tint |
 | Distribution | Self-signed, on a self-hosted Homebrew tap. Grants survive updates and `brew` installs cleanly; **a DMG download from the website still hits Gatekeeper** |
-| Ecosystem | Complete plugin ABI and a developer guide, but the marketplace has no published catalog (`PluginCatalogService.catalogURL` is `nil`) and nothing downloads a plugin: the only install path is Developer Mode |
+| Ecosystem | Complete zero-dependency C-ABI plugin SDK (`Examples/PurahExamplePlugin`) with host-owned rail bars, stepped cards, declarative headers, and 3-layer declarative settings, plus bilingual developer guides (`docs/PLUGIN_DEVELOPMENT_GUIDE.md` & `docs/PLUGIN_DEVELOPMENT_GUIDE_EN.md`). However, the marketplace has no published catalog (`PluginCatalogService.catalogURL` is `nil`) and nothing downloads a plugin: the only install path is Developer Mode (`Dev: Load Package...`) |
 | Trust | Permission matrix, risk classification, checksums, signature verification, and a per-permission review sheet before a catalog install. **A sideloaded package still mounts without one** — its manifest does not exist until it has been compiled |
 | Resources | ~33–46 MB physical footprint idle (Music.app running adds ~8–13 MB), ~53 MB worst case after touring every pod with the process tab open. The old "~156 MB" figure was `ps` RSS, which counts shared read-only framework pages — `__TEXT` alone is 564 MB resident inside the 2.9 GB dyld shared cache. ~1.1–1.2% idle CPU; the Vitals drawer used to add ~6.3% while it was open, it now adds ~1.7–1.9% (v0.7.15) |
 | Diagnostics | A local crash reporter (`crash-log.txt`, never uploaded), launch-health and update-install markers, and an exportable diagnostic log. No telemetry and no remote reporting |

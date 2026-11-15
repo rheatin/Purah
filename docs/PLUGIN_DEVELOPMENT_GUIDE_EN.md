@@ -1,388 +1,362 @@
-# Project Purah - Plugin Development Authoritative Guide (English Edition)
+# Project Purah — Official Plugin Development Guide
 
-Welcome to building plugins for **Project Purah (macOS Magnetic Edge Rails & Ambient Ergonomic Kernel)**!
-Purah adopts a modular, decoupled, and strictly type-safe plugin architecture. It empowers developers to craft physical-feel, high-framerate ambient edge widgets and slide-out cards with sandboxed storage and zero base-engine modifications.
-
----
-
-## 1. Architectural Overview & Golden Rules
-
-Purah is organized into three decoupled Swift packages and targets:
-- **`PurahCore`**: Foundational models, ergonomic automatic layout (`PurahWorkspaceStore.resolvedPhysicalLayout` + `SpringConstraintSolver`), system integrations, and isolated storage engines (`ScopedPluginStorage`, `PurahPluginFileStorage`, `PurahDiskRepository`).
-- **`PurahUI`**: SwiftUI view system, plugin protocols (`PurahPodPlugin`, `PurahPodCapabilityProvider`), runtime context (`PurahPluginContext`), pod presentation kits, and theme management.
-- **`PurahApp`**: AppKit borderless panel lifecycle (`AmbientRailWindow`), edge trigger monitors (`EdgeMouseMonitor`), and multi-screen coordinators.
-
-### Golden Rules for Plugin Engineering:
-1. **Swift 6 Strict Concurrency**: All plugin declarations must be marked `@MainActor`, and cross-boundary states must conform to `Sendable`.
-2. **Context Encapsulation & Unidirectional Data Flow**: Plugins read geometry and appearance strictly from `PurahPluginContext` and trigger actions via pre-injected closures (`context.requestExpand()`, `context.togglePin()`, `context.showToast()`). Direct mutation of host internal state is prohibited.
-3. **Physical Co-Planar Height Rule**: Single-card drawers extruding from a rail bar must match the bar's height pixel-for-pixel (`drawerHeight == barHeight`).
-4. **Default Decomposed Principle**: Multi-item pods (vitals, reminders, calendar, clipboard) default to `isDecomposed = true` on initial mount to maximize in-rail glanceability and single-tap interaction.
-5. **Breathing UI Aesthetic**: Employ subtle translucent materials, soft glow accents, meaningful empty-state placeholders, and comfortable whitespace.
+Welcome to plugin development for **Project Purah (macOS Magnetic Edge Rails & Ambient Ergonomic Kernel)**!
+Purah features a modular, decoupled, and strictly type-safe plugin architecture that allows developers to build edge rail widgets and drawer cards with native physical tactility, 120 FPS fluid animations, and strict sandbox isolation without modifying the core layout engine.
 
 ---
 
-## 2. Plugin Manifest Schema (`PurahPluginManifest`)
+## 1. Architecture Overview & Core Design Principles
 
-Every plugin provides a static, `nonisolated` `PurahPluginManifest` declaring identity, authorship, ergonomic weight, and required system capabilities:
+Purah consists of three decoupled modules:
+- **`PurahCore`**: Base data models, ergonomic auto-layout (`PurahWorkspaceStore.resolvedPhysicalLayout` + `SpringConstraintSolver`), system services, and isolated storage (`ScopedPluginStorage`).
+- **`PurahUI`**: SwiftUI view hierarchy, plugin protocol (`PurahPodPlugin`), runtime context (`PurahPluginContext`), Plugin Center, and theme engine.
+- **`PurahApp`**: AppKit window lifecycle (`AmbientRailWindow`), high-sensitivity edge monitor (`EdgeMouseMonitor`), and multi-screen coordinator.
+
+### Core Design Principles (Golden Rules):
+1. **Swift 6 Concurrency Safety**: All plugin implementations are annotated with `@MainActor` and conform to `Sendable` across task boundaries.
+2. **Host-Owned Rail & Chrome Rule (Mandatory)**:
+   - **Plugins NEVER draw custom 8pt edge rail bars**: The 8pt physical edge rail bar (both composite and stepped chips) is 100% rendered by the host (`PurahUI`). Never return custom `NSView`s, text, or icons for the 8pt rail! Instead, plugins describe rail state via data models (`PurahRailBarDescriptor` in Swift, or `purahRailBarStateJSON` and `purahSteppedItemsJSON` over C-ABI).
+   - **Plugins NEVER draw card backgrounds, headers, or pin/gear buttons**: Whether in a composite drawer card, a stepped single-row chip card, or a `+N more` merged overview card, the glassmorphic shell (`liquidDrawerBackground`), edge-flush shape, header row, icon block, and trailing gear/pin tools (`PurahDrawerHeaderTools`) are 100% rendered by the host. Plugins supply **content-only views** and declarative header/settings descriptors.
+3. **Context Encapsulation & Unidirectional Data Flow**: Plugins read geometry and appearance exclusively via `PurahPluginContext` and trigger actions via injected closures (e.g., `context.requestExpand()`, `context.showToast(...)`). **Never mutate internal `PurahWorkspaceStore` state directly.**
+4. **Physical Co-Planar Height Rule**: When a single-card drawer slides out, its height must match its parent rail bar pixel-for-pixel (`drawerHeight == barHeight`), preventing visual detachment.
+5. **Default Composite Principle**: Decomposition is always opt-in. All built-in plugins start in **Composite Mode** (`isDecomposed = false`) on a fresh install, switching to in-rail stepped chips only when toggled by the user in the Live Rail Sculptor or Settings (or when an external plugin explicitly declares `"defaultDecomposed": true` in its manifest and the user has not overridden it).
+6. **Breathing UI Philosophy**: Leverage subtle translucent inner cards, soft glows, empty-state placeholders, and comfortable whitespace.
+
+### Two Development Tracks
+
+Purah provides two plugin development tracks tailored for standalone third-party developers and core host contributors:
+
+| Dimension | Track A: Standalone External Plugin (Recommended for Third-Party Developers) | Track B: Built-in Host Plugin (For Purah Core Contributors) |
+| :--- | :--- | :--- |
+| **Audience** | Third-party developers, community creators, standalone toolmakers | Purah core maintainers, deep built-in feature development |
+| **Dependencies** | **Zero host dependencies** — no need to clone the Purah repo; depends only on Apple's native `SwiftUI` & `AppKit` | Links directly against `PurahCore` and `PurahUI` |
+| **Setup** | Create a standard Swift Package (`.dynamic` library) and drop in the single-file `PurahExternalPluginSDK.swift` (see `Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift`) | Add a Swift file under `Sources/PurahUI/Plugins/BuiltIn/` |
+| **Contract** | C-ABI exported symbols (`@_cdecl`) + `PurahExternalContext` + `PurahHostBridge.shared` | Conform to `PurahPodPlugin` and `PurahPodCapabilityProvider` |
+| **Capabilities** | Declare rail bars (`PurahExternalRailBarState`), stepped chips (`PurahExternalSubItem`), headers (`PurahExternalHeaderAccessory` / `PurahExternalHeaderTrailingItem`), and settings (`PurahExternalSettingSection`); provide pure content views (`DrawerView`, `SteppedRowAccessory`, `SteppedDrawerContent`) | Full access to SwiftUI views and built-in presentation kits (`PurahAdaptiveTierDrawer`, `PurahOverviewList`, `PurahSettingsControls`, etc.) |
+| **Hot Reload** | Open Purah Settings → **`Dev: Load Package...`** for automatic JIT compilation, mounting, and 1-click **`Rebuild`** | Rebuild and run the Purah host app (`./run.sh` or Xcode) |
+| **Distribution** | Distribute as a compiled `.dylib` or a source Swift Package folder | Merged into `main` and shipped with the host app |
+
+- **Track A details**: See [Section 9.2 Dynamic SPM Plugin Architecture & C-ABI Bridge Engine](#92-dynamic-spm-plugin-architecture--c-abi-bridge-engine-pure-swift-zero-dependency) and the complete reference package in `Examples/PurahExamplePlugin/`.
+- **Track B details**: See [Section 3 Core Plugin Protocol (`PurahPodPlugin`)](#3-core-plugin-protocol-purahpodplugin) and [Section 8 Complete Example (`CountDownPlugin`)](#8-complete-plugin-example-countdown-plugin-countdownplugin).
+
+---
+
+## 2. Plugin Metadata Manifest (`PurahPluginManifest`)
+
+Every plugin must provide a static `nonisolated` `PurahPluginManifest` (or export an equivalent JSON string via `purahPluginManifestJSON` over the C-ABI) describing its identity, author, ergonomic weight, category, and permissions:
 
 ```swift
 public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
-    public let id: String                   // Reverse-DNS identifier, e.g. "com.myorg.weather"
-    public var displayName: String          // Display title
-    public var systemIcon: String           // SF Symbols icon name, e.g. "cloud.sun.fill"
-    public var author: String               // Author or organization name
-    public var version: String              // Semantic version, e.g. "1.0.0"
-    public var description: String          // Concise functional summary
-    public var defaultEdge: MountEdge       // Physical bezel anchor: .left or .right
-    public var preferredZone: ZoneType      // Golden ergonomic zone: .glance, .goldenAction, .quickFlick
-    public var ergonomicWeight: Double      // Layout solver weight (typically 20.0 ~ 50.0)
-    public var minLengthRatio: Double       // Screen height reservation ratio (e.g. 0.15 for 15%)
-    public var defaultColorHex: String      // Brand color hex, e.g. "#00E5A3"
-    public var defaultDrawerWidth: Double   // Preferred drawer width, e.g. 280 ~ 380pt (Terminal: 520pt)
-    public var category: PluginFootprintCategory // .lightweight, .systemMonitor, .workspace, .multimedia
-    public var permissions: [PluginPermission]   // e.g. [.fileSystem, .calendar, .reminders]
+    public let id: String                        // Unique identifier (1~64 chars: A-Z a-z 0-9 . _ -, no leading dot; reverse-DNS recommended, e.g. "com.myorg.pomodoro")
+    public var displayName: String               // Display name in UI
+    public var systemIcon: String                // SF Symbols icon name, e.g. "cloud.sun.fill"
+    public var author: String                    // Author or organization name
+    public var version: String                   // Semantic version string, e.g. "1.0.0"
+    public var description: String               // Concise plugin description
+    public var defaultEdge: MountEdge            // Default screen edge: "left" or "right" in JSON
+    public var preferredZone: ZoneType           // Ergonomic zone: "glance" (top), "goldenAction" (center), "quickFlick" (bottom)
+    public var ergonomicWeight: Double           // Elastic layout weight, typically 20.0 ~ 50.0
+    public var minLengthRatio: Double            // Minimum height ratio along screen height, e.g. 0.15 (15%)
+    public var defaultColorHex: String           // Brand accent color hex, e.g. "#30D158"
+    public var defaultDrawerWidth: Double        // Expanded drawer width (280~320pt for standard cards, up to 520pt for wide tools)
+    public var category: PluginFootprintCategory // Footprint category: "Lightweight", "System Service", "Heavy / Metal GPU"
+    public var permissions: [PluginPermission]   // Required system permissions (see table below)
+    public var website: String?                  // Optional homepage URL
+    public var tags: [String]                    // Search & category tags, e.g. ["Focus", "Timer"]
+    public var isCommunity: Bool                 // Set to true for third-party/community plugins
+    public var minimumDrawerHeight: Double?      // Composite drawer minimum height (clamped to >= 120pt ergonomic floor)
+    public var preferredDrawerHeight: Double?    // Composite drawer preferred hover height (at least minimumDrawerHeight + 24pt)
+    public var defaultDecomposed: Bool?          // Whether to start in Stepped Chips mode by default (requires purahSteppedItemsJSON)
+    public var pollingInterval: Double?          // Host-managed polling interval in seconds (requires purahOnPollingTick)
+    public var usesAI: Bool                      // Whether the plugin may call the host AI Assistant (default false)
+    public var supportsAlerts: Bool              // Whether the pod triggers edge/toast/sound alerts (default false)
+    public var alertStyle: PluginAlertStyle?     // Default edge alert style: "breathingBeacon", "sonarWave", or "subtleGlow"
 }
 ```
+
+### Manifest JSON Enum Quick Reference (for External C-ABI `purahPluginManifestJSON`)
+
+| JSON Field | Type | Valid String Values / Constraints |
+| :--- | :--- | :--- |
+| `id` | `String` (**Required**) | `1...64` chars (`A-Za-z0-9._-`), must not collide with built-in IDs (`vitals`, `scripts`, `terminal`, `notes`, `shelf`, `music`, `calendar`, `todo`, `clipboard`, `ai`) |
+| `defaultEdge` | `String` (**Required**) | `"left"` \| `"right"` |
+| `preferredZone` | `String` (**Required**) | `"glance"` \| `"goldenAction"` \| `"quickFlick"` |
+| `category` | `String` (Optional) | `"Lightweight"` \| `"System Service"` \| `"Heavy / Metal GPU"` (defaults to `"Lightweight"`) |
+| `permissions` | `[String]` (Optional) | `"Calendar"`, `"Microphone"`, `"Apple Music"`, `"Shell Execution"`, `"Mach Telemetry"`, `"File System"`, `"Clipboard"` |
+| `alertStyle` | `String?` (Optional) | `"breathingBeacon"` \| `"sonarWave"` \| `"subtleGlow"` |
+
+**Alert Permissions & Delivery Cascade**: Declaring `"supportsAlerts": true` registers the pod in the per-pod Alert Settings list. Alert delivery follows a strict cascade (`isAlertMasterEnabled` → global `alertChannels` → per-pod `podAlertChannels`). Plugins must never maintain a second private toggle for toast or glow alerts.
 
 ---
 
 ## 3. Core Plugin Protocol (`PurahPodPlugin`)
 
-Implement `PurahPodPlugin` (which conforms to `PurahPodCapabilityProvider`, `Identifiable`, and `Sendable`):
+Built-in plugins conform to `PurahPodPlugin` to declare their rail bar descriptor, pure drawer content view, declarative header and settings schemas, stepped chip accessories, and lifecycle hooks:
 
 ```swift
+/// Host-owned composite 8pt edge rail bar descriptor (plugins never draw custom rail views)
+@MainActor
+public enum PurahRailBarDescriptor {
+    /// Solid or vertical-gradient ambient rail bar (dims to 0.40 when hasContent == false)
+    case solid(color: Color? = nil, hasContent: Bool = true, isGradient: Bool = false)
+    /// Single- or multi-segment vertical gauge bar
+    case gauge(
+        segments: [PurahGaugeSegment],
+        trackColor: Color? = nil,
+        minimumVisibleFill: CGFloat = 4,
+        accessibilityValueLabel: String? = nil
+    )
+    /// Audio waveform / progress meter
+    case audioWave(
+        style: MusicRailStyle,
+        subStyle: DynamicWaveformSubStyle,
+        track: MusicTrackInfo,
+        progress: Double,
+        samples: [Double],
+        isPlaying: Bool,
+        isAnimated: Bool,
+        rhythmOffsetMs: Double = 0
+    )
+}
+
 @MainActor
 public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendable {
     nonisolated var manifest: PurahPluginManifest { get }
 
-    // MARK: - Primary View Builders
-    @ViewBuilder func makeRailBarView(context: PurahPluginContext) -> AnyView
+    // MARK: - Host-Owned Rail Bar & Composite Drawer Content
+    /// Declarative descriptor for the composite 8pt edge rail bar (defaults to .solid())
+    func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor
+    /// Pure body content for the composite drawer (host renders the glassmorphic shell, header, and gear/pin buttons)
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
+    /// Custom settings view (automatically synthesized from settingsSections(store:) if not overridden)
     @ViewBuilder func makeSettingsView(store: PurahWorkspaceStore) -> AnyView?
-    @ViewBuilder func makeSteppedDrawerView(subItemId: String, context: PurahPluginContext) -> AnyView?
 
-    // MARK: - Header Slots
-    @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
-    @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
+    // MARK: - Declarative Settings Schema (Layer 2)
+    func settingsSections(store: PurahWorkspaceStore) -> [PurahPluginSettingSection]
+    func onSettingChanged(key: String, value: String, store: PurahWorkspaceStore)
 
-    // MARK: - Lifecycle Hooks
+    // MARK: - Host-Owned Stepped Card
+    /// Compact inline action placed at the trailing end of the host's single-row stepped chip (to the left of gear/pin)
+    @ViewBuilder func makeSteppedRowAccessory(subItemId: String, context: PurahPluginContext) -> AnyView?
+    /// Progressive-disclosure body rendered below the stepped row ONLY when stretched tall (body height >= steppedDrawerMinimumBodyHeight)
+    @ViewBuilder func makeSteppedDrawerContent(subItemId: String, context: PurahPluginContext) -> AnyView?
+    /// Minimum body height before makeSteppedDrawerContent is rendered (default 48.0pt)
+    func steppedDrawerMinimumBodyHeight(subItemId: String) -> CGFloat
+    /// Content-only list view for the "+N more" merged overview drawer (host supplies the shell and single-row header)
+    @ViewBuilder func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView?
+
+    // MARK: - Host-Owned Declarative Header Chrome
+    /// Badge or dropdown menu rendered next to the drawer title (e.g. Terminal [• ZSH] badge, Vitals metric menu)
+    func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor?
+    /// Standard 20×20pt trailing tool buttons or menus placed to the left of the host gear and pin buttons
+    func headerTrailingItems(context: PurahPluginContext) -> [PurahHeaderTrailingItem]
+    /// Invoked when a header menu option or trailing button is clicked
+    func onHeaderAction(actionId: String, context: PurahPluginContext)
+
+    // MARK: - Lifecycle & Capabilities
     func onMount(store: PurahWorkspaceStore)
     func onUnmount(store: PurahWorkspaceStore)
-
-    // MARK: - Dynamic Interactions & Capabilities
-    func dynamicBarColor(context: PurahPluginContext) -> Color?
     var supportedDrawerModes: Set<PurahDrawerMode> { get } // [.composite] or [.composite, .stepped]
     func steppedItems(context: PurahPluginContext) -> [PurahPluginSubItem]
     func onRailBarTap(subItemId: String?, context: PurahPluginContext)
-
     var supportedDropTypes: [UTType] { get }
     func onDrop(providers: [NSItemProvider], context: PurahPluginContext) -> Bool
-
+    func contextMenuActions(subItemId: String?, context: PurahPluginContext) -> [PurahMenuAction]
     var preferredPollingInterval: TimeInterval? { get }
     func onPollingTick(store: PurahWorkspaceStore) async
-
-    func contextMenuActions(subItemId: String?, context: PurahPluginContext) -> [PurahMenuAction]
-
-    // MARK: - Ergonomics & Decomposed Policy
-    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat
-    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat?
-    var decomposedPolicy: PurahDecomposedPolicy { get }
+    func dynamicBarColor(context: PurahPluginContext) -> Color?
+    func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color?
+    var usesAdaptiveTelemetryColor: Bool { get }
+    func acknowledgeAllAlerts(context: PurahPluginContext)
 }
 ```
 
-### Protocol Extensions & Defaults
-Sensible defaults are provided for optional hooks:
-- Single-drawer plugins only need to implement `makeRailBarView` and `makeDrawerView`.
-- **`decomposedPolicy`**: Plugins supporting stepped sub-items declare `PurahDecomposedPolicy` (max items, min/max chip heights, spacing, overflow strategy). The base layout solver automatically bounds minimum heights and folds overflowing items into smart capsules (`+N More`).
-- **Autonomous Adaptive Width**: Plugins declare their optimal expanded width via `adaptiveDrawerWidth(store:) -> CGFloat?` (e.g. Music: 360pt, Shelf: 360pt, Clipboard: 380pt, Terminal: 520pt).
-
 ---
 
-## 4. Runtime Plugin Context (`PurahPluginContext`)
+## 4. Runtime Context (`PurahPluginContext`)
 
-On every render and interaction pass, the host injects `PurahPluginContext`:
+Whenever the host renders a plugin view or dispatches an action, it passes a `PurahPluginContext` snapshot:
 
 ```swift
 public struct PurahPluginContext: Sendable {
-    // 1. Physical Geometry (Read-Only)
-    public let edge: MountEdge              // Physical screen edge (.left / .right)
-    public let railWidth: CGFloat           // Rail bar width (8pt ~ 12pt)
-    public let slotHeight: CGFloat          // Slot physical height (pt)
-    public let drawerWidth: CGFloat         // Calculated active drawer width (pt)
+    public let pluginId: String
+    public let edge: MountEdge                  // .left or .right
+    public let railWidth: CGFloat               // Physical rail width (default 8pt, configurable 4~16pt)
+    public let slotHeight: CGFloat              // Allocated vertical height in points
+    public let drawerWidth: CGFloat             // Expanded drawer card width in points
+    public let isExpanded: Bool                 // Whether the drawer is currently expanded
+    public let isPinned: Bool                   // Whether the drawer/item is currently pinned
+    public let palette: ThemePalette            // Active theme palette (Native or Purah Pad)
+    public let accentColor: Color               // Resolved accent color (respects user customization & telemetry)
+    public let storage: any PurahPluginStorage  // Scoped key-value storage
+    public let fileStorage: PurahPluginFileStorage // Sandboxed disk directory storage
+    public let visibleSubItemIds: Set<String>   // IDs currently shown as chips on the rail (exclude these in +N more overview)
+    public let isDecomposed: Bool               // Whether the pod is currently in stepped chips mode
+    public let grantedPermissions: Set<PluginPermission> // TCC capabilities currently granted
 
-    // 2. State & Palette
-    public let isExpanded: Bool             // Drawer expansion status
-    public let isPinned: Bool               // Pod pinned status
-    public let accentColor: Color           // Current active theme color
-    public let palette: ThemePalette        // System theme palette
-
-    // 3. Isolated Storage Engines
-    public let storage: any PurahPluginStorage          // Scoped UserDefaults storage
-    public let fileStorage: PurahPluginFileStorage      // Sandboxed Application Support disk storage
-
-    // 4. Sensory Feedback & Audio State (Read-Only)
-    public let isSoundEnabled: Bool                                 // System toast notification sound toggle
-    public let isHapticsEnabled: Bool                               // Effective trackpad haptic feedback toggle
-    public let isDrawerPopHapticEnabled: Bool                       // Edge pop haptic toggle
-    public let isControlHapticEnabled: Bool                         // In-app control haptic toggle
-    public let notificationSound: ToastNotificationSound            // Active toast notification sound selection
-
-    // 5. Fine-Grained Sub-Item Actions & Controls
-    public func isItemPinned(_ itemId: String? = nil) -> Bool       // Query pod or sub-item pin state
-    public func togglePin(_ itemId: String? = nil)                  // Toggle pod or sub-item pin
-    public func requestExpand(_ subItemId: String? = nil)           // Expand drawer for specific sub-item
-    public func requestDismiss(_ subItemId: String? = nil)          // Dismiss drawer for specific sub-item
-    public func acknowledgeAlert(id: String)                        // Acknowledge attention alert & dismiss glow
-    public func isAlertAcknowledged(id: String) -> Bool             // Check acknowledgment state
-    public let requestLayoutRecalculation: @MainActor () -> Void    // Request layout engine re-calculation
-    public let openSettings: @MainActor () -> Void                  // Summon plugin settings modal
-    public let showToast: @MainActor (String, String?) -> Void      // Pop transient tactile HUD toast
-    public let showWarning: @MainActor (String) -> Void             // Show warning banner
-    public let performHaptic: @MainActor (PurahHapticType) -> Void  // Trigger precision haptics
-    public let playSound: @MainActor (ToastNotificationSound?) -> Void // Play notification sound (or system default)
-    public func playSound()                                         // Convenience to play configured system sound
+    // Action Triggers
+    public let requestExpand: @MainActor @Sendable () -> Void
+    public let requestDismiss: @MainActor @Sendable () -> Void
+    public let togglePin: @MainActor @Sendable () -> Void
+    public let isItemPinned: @MainActor @Sendable (String) -> Bool
+    public let acknowledgeAlert: @MainActor @Sendable (String) -> Void
+    public let requestLayoutRecalculation: @MainActor @Sendable () -> Void
+    public let openSettings: @MainActor @Sendable () -> Void
+    public let showToast: @MainActor @Sendable (_ message: String, _ icon: String?) -> Void
+    public let showWarning: @MainActor @Sendable (_ message: String) -> Void
+    public let performHaptic: @MainActor @Sendable (_ pattern: NSHapticFeedbackManager.FeedbackPattern) -> Void
 }
 ```
 
 ---
 
-## 5. Pod Presentation Kit (Standard UI Components)
+## 5. Stepped Sub-Items & Decomposed Policy (`PurahDecomposedPolicy`)
 
-Purah provides standardized reusable UI components to ensure visual consistency:
+Plugins that support `.stepped` mode decompose their rail bar into individual sub-item chips (e.g., Calendar events, Todo tasks, Vitals metrics, Focus sessions).
 
-### 1. Multi-Tier Adaptive Drawer (`PurahAdaptiveTierDrawer`)
-Drawer heights are not fixed: a pod rests at its own span, expands to `preferredDrawerHeight` on hover, and is squeezed when several drawers are pinned at once. Rather than shipping a layout that clips or squashes, declare how many presentations you have and let the host run the switching.
+### 5.1 Ergonomic Minimum Height Floor
+- **Composite Full-Pod Drawers**: `>= 120pt` (`>= 110pt` for compact Music mini-player, `>= 150pt` for Clipboard).
+- **Tactile Metric & Action Chips**: `>= 56pt` (`PurahDecomposedPolicy.tactileMetrics`).
+- **Compact Calendar Event Chips**: `>= 40pt` (`PurahDecomposedPolicy.calendarDefault`).
+- **Compact Todo Task Chips**: `>= 32pt` (`PurahDecomposedPolicy.todoDefault`).
 
-**Thresholds are content-area heights** — the space the drawer body receives after the host's header row and 8pt padding, not the pod slot height. That is the same coordinate space you already reason in when hand-tuning a layout.
-
-```swift
-PurahAdaptiveTierDrawer(
-    tiers: [
-        PurahAdaptiveTier(id: "compact", minHeight: 0),
-        PurahAdaptiveTier(id: "standard", minHeight: 145),
-        PurahAdaptiveTier(id: "immersive", minHeight: 215)
-    ]
-) { tier, height in
-    AnyView(switch tier.id {
-    case "standard":  StandardCardView(height: height)
-    case "immersive": ImmersiveStudioView(height: height)
-    default:          CompactCapsuleView(height: height)
-    })
-}
-```
-
-- **Any number of tiers**: `tiers` is an ordered array sorted by `minHeight`. Two, three, or five all work. Give the first one `minHeight: 0` so a tier is always reachable.
-- **8pt hysteresis**: promotion happens exactly at the declared floor (the same result as picking from scratch by height); demotion needs an 8pt drop below it. A spring easing through a threshold, or a metric nudging the height, cannot flip the tier frame by frame. Pass `hysteresis: 0` to switch exactly on the boundary.
-- **Use the height**: every builder receives the measured height. A tier that assumes a fixed size is the one thing this container cannot fix for you.
-
-### 2. Scrollable Content Container (`PurahScrollableBody`)
-When content has an incompressible natural height, let it scroll instead of squeezing further:
-
-```swift
-VStack(alignment: .leading, spacing: 6) {
-    header
-    PurahScrollableBody { longList }
-}
-```
-
-- **Opt-in only.** The host never wraps your body in a scroll view on its own: a layout that relies on `maxHeight: .infinity` (a vinyl disc, an equal-height card grid) would stop filling its card inside a `ScrollView`, because a scroll view proposes unbounded height to its content.
-- Indicators default to `.automatic` (system overlay scrollers — invisible at rest, fading in while scrolling). Pass `.hidden` to suppress them.
-- Bounce is size-based (`.scrollBounceBehavior(.basedOnSize)`), so content that fits does not rubber-band inside a short drawer.
-- Stays out of the focus chain, so hovering never pulls key focus from the app underneath.
-
-### 3. Multi-Channel Metric Gauge (`PurahSegmentGaugeBarView`)
-A vertical gauge: one rounded track plus one or more filled channels growing from the bottom edge.
-
-```swift
-// Single metric — the classic rail bar
-PurahSegmentGaugeBarView(
-    segments: [PurahGaugeSegment(id: "cpu", ratio: cpuUsage, color: tint, isAlerting: cpuUsage > 0.85)],
-    barWidth: context.railWidth,
-    height: context.slotHeight,
-    trackColor: tint.opacity(0.25)
-)
-
-// Several metrics — the track splits into equal-width channels,
-// so one bar shows multiple readings at a glance
-PurahSegmentGaugeBarView(
-    segments: [
-        PurahGaugeSegment(id: "cpu", ratio: cpu, color: cpuColor),
-        PurahGaugeSegment(id: "gpu", ratio: gpu, color: gpuColor),
-        PurahGaugeSegment(id: "mem", ratio: mem, color: ramColor, isAlerting: mem > 0.9)
-    ],
-    barWidth: context.railWidth,
-    height: context.slotHeight
-)
-```
-
-- `ratio` is clamped to `0...1` on construction, so raw telemetry can be passed straight in.
-- An empty `segments` array draws the track alone — for chips that keep a tinted rail with no metric behind it.
-- `minimumVisibleFill` (default 4pt) keeps a near-zero metric readable; pass `0` to draw nothing at all.
-- **`PurahTelemetryThreshold` & `PurahTelemetryMetricResolver`**: standardized continuous telemetry colour resolver (Green → Yellow → Red danger pulsing) supporting both direct and inverted metrics (e.g. Battery Low). Feed its result into `color` / `isAlerting` above.
+### 5.2 Host-Owned Stepped Card Anatomy
+In Stepped Mode, **a chip is one row, and the host owns the card shell**:
+- The host automatically renders the 8pt rail chip indicator, the `liquidDrawerBackground` card, the 26pt icon block, `title`, `badge`, `subtitle`, and the trailing `⚙️ 📌` tools.
+- To place a compact action button on that row (to the left of `⚙️ 📌`), implement `makeSteppedRowAccessory(subItemId:context:)` (or export `purahCreateSteppedRowAccessoryWithContext` in C-ABI).
+- To show progressive-disclosure details when the user stretches a chip tall (`bodyHeight >= steppedDrawerMinimumBodyHeight`, default `48pt`), implement `makeSteppedDrawerContent(subItemId:context:)` (or export `purahCreateSteppedDrawerContentWithContext` in C-ABI). **Never repeat the chip's icon, title, or badge inside the body view.**
+- When sub-items exceed `maxRailItems` under `.smartFold`, the host appends a `+N more` chip. Hovering or pinning `+N more` expands the pod into the **Merged Overview State** (full pod height), rendering `makeOverviewDrawerContent(context:)` inside the host's overview shell.
 
 ---
 
-## 6. Storage Engine & Persistence Architecture
+## 6. Standardized UI Kits: Presentation, Headers & 3-Layer Settings
 
-Purah provides a dual-tier persistence system:
+### 6.1 Pod Presentation Kit
+- **`PurahAdaptiveTierDrawer`**: Height-tier container with 8pt hysteresis for composite drawers whose compact state is genuinely a different UI.
+- **`PurahScrollableBody`**: Opt-in scroll container for drawer bodies with an incompressible natural height.
+- **`PurahOverviewList`**: Standardized list container for `+N more` overview drawers (`showsHeader: false` inside the host overview shell).
 
-### 6.1 Lightweight Scoped Preferences (`ScopedPluginStorage`)
-Partitioned `UserDefaults` storage isolated by plugin identifier (`purah.plugin.<id>.<key>`):
-```swift
-context.storage.set("myValue", forKey: "authToken")
-let token = context.storage.string(forKey: "authToken")
-context.storage.setCodable(myConfig, forKey: "userConfig")
+### 6.2 Host-Owned Declarative Drawer Header (`PurahHeaderAccessoryDescriptor` & `PurahHeaderTrailingItem`)
+The composite drawer header is 100% rendered by the host:
 ```
-
-### 6.2 Sandboxed Disk File Storage (`PurahPluginFileStorage`)
-For media, original images, caches, or large databases, avoid `UserDefaults` to keep resident memory bounded.
-Every plugin receives an isolated sandbox directory (`~/Library/Application Support/Purah/Plugins/<pluginId>/`):
-- `context.fileStorage.dataDirectory`: Persistent business files and attachments.
-- `context.fileStorage.cacheDirectory`: Disposable temporary caches and downsampled thumbnails.
-- `context.fileStorage.diskUsageFormatted`: Human-readable disk usage calculation (e.g. `"4.2 MB"`).
-- `context.fileStorage.openInFinder()`: Direct Finder reveal button.
-
-### 6.3 Generic Atomic Disk Repository (`PurahDiskRepository<Item>`)
-For lists, history records, and storable collections conforming to `PurahStorableItem`:
-```swift
-let repo = PurahDiskRepository<MyItem>(
-    pluginId: "my-plugin",
-    retentionPeriod: .sevenDays, // .never, .oneDay, .threeDays, .sevenDays, .thirtyDays, etc.
-    diskQuota: .mb500            // .mb100, .mb500, .gb1, .gb2, .unlimited
-)
-
-repo.insert(newItem)
-repo.moveItem(from: 0, to: 2)
-repo.toggleFavorite(id: "item-123")
+[Icon] Title  [HeaderAccessory]          [HeaderTrailingItems...] | [⚙️] [📌]
 ```
+- **Left Accessory (`headerAccessory` / `purahHeaderAccessoryJSON`)**:
+  - `.badge("3 ZEN", color: context.accentColor)` — compact monospaced pill badge.
+  - `.menu(text: "CPU 12%", systemIcon: "cpu", options: [...])` — interactive dropdown menu pill.
+- **Right Trailing Tools (`headerTrailingItems` / `purahHeaderTrailingItemsJSON`)**:
+  - `.button(id: "add", systemIcon: "plus", help: "Quick Increment")` — 20×20pt icon button with standard hover plate.
+  - `.menu(id: "lyrics", systemIcon: "quote.bubble.fill", help: "Lyrics Options", options: [...])` — 20×20pt dropdown menu button.
+- Clicks on any menu option or trailing button invoke `onHeaderAction(actionId:context:)` (or `purahOnHeaderAction(contextJSON, actionIdPtr)` in C-ABI).
 
-#### 🛡️ The Star Protection Immunity Rule (⭐️ Star / Favorite Protection)
-> **Conceptual Clarification**: In Purah, **"External Pin"** specifically refers to docking the AppKit drawer window onto the physical screen bezel so it stays extruded; while **"Internal Star / Favorite"** refers to permanently preserving a specific piece of business data content.
-During automatic expiration cleanup (`cleanExpired`) and quota auto-pruning (`enforceQuota`), **all items with `isFavorite == true` are strictly immune to automated deletion**, guaranteed by the kernel.
-
-### 6.4 Standard Storage Policy Settings UI (`PurahStoragePolicySection`)
-One-line drop-in view embedding retention picker, quota picker, auto-prune toggle, disk usage display, and Finder reveal:
-```swift
-PurahStoragePolicySection(
-    retention: $state.retentionPeriod,
-    quota: $state.diskQuota,
-    autoPrune: $state.autoPruneOnQuota,
-    fileStorage: context.fileStorage,
-    onClearAll: { state.clearAll() }
-)
-```
+### 6.3 3-Layer Plugin Settings Architecture
+Every plugin's settings page in Preferences is structured into three layers:
+1. **Layer 1: Host-Provided Chrome (Automatic)**:
+   - Plugin identity card (icon, version, description, Enable/Disable switch).
+   - Display Mode card (Composite Drawer vs. Stepped Chips) whenever `supportedDrawerModes.contains(.stepped)`.
+   - Appearance card (`PurahColorPickerField` accent color presets + inline HSB panel + Reset).
+   - **Rule**: Never duplicate Enable, Display Mode, or Accent Color controls inside your plugin settings!
+2. **Layer 2: Declarative Settings Schema (Recommended — Zero UI Code)**:
+   - Implement `settingsSections(store:) -> [PurahPluginSettingSection]` and `onSettingChanged(key:value:store:)` (or export `purahSettingsSchemaJSON` and `purahOnSettingChanged` in C-ABI).
+   - Supported item types: `.toggle`, `.segmented`, `.pills`, `.slider`, `.stepper`, `.button`, `.info`.
+3. **Layer 3: Standardized Custom Settings Controls (For Custom Views)**:
+   - Built-in plugins use `PurahSettingsCard`, `PurahSettingsToggleRow`, `PurahSettingsPillPickerRow`, `PurahSettingsSegmentedRow`, `PurahSettingsSliderRow`, `PurahSettingsStepperRow`, `PurahSettingsActionRow`, and `PurahSettingsStatusBanner`.
+   - External C-ABI plugins use the matching `PurahExternalSettingsCard` and `PurahExternalSetting*Row` views provided in `PurahExternalPluginSDK.swift`.
 
 ---
 
-## 7. Card Anatomy & Human Interface Guidelines
+## 7. Sandboxed Persistence & Dual-Tier Storage
 
-Cards adhere to the standard 3-row golden structure:
-- **Row 1 (Header)**: Primary Icon + Display Name + `makeHeaderAccessoryView` (badge) + `Spacer()` + `makeHeaderTrailingView` (micro tool) + Settings gear + Pin button.
-- **Row 2 (Body)**: Core functional content utilizing vertical flexibility.
-- **Row 3 (Action / Footer)**: Live status indicators, pulse dots, timestamps, and tactile action buttons.
-
-### Safe Inset Padding
-Drawer cards enforce an `18pt ~ 22pt` floating edge padding (`trailing` on Left Rail, `leading` on Right Rail) to prevent cursor overshoot from prematurely collapsing drawers.
+1. **Key-Value Preferences (`context.storage`)**:
+   - Automatic namespace isolation (`purah.plugin.<pluginId>.<key>`).
+2. **Sandboxed Disk Storage (`context.fileStorage` & `PurahDiskRepository<Item>`)**:
+   - Dedicated directories under `~/Library/Application Support/Purah/Plugins/<pluginId>/` (`Data/`, `Cache/`, `Assets/`).
+   - **Star Protection Immunity Rule**: Any item with `isFavorite == true` is strictly immune to automated retention expiration or disk quota pruning.
 
 ---
 
-## 8. Complete Plugin Example: Countdown Memorial (`CountDownPlugin`)
+## 8. Complete Built-in Plugin Example (`CountDownPlugin`)
 
 ```swift
 import SwiftUI
 import PurahCore
 import PurahUI
 
-// 1. Observable State Container
-@Observable
 @MainActor
-public final class CountDownPluginState: Sendable {
-    public var targetDate: Date
-    public var eventTitle: String
-    public let storage: any PurahPluginStorage
-
-    public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "countdown")) {
-        self.storage = storage
-        self.eventTitle = storage.string(forKey: "eventTitle") ?? "WWDC 2027"
-        let savedTimestamp = storage.double(forKey: "targetTimestamp")
-        self.targetDate = savedTimestamp > 0 ? Date(timeIntervalSince1970: savedTimestamp) : Date().addingTimeInterval(86400 * 30)
-    }
-
-    public func save() {
-        storage.set(eventTitle, forKey: "eventTitle")
-        storage.set(targetDate.timeIntervalSince1970, forKey: "targetTimestamp")
-    }
+@Observable
+public final class CountDownPluginState {
+    public var targetDate: Date = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+    public var eventTitle: String = "Product Launch"
+    public init() {}
 
     public var daysRemaining: Int {
-        max(Calendar.current.dateComponents([.day], from: Date(), to: targetDate).day ?? 0, 0)
+        max(0, Calendar.current.dateComponents([.day], from: Date(), to: targetDate).day ?? 0)
     }
 }
 
-// 2. Plugin Conformance
+@MainActor
 public struct CountDownPlugin: PurahPodPlugin {
     public nonisolated let manifest = PurahPluginManifest(
         id: "countdown",
-        displayName: "Event Countdown",
+        displayName: "Day Countdown",
         systemIcon: "hourglass",
-        author: "Community",
+        author: "Purah Team",
         version: "1.0.0",
-        description: "Days counter towards key milestones and releases",
-        defaultEdge: .left,
-        preferredZone: .goldenAction,
-        ergonomicWeight: 30.0,
+        description: "Track upcoming milestones with an ambient edge gauge.",
+        defaultEdge: .right,
+        preferredZone: .glance,
+        ergonomicWeight: 25.0,
         minLengthRatio: 0.12,
-        defaultColorHex: "#FF9F0A"
+        defaultColorHex: "#FF9F0A",
+        defaultDrawerWidth: 280.0,
+        category: .lightweight,
+        permissions: []
     )
 
-    public let state: CountDownPluginState
+    private let state = CountDownPluginState()
+    public init() {}
 
-    public init(state: CountDownPluginState = CountDownPluginState()) {
-        self.state = state
-    }
-
-    public func makeRailBarView(context: PurahPluginContext) -> AnyView {
-        let color = context.accentColor
-        return AnyView(
-            ZStack(alignment: .bottom) {
-                Capsule().fill(color.opacity(0.2))
-                Capsule().fill(color).frame(height: max(context.slotHeight * 0.4, 6.0))
-            }
-            .frame(width: context.railWidth, height: context.slotHeight)
+    // 1. Host-owned 8pt rail bar descriptor
+    public func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor {
+        let progress = max(0.05, 1.0 - Double(min(state.daysRemaining, 100)) / 100.0)
+        return .gauge(
+            segments: [
+                PurahGaugeSegment(id: "countdown", ratio: progress, color: context.accentColor)
+            ],
+            minimumVisibleFill: 4.0,
+            accessibilityValueLabel: "\(state.daysRemaining) days left"
         )
     }
 
+    // 2. Pure composite drawer content (host draws the shell, header, and pin/gear buttons)
     public func makeDrawerView(context: PurahPluginContext) -> AnyView {
         AnyView(
             VStack(alignment: .leading, spacing: 8) {
-                Text(state.eventTitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Spacer()
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(state.eventTitle)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                        Text(state.targetDate.formatted(date: .abbreviated, time: .omitted))
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
                     Text("\(state.daysRemaining)")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                        .font(.system(size: 38, weight: .heavy, design: .rounded))
                         .foregroundColor(context.accentColor)
-                    Text("Days Left")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
-
+                .padding(10)
+                .background(Color.primary.opacity(0.04))
+                .cornerRadius(8)
                 Spacer()
             }
         )
     }
 
-    public func makeSettingsView(store: PurahWorkspaceStore) -> AnyView? {
-        AnyView(
-            VStack(alignment: .leading, spacing: 8) {
-                TextField("Event Title", text: Binding(
-                    get: { state.eventTitle },
-                    set: { state.eventTitle = $0; state.save() }
-                ))
-                .textFieldStyle(.roundedBorder)
-            }
-            .padding()
-        )
+    // 3. Declarative header badge
+    public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
+        .badge("\(state.daysRemaining) DAYS", color: context.accentColor)
     }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
@@ -395,157 +369,102 @@ public struct CountDownPlugin: PurahPodPlugin {
 
 ---
 
-## 9. Registration & Dynamic Loading
+## 9. Plugin Registration & External C-ABI Engine
 
-### 9.1 Static Registration
-Register instances during app initialization via `PluginRegistry`:
+### 9.1 Built-in Static Registration
 ```swift
 let myPlugin = CountDownPlugin()
 PluginRegistry.shared.register(myPlugin, store: store)
 store.marketManager.install(id: "countdown")
 ```
 
-### 9.2 Dynamic SPM Loading (Pure Swift / ABI C Bridge)
-Third-party plugins can also be built as standalone zero-dependency dynamic libraries:
+---
+
+### 9.2 Dynamic SPM Plugin Architecture & C-ABI Bridge Engine (Pure Swift, Zero-Dependency)
+
+Third-party developers can build standalone Swift Packages without cloning or linking Purah. Simply copy `Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift` into your target.
+
+#### 1. `Package.swift` Configuration
+Declare a `.dynamic` library product targeting `.macOS(.v14)`:
+
 ```swift
 // swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
-    name: "MyCustomPlugin",
+    name: "PurahExamplePlugin",
     platforms: [.macOS(.v14)],
-    products: [.library(name: "MyCustomPlugin", type: .dynamic, targets: ["MyCustomPlugin"])],
-    targets: [.target(name: "MyCustomPlugin", dependencies: [])]
+    products: [
+        .library(
+            name: "PurahExamplePlugin",
+            type: .dynamic,
+            targets: ["PurahExamplePlugin"]
+        )
+    ],
+    targets: [
+        .target(name: "PurahExamplePlugin")
+    ]
 )
 ```
 
-Copy `PurahExternalPluginSDK.swift` next to your sources and export these
-`@_cdecl` symbols — the host discovers them with `dlsym`:
+#### 2. Complete C-ABI Entry Point Reference
 
-| Symbol | Required | Purpose |
-| :--- | :--- | :--- |
-| `purahPluginManifestJSON` | yes | Manifest JSON decoded into `PurahPluginManifest` |
-| `purahPluginABIVersion` | recommended | `"1"`; a newer major version is rejected before any call |
-| `purahSetHostActionBridge` | recommended | Host injects its action dispatcher for `PurahHostBridge` |
-| `purahCreateRailViewWithContext` / `purahCreateDrawerViewWithContext` | recommended | Context JSON → retained `NSView` pointer |
-| `purahCreateSettingsViewWithContext` | optional | Plugin settings page |
-| `purahCreateHeaderAccessoryView` / `purahCreateHeaderTrailingView` | optional | Header slot views |
-| `purahOnRailBarTap` / `purahOnMount` / `purahOnUnmount` | optional | Interaction and lifecycle callbacks |
-| `purahSteppedItemsJSON` | optional | Context JSON → JSON array of sub-items. Exporting it is what gives the plugin a stepped mode |
-| `purahCreateSteppedDrawerViewWithContext` | optional | `(contextJSON, subItemId)` → retained `NSView`; return `NULL` for an unknown id |
-| `purahCreateOverviewDrawerContentWithContext` | optional | Content for the `+N more` overview drawer (the host supplies the shell) |
-| `purahDecomposedPolicyJSON` | optional | Context JSON → chip policy JSON, read once at load |
-| `purahDynamicBarColorHex` / `purahDynamicAccentColorHex` | optional | Context JSON → `"#RRGGBB"`; empty or `NULL` falls back to the manifest colour |
-| `purahOnRailBarTapWithContext` | optional | `(contextJSON, subItemId) -> Int32`. Non-zero means the plugin handled the tap and the host must not add its default haptic + expansion |
-| `purahUpdateContext` | optional | `(viewPtr, contextJSON)` — pushes a new payload into a view you already created |
-| `purahOnPollingTick` | optional | `(contextJSON)` — called on the host's timer. Pair it with a manifest `pollingInterval` |
-| `purahHandleAIResponse` | optional | `(requestId, answer, error)` — the host delivers an `askAI` result here |
+Purah discovers exported `@_cdecl` functions via `dlsym`. **Remember: the 8pt edge rail bar is 100% rendered by the host (`purahRailBarStateJSON` / `purahSteppedItemsJSON`); plugins never return an `NSView` for the rail.**
 
-**Stepped mode.** Export `purahSteppedItemsJSON` and the pod gains per-sub-item
-chips on the rail, exactly like Calendar or Todo. Each entry is
-`{ id, title, subtitle?, systemIcon?, badge?, state?, gaugeRatio?, gaugeStyle?,
-tintColorHex?, isPinned? }`; only `id` and `title` are required, and unknown
-enum spellings fall back to their neutral value so an older host never fails to
-render a newer plugin. `state` is one of `normal`, `ongoing`, `alerting`,
-`inactive`, `running`; `gaugeStyle` is one of `solid`, `segmented`, `wave`,
-`none`.
+| C-ABI Symbol | Signature | Required / Optional | Purpose |
+| :--- | :--- | :--- | :--- |
+| `purahPluginManifestJSON` | `() -> UnsafePointer<CChar>` | **Required** | Static JSON manifest string (`id`, `displayName`, `defaultDrawerWidth`, etc.) |
+| `purahPluginABIVersion` | `() -> UnsafePointer<CChar>` | Recommended | Returns `"1"` |
+| `purahSetHostActionBridge` | `(PurahABIHostActionCallback) -> Void` | Recommended | Host action callback bridge (already implemented inside `PurahExternalPluginSDK.swift`) |
+| `purahRailBarStateJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | Recommended | Returns `PurahExternalRailBarState` JSON (`"solid"` or `"gauge"`, `ratio`, `segments`) for the composite 8pt rail bar |
+| `purahCreateDrawerViewWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer` | **Required** | Returns retained `NSHostingView` pointer for the **composite drawer body content** |
+| `purahCreateDrawerView` | `() -> UnsafeMutableRawPointer` | Optional | Context-free fallback for composite drawer body content |
+| `purahSettingsSchemaJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | **Recommended** | Returns `[PurahExternalSettingSection]` JSON so the host renders native settings cards automatically |
+| `purahOnSettingChanged` | `(UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafePointer<CChar>) -> Void` | **Recommended** | Receives `(contextJSON, key, value)` when a declarative setting changes |
+| `purahCreateSettingsViewWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer` | Optional | Custom settings `NSView` factory (use `PurahExternalSettingsCard` from the SDK) |
+| `purahHeaderAccessoryJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | Optional | Returns `PurahExternalHeaderAccessory` JSON (badge or dropdown menu next to title) |
+| `purahHeaderTrailingItemsJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | Optional | Returns `[PurahExternalHeaderTrailingItem]` JSON (20×20pt trailing header buttons/menus) |
+| `purahOnHeaderAction` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> Void` | Optional | Receives `(contextJSON, actionId)` when a header menu item or trailing button is clicked |
+| `purahSteppedItemsJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | Optional | Returns `[PurahExternalSubItem]` JSON to enable Stepped Chips mode |
+| `purahDecomposedPolicyJSON` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | Optional | Returns `PurahExternalDecomposedPolicy` JSON (read once at plugin load) |
+| `purahCreateSteppedRowAccessoryWithContext` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutableRawPointer?` | Optional | `(contextJSON, subItemId)` → compact inline action view placed to the left of `⚙️ 📌` on a stepped chip row |
+| `purahCreateSteppedDrawerContentWithContext` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutableRawPointer?` | Optional | `(contextJSON, subItemId)` → progressive-disclosure body rendered below the host row when stretched tall (`>= 48pt`) |
+| `purahCreateOverviewDrawerContentWithContext` | `(UnsafePointer<CChar>) -> UnsafeMutableRawPointer?` | Optional | Content-only view for the `+N more` merged overview drawer |
+| `purahOnRailBarTapWithContext` | `(UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32` | Optional | `(contextJSON, subItemId)` tap handler; return `1` if handled, `0` for default host expand + haptic |
+| `purahOnMount` / `purahOnUnmount` | `() -> Void` | Optional | Lifecycle hooks when mounted or unmounted from a rail |
+| `purahDynamicBarColorHex` / `purahDynamicAccentColorHex` | `(UnsafePointer<CChar>) -> UnsafePointer<CChar>?` | Optional | Live `"#RRGGBB"` color override for the rail bar or drawer accent |
+| `purahUpdateContext` | `(UnsafeMutableRawPointer, UnsafePointer<CChar>) -> Void` | Optional | Pushes updated `PurahExternalContext` into an existing view (`takeUnretainedValue()`) |
+| `purahOnPollingTick` | `(UnsafePointer<CChar>) -> Void` | Optional | Host-managed timer tick (requires `pollingInterval` in manifest) |
+| `purahHandleAIResponse` | `(UnsafePointer<CChar>, UnsafePointer<CChar>?, UnsafePointer<CChar>?) -> Void` | Optional | `(requestId, answer, error)` return leg for `PurahHostBridge.shared.askAI` |
 
-The chip policy is
-`{ maxRailItems, minChipHeight, maxChipHeight, spacing, overflowStrategy }` with
-`overflowStrategy` one of `smartFold`, `truncate`, `compactScale`. Keep
-`minChipHeight` at or above the ergonomic floor for your content type (56pt for
-tappable metrics, 40pt for event chips, 32pt for task chips) — the host does not
-second-guess it.
-
-**Manifest-declared dimensions.** The composite drawer's height range comes
-from the manifest:
-
-```json
-{ "minimumDrawerHeight": 150, "preferredDrawerHeight": 320,
-  "defaultDecomposed": true, "pollingInterval": 5 }
-```
-
-All three are optional. The host clamps a declared minimum up to the 120pt
-ergonomic floor and keeps at least a 24pt expansion range above it, so a plugin
-cannot flatten its own tier ladder. Stepped pods take their height from the
-chip policy instead; these fields only govern the composite drawer.
-
-**Composite vs stepped.** Declaring a stepped mode is not the same as wanting
-it as the starting state. Add `"defaultDecomposed": true` to the manifest to
-start in chips; without it the pod starts composite, even when
-`purahSteppedItemsJSON` is exported. The user chooses with the Sculptor dock
-toggle (`⌃⌥E`), and the host persists that choice — you do not store it, and it
-always overrides your declaration. To offer the same switch on your own
-settings page, call `PurahHostBridge.shared.setDecomposed(pluginId:_:)`.
-
-**Pinned chips.** The host derives pinned-child state from your chip list, so
-pinning one of your chips keeps the rail canvas wide enough for its open drawer
-without any extra symbol.
-
-The `purahCreate*WithContext` payload carries `pluginId`, `edge`, `railWidth`,
-`slotHeight`, `drawerWidth`, `isExpanded`, `isPinned`, `isDark`,
-`accentColorHex`, `storageDirectoryPath`, `visibleSubItemIds`, `isDecomposed`,
-`paletteStyle`, `primaryAccentHex` and `borderColorHex`.
-
-- `storageDirectoryPath` is the plugin's own sandbox, so history and config
-  files belong there.
-- `visibleSubItemIds` is the set of chips currently on the rail. A `+N more`
-  overview must exclude these, or it repeats what the user already sees.
-- `paletteStyle` / `primaryAccentHex` / `borderColorHex` let a drawer follow the
-  active theme (macOS Native or Purah Pad Sheikah Slate), not just light/dark.
-
-**Live context updates.** Export `purahUpdateContext` and the host calls it
-whenever the context changes — drawer opened, pod pinned, width or height
-changed. Without it your factory runs once and the view never learns anything
-new. The first argument is the exact pointer your factory returned.
-
-**Host-owned polling.** Declare `pollingInterval` in the manifest (seconds) and
-export `purahOnPollingTick`; the host runs the timer. Never start your own
-recurring timer: the host stops ticks when the pod is disabled, unmounted, or
-the rails are frozen, and a private timer would keep running through all three.
-Keep the tick short — do heavy work on your own queue.
-
-**Borrowing the AI Assistant.** Declare `"usesAI": true` in the manifest, then
-call `PurahHostBridge.shared.askAI(pluginId:requestId:prompt:system:privacy:)`
-and export `purahHandleAIResponse` to receive the answer. The callback is always
-`(requestId, answer, error)` with exactly one of the last two non-nil; the C
-strings live only for the call, so copy anything you keep. `privacy:
-"localOnly"` means the text must not leave the Mac — if the person's configured
-provider cannot honour that, the request is **refused** rather than quietly
-routed to a remote model. The provider, credentials and model are whatever the
-person set up; a plugin cannot route around them. A plugin that did not declare
-`usesAI` gets an error reply instead of an answer, so it cannot spend the
-person's API credits unannounced.
-
-**Rail taps.** `purahOnRailBarTapWithContext` tells you which chip was clicked.
-Return non-zero to say you handled it; the host then skips its default haptic
-and drawer expansion (that is how Music's play/pause chip works). Return zero
-for the default open-the-drawer behaviour.
-
-**Working reference:** `Examples/PurahExamplePlugin` (Zen Counter — rail bar,
-drawer, header slots, settings panel, host-action bridge, stepped chips and
-dynamic telemetry colour). Load it with
-**Settings → Plugins → Dev: Load Package...**.
-
-> The loader accepts a folder containing `Package.swift` or a built `.dylib`.
-> A bare `manifest.json` is rejected: metadata declares a plugin, but only
-> exported view factories can actually draw one. For the same reason the
-> marketplace no longer lists manifest-only placeholders —
-> `PluginMarketManager.install(id:)` asks the registry whether an
-> implementation exists and refuses (returning `false`) when it does not.
+> ⚠️ **Pointer & Memory Safety**:
+> - For functions returning `UnsafePointer<CChar>?`, always use `.toCString()`, `.encodeListToCString(...)`, or `(string as NSString).utf8String` (autoreleased buffer). Never return a pointer from inside a local `String.withCString` closure!
+> - In `purahUpdateContext`, always unwrap `viewPtr` with `Unmanaged<NSView>.fromOpaque(viewPtr).takeUnretainedValue()` — never `takeRetainedValue()`.
 
 ---
 
-## 10. Calling the Assistant from a Plugin (`PurahAIService`)
+### 9.3 Local Development & One-Click Hot Reload Workflow
 
-Plugins often need one sentence of intelligence: three bullet points from a note, a clipboard line rewritten in a formal tone, a summary for a calendar event. Do not resolve a provider, read a key, or handle a 404 yourself — the AI Assistant already does that once, and `PurahAIService` is the seam that hands it to the rest of the app.
+1. Reference the complete working example in **`Examples/PurahExamplePlugin`**.
+2. Open Purah Preferences (`Cmd + ,`), navigate to **Marketplace (Plugins)**, and click **`Dev: Load Package...`** in the top-right corner.
+3. Select your plugin folder (containing `Package.swift`) or a prebuilt `.dylib`.
+4. Purah compiles the package in the background (`swift build -c release`), loads the `.dylib` via `dlopen`, and mounts the pod onto your edge rail.
+5. After editing your code, click **`Rebuild`** in the Marketplace header to recompile.
+
+---
+
+## 10. Calling AI from a Plugin (`PurahAIService` & C-ABI `askAI`)
+
+Both built-in plugins and external C-ABI plugins can request text generation from the user's configured AI Assistant provider without managing API keys or endpoints.
+
+### 10.1 Built-in Plugins (`PurahAIService.ask`)
 
 ```swift
 @MainActor
 public enum PurahAIService {
     public enum Privacy: Sendable {
-        case localOnly      // must not leave this Mac (only Apple Intelligence qualifies)
-        case remoteAllowed  // may use whatever the person configured
+        case localOnly      // Text must never leave this Mac (only Apple Intelligence qualifies)
+        case remoteAllowed  // Any provider the user configured may answer
     }
 
     public static func ask(
@@ -556,41 +475,39 @@ public enum PurahAIService {
 }
 ```
 
+### 10.2 External C-ABI Plugins (`PurahHostBridge.shared.askAI`)
+
+1. Declare `"usesAI": true` in `purahPluginManifestJSON`.
+2. Call `PurahHostBridge.shared.askAI(pluginId:requestId:prompt:system:privacy:)` (`privacy`: `"localOnly"` or `"remote"`).
+3. Export `@_cdecl("purahHandleAIResponse")` to receive the asynchronous result:
+
 ```swift
-Button("Summarise") {
-    Task {
-        do {
-            let summary = try await PurahAIService.ask(
-                noteText,
-                system: "Summarise in at most three bullet points.",
-                privacy: .localOnly        // the note is the person's own words
-            )
-            state.summary = summary
-        } catch PurahAIService.Failure.localModelRequired(let provider) {
-            // They are on a remote model right now: say so, never send quietly
-            context.showWarning("This content needs the on-device model (currently \(provider.displayName))")
-        } catch {
-            context.showWarning(error.localizedDescription)
-        }
+@MainActor
+@_cdecl("purahHandleAIResponse")
+public func purahHandleAIResponse(
+    requestIdPtr: UnsafePointer<CChar>,
+    answerPtr: UnsafePointer<CChar>?,
+    errorPtr: UnsafePointer<CChar>?
+) {
+    let requestId = String(cString: requestIdPtr)
+    if let answerPtr {
+        let answer = String(cString: answerPtr)
+        // Update plugin state with answer
+    } else if let errorPtr {
+        let errorMsg = String(cString: errorPtr)
+        PurahHostBridge.shared.showWarning(pluginId: "com.example.focus", message: errorMsg)
     }
 }
 ```
 
 **Rules:**
-
-- **The host keeps the person's decisions.** Provider, CLI, credentials and the on-device preference all come from the AI Assistant settings. A plugin cannot route around them, and does not need to know which one is in use.
-- **`localOnly` is a promise, not a hint.** Only `.appleIntelligence` counts as local: a CLI agent and an HTTP endpoint both leave the machine. When the configured provider cannot honour it, `Failure.localModelRequired(provider:)` is thrown — **never** a silent downgrade. That check runs before the availability check, because it is the one the caller can act on.
-- **The answer is already cleaned.** `<think>` reasoning spans are stripped before the text is returned: a plugin receives content, not the transcript of how it was reached.
-- **Surface failures.** There are four: `emptyPrompt`, `unavailable(detail:)`, `localModelRequired(provider:)` and `emptyAnswer`. All are `LocalizedError`, so `error.localizedDescription` is enough.
-- **Never call it from `body`.** These are real, token-billed requests: one user action, one call. Prompts are capped at `maximumPromptLength` (24,000 characters) and truncated beyond it.
-
-> **External (C-ABI) plugins cannot reach this yet.** Built-in plugins call it directly; dynamically loaded third-party plugins still have to talk to a model through their own CLI.
+- **The host owns the user's choice.** Provider, CLI, credentials, and on-device preference come from the AI Assistant settings.
+- **`localOnly` is a promise, not a hint.** Only `.appleIntelligence` counts as local. If the active provider would send data off-device, the request is **refused** rather than silently downgraded.
+- **`<think>` tags are stripped automatically** before the answer is returned.
 
 ---
 
-## 11. Automated Unit Testing
-
-Write standard Swift Testing test cases verifying manifest initialization, context interaction, and pin protection:
+## 11. Automated Unit Testing (Swift Testing)
 
 ```swift
 import Testing
@@ -600,7 +517,7 @@ import Testing
 @Suite("CountDown Plugin Tests")
 @MainActor
 struct CountDownPluginTests {
-    @Test("Verifies CountDown plugin registration and minimum drawer height")
+    @Test("Verifies CountDown plugin registration and minimum height floor")
     func testCountDownRegistration() {
         let store = PurahWorkspaceStore()
         let plugin = CountDownPlugin()
@@ -613,5 +530,3 @@ struct CountDownPluginTests {
     }
 }
 ```
-
-Happy developing with Project Purah!

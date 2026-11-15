@@ -4,7 +4,7 @@
 shipping it: things only you can do, decisions that are waiting on you, and
 known gaps. Product-level gaps live in [`ROADMAP.md`](ROADMAP.md).
 
-Last reviewed: 2026-10-30 (v0.7.3)
+Last reviewed: 2026-11-15 (v0.7.26)
 
 ---
 
@@ -56,9 +56,6 @@ template now uses the current forms and should not drift back:
 `postflight_steps do run … end` (not `postflight do system_command … end`). Paths
 inside that block are `{{appdir}}` template tokens, not Ruby `appdir` — the Ruby
 constant does not exist in the steps DSL and fails at cask load.
-
-
-5. Once the tap works, add the install line to `README.md` §Install.
 
 **What the cask does to Gatekeeper, and why.** Its `postflight` removes
 `com.apple.quarantine` from the installed app. Homebrew applies that flag
@@ -125,17 +122,7 @@ Signing decides what the in-app updater can do:
 
 ---
 
-## 4. Branches not yet shared
-
-- `fix/updater-check-deadline` — the stuck-check deadline. Not pushed.
-- `feat/roadmap-phase0` — launch health marker, Todo permission state,
-  `docs/ROADMAP.md`, Drop Shelf split drop target. Not pushed.
-
-No PR has been opened for either. Nothing outside this machine has these fixes.
-
----
-
-## 5. Known gaps nobody outside can see
+## 4. Known gaps nobody outside can see
 
 - **No crash reporting.** `LaunchHealthMarker` tells the next launch that the
   last one ended badly, and `DiagnosticLogger` writes a local log — but nothing

@@ -19,7 +19,7 @@ Purah 由三大解耦模块构成：
    - **严禁插件自绘卡片背景、顶栏或图钉/齿轮按钮**：无论是复合抽屉卡片、分档单行芯片卡，还是 `+N more` 合并总览卡，其毛玻璃外壳 (`liquidDrawerBackground`)、贴轨形状、标题栏、图标块以及右侧的齿轮/图钉按钮 (`PurahDrawerHeaderTools`) 均 100% 由宿主绘制。插件只提供**纯内容区域视图**。
 3. **上下文封装与单向数据流**：插件仅通过 `PurahPluginContext` 读取几何与外观信息，通过预注入闭包（如 `context.requestExpand()`、`context.showToast(...)`）触发行为，**严禁直接修改宿主 `PurahWorkspaceStore` 内部状态**。
 4. **物理共面等高法则 (Co-Planar Rule)**：单卡片抽屉在滑出时，高度必须与母体轨条像素级等高 (`drawerHeight == barHeight`)，杜绝视觉脱节。
-5. **默认拆解原则 (Default Decomposed)**：所有支持多子项的插件（如指标、待办、日程），默认均处于 `isDecomposed = true` 的在轨拆解展开状态。
+5. **默认合并法则 (Default Composite Principle)**：拆解始终是显式可选的。所有内置插件在全新安装时默认均处于复合抽屉模式 (`isDecomposed = false`)，仅当用户在塑形器或设置中手动切换为分档模式（或外部插件在清单中显式声明 `"defaultDecomposed": true` 且用户未手动覆盖）时，才以在轨分档芯片 (Stepped Chips) 模式呈现。
 6. **呼吸感界面哲学 (Breathing UI)**：善用微透明内卡片、柔和光晕、空状态占位符及舒适的留白，杜绝压抑的灰盒感。
 
 ### 双轨开发模式对照表 (Two Development Tracks)
@@ -32,7 +32,7 @@ Purah 提供两种层级的插件开发路径，分别针对外部独立生态�
 | **工程依赖** | **完全零宿主依赖**，无需克隆 Purah 主仓库，仅依赖 Apple 原生 `SwiftUI` & `AppKit` | 强依赖 `PurahCore` 与 `PurahUI` 模块 |
 | **开发方式** | 新建标准独立 Swift Package (`.dynamic` library)，拷入单文件 `PurahExternalPluginSDK.swift`（见 `Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift`） | 在 Purah 源码树 `Sources/PurahUI/Plugins/BuiltIn/` 下新增 Swift 文件 |
 | **接入契约** | C-ABI 导出符号 (`@_cdecl`) + `PurahExternalContext` + `PurahHostBridge.shared` | 实现 `PurahPodPlugin` 与 `PurahPodCapabilityProvider` 协议 |
-| **功能支持** | 通过 `PurahExternalRailBarState` 与 `PurahExternalSubItem` 声明轨条与分档芯片，编写纯内容 `DrawerView`、`SteppedRowAccessory`、`SteppedDrawerContent`、`SettingsView`，调用 `PurahHostBridge.shared` | 直接利用 SwiftUI 原生视图及全部内置组件套件 (`PurahAdaptiveTierDrawer`、`PurahOverviewList` 等) |
+| **功能支持** | 通过 `PurahExternalRailBarState`、`PurahExternalSubItem`、`PurahExternalHeaderAccessory`、`PurahExternalHeaderTrailingItem` 与 `PurahExternalSettingSection` 声明轨条、分档芯片、顶栏与设置，编写纯内容 `DrawerView`、`SteppedRowAccessory`、`SteppedDrawerContent`，调用 `PurahHostBridge.shared` | 直接利用 SwiftUI 原生视图及全部内置组件套件 (`PurahAdaptiveTierDrawer`、`PurahOverviewList`、`PurahSettingsControls` 等) |
 | **调试与热载** | 打开 Purah 设置面板点击 **`Dev: Load Package...`**，自动 JIT 极速编译、挂载与保存自动单键热重载 | 重新构建运行整个 Purah 宿主应用 (`./run.sh` 或 Xcode) |
 | **分发形式** | 编译为单个 `.dylib` 动态库或直接分发源码 Package 文件夹 | 合并入主分支并跟随宿主版本打包分发 |
 
@@ -95,7 +95,7 @@ public struct PurahPluginManifest: Identifiable, Codable, Sendable, Equatable {
 
 ## 3. 插件核心协议 (`PurahPodPlugin`)
 
-开发者需实现 `PurahPodPlugin` 协议，声明轨条数据描述符、抽屉纯内容视图、分档芯片配件及交互行为：
+开发者需实现 `PurahPodPlugin` 协议，声明轨条数据描述符、抽屉纯内容视图、声明式顶栏与设置模型、分档芯片配件及交互行为：
 
 ```swift
 /// 宿主独占的复合模式 8pt 边缘轨条描述符（严禁插件自绘轨条视图）
@@ -117,8 +117,12 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     func railBarDescriptor(context: PurahPluginContext) -> PurahRailBarDescriptor
     /// 返回复合抽屉的纯主体内容（顶栏、毛玻璃背景、边框与 Pin/齿轮按钮均由宿主绘制）
     @ViewBuilder func makeDrawerView(context: PurahPluginContext) -> AnyView
-    /// 返回插件设置页视图
+    /// 返回插件设置页视图（若实现了 settingsSections(store:)，宿主会自动合成原生设置卡片视图）
     @ViewBuilder func makeSettingsView(store: PurahWorkspaceStore) -> AnyView?
+
+    // MARK: - 声明式设置结构 (Declarative Settings Schema - Layer 2)
+    func settingsSections(store: PurahWorkspaceStore) -> [PurahPluginSettingSection]
+    func onSettingChanged(key: String, value: String, store: PurahWorkspaceStore)
 
     // MARK: - 宿主独占分档卡片 (Host-Owned Stepped Card)
     /// 分档单行芯片右侧的内联操作区（位于宿主齿轮/图钉按钮左侧，如快捷按钮、微型趋势图）
@@ -130,11 +134,13 @@ public protocol PurahPodPlugin: PurahPodCapabilityProvider, Identifiable, Sendab
     /// `+N more` 合并总览抽屉的纯列表内容（外壳与单行顶栏由宿主提供）
     @ViewBuilder func makeOverviewDrawerContent(context: PurahPluginContext) -> AnyView?
 
-    // MARK: - 复合抽屉顶栏插槽 (Composite Header Slots)
-    /// 位于复合抽屉标题右侧的标签插槽（例如终端的 [• ZSH] 徽标）
-    @ViewBuilder func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView?
-    /// 位于复合抽屉设置与 Pin 按钮左侧的工具栏插槽（例如快捷 +1 按钮）
-    @ViewBuilder func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView?
+    // MARK: - 宿主独占复合抽屉顶栏声明 (Host-Owned Declarative Header Chrome)
+    /// 声明位于复合抽屉标题右侧的徽标或下拉菜单（例如终端的 [• ZSH] 徽标、硬件脉搏的指标切换菜单）
+    func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor?
+    /// 声明位于复合抽屉设置与 Pin 按钮左侧的 20×20pt 标准工具栏按钮与菜单
+    func headerTrailingItems(context: PurahPluginContext) -> [PurahHeaderTrailingItem]
+    /// 响应顶栏下拉菜单项或右侧工具按钮的点击事件
+    func onHeaderAction(actionId: String, context: PurahPluginContext)
 
     // MARK: - 生命周期
     func onMount(store: PurahWorkspaceStore)
@@ -460,17 +466,9 @@ public struct CountDownPlugin: PurahPodPlugin {
         )
     }
 
-    // 顶栏副标签插槽
-    public func makeHeaderAccessoryView(context: PurahPluginContext) -> AnyView? {
-        AnyView(
-            Text("\(state.daysRemaining) DAYS")
-                .font(.system(size: 7.5, weight: .bold, design: .monospaced))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 1.5)
-                .background(context.accentColor.opacity(0.18))
-                .foregroundColor(context.accentColor)
-                .cornerRadius(3)
-        )
+    // 声明式顶栏副标签（由宿主渲染标准胶囊徽标）
+    public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
+        .badge("\(state.daysRemaining) DAYS", color: context.accentColor)
     }
 
     public func onRailBarTap(subItemId: String?, context: PurahPluginContext) {
@@ -1146,41 +1144,67 @@ struct ZenDrawerView: View {
     }
 }
 
-// MARK: - 独立设置视图 (演示 PurahHostBridge 调用)
+// MARK: - 独立设置视图 (使用 PurahExternalSettingsCard 标准控件套件 & 演示 PurahHostBridge 调用)
 struct ZenSettingsView: View {
     @ObservedObject private var state = ZenCounterState.shared
     private let pluginId = "com.example.focus"
     private let accentColor = Color(red: 1.0, green: 0.42, blue: 0.42)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "flame.fill").foregroundColor(accentColor)
-                Text("Zen Counter Configuration").font(.system(size: 12, weight: .semibold))
-            }
-            Divider()
+        PurahExternalSettingsCard(
+            title: "Zen Counter Configuration",
+            subtitle: "Configure target cycles and step increments",
+            icon: "flame.fill",
+            iconColor: accentColor
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                PurahExternalSettingStepperRow(
+                    title: "Daily Target Goal",
+                    subtitle: "Cycles required to achieve daily focus",
+                    badgeText: "\(state.targetGoal) cycles",
+                    value: Binding(
+                        get: { Double(state.targetGoal) },
+                        set: { state.targetGoal = Int($0) }
+                    ),
+                    range: 1...100,
+                    step: 1
+                )
 
-            Stepper("Daily Goal: \(state.targetGoal)", value: $state.targetGoal, in: 1...100)
-            Stepper("Step Size: +\(state.stepSize)", value: $state.stepSize, in: 1...10)
+                PurahExternalSettingStepperRow(
+                    title: "Increment Step Size",
+                    subtitle: "Amount added per focus cycle completion",
+                    badgeText: "+\(state.stepSize)",
+                    value: Binding(
+                        get: { Double(state.stepSize) },
+                        set: { state.stepSize = Int($0) }
+                    ),
+                    range: 1...10,
+                    step: 1
+                )
 
-            Divider()
+                Divider()
 
-            HStack(spacing: 8) {
-                Button("Test Host Toast") {
+                PurahExternalSettingActionRow(
+                    title: "Host Toast Notification",
+                    subtitle: "Test Purah HostBridge toast action",
+                    buttonTitle: "Test Toast",
+                    systemIcon: "sparkles",
+                    role: "accent"
+                ) {
                     PurahHostBridge.shared.showToast(pluginId: pluginId, message: "Target goal: \(state.targetGoal) cycles")
                     PurahHostBridge.shared.performHaptic(pluginId: pluginId, type: "levelChange")
                 }
-                Button("Toggle Pin") {
+
+                PurahExternalSettingActionRow(
+                    title: "Toggle Drawer Pin",
+                    subtitle: "Pin or unpin this drawer card on screen",
+                    buttonTitle: "Toggle Pin",
+                    systemIcon: "pin.fill"
+                ) {
                     PurahHostBridge.shared.togglePin(pluginId: pluginId)
                 }
-                Button("Switch to Composite") {
-                    PurahHostBridge.shared.setDecomposed(pluginId: pluginId, false)
-                }
             }
-            Spacer()
         }
-        .padding(14)
-        .frame(minWidth: 260, minHeight: 200)
     }
 }
 

@@ -140,16 +140,16 @@ Thirteen real screen recordings — no mockups, no motion graphics. Each clip is
 | :--- | :---: | :--- |
 | **AI Assistant** | `sparkles` | Multi-provider AI workbench supporting On-Device Apple Intelligence (`FoundationModels`), Local CLI Agents (`claude`, `codex`, `ollama`, custom), and OpenAI / Anthropic / Ollama HTTP APIs. Features frontmost selection capture, 50/50 split drop zones (New Session vs. Follow-up), inline diff polishing, custom role prompts, built-in local file skills, and MCP server integration. A decomposed role chip answers inline; when the answer is longer than the chip, hover it to read the full text in a floating preview instead of losing it to the ellipsis. |
 | **Hardware Vitals** | `waveform.path.ecg` | Deep Darwin/IOKit telemetry across a unified 2x2 overview grid (CPU User/Sys/LoadAvg/Load, GPU, RAM App/Wired/Compressed/Swap, Battery Health/Cycles), a machine-facts row (chip, cores, OS, RAM, SSD, uptime, load, fan), CPU/GPU temperature history, full-width Network I/O plus a Wi-Fi band (SSID, RSSI history, speed, channel, latency, loss), Disk R/W throughput, and a ranked process list under every tab. The header pill chooses which metric the rail gauge draws, and that choice is remembered across launches. |
-| **Drop Shelf** | `tray.fill` | Desktop staging shelf with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, and pinned interactive floating sidecar preview (`👁`). |
+| **Drop Shelf** | `tray.fill` | Desktop staging shelf with 3-zone drag-and-drop (`Link` / `Move` with 1-click Undo / `AirDrop`), marquee rubber-band multi-selection, batch drag-out, 1-click ZIP, and pinned interactive floating sidecar preview (`👁`). |
 | **Smart Clipboard** | `doc.on.clipboard.fill` | Instant history manager with marquee rubber-band multi-selection, batch drag-out, 1-click ZIP & AirDrop, pinned interactive floating sidecar preview (`👁`), color preview, image caching, and fuzzy search. |
 | **Quick Notes** | `note.text` | Typora-style live Markdown & resizable tables, one-tag filing and instant search, image paste, and 1-click `.md` export. |
 | **Terminal** | `apple.terminal.fill` | Multi-tab persistent shell powered by [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) with 1-click `cd` to active Finder folder, Starship & Nerd Font glyph support, and natural-language commands (`??`) that write the shell command for you. |
-| **Music Waveform** | `waveform` | Apple Music playback controller with dynamic visualizer and fluid scrub bar. |
+| **Music Waveform** | `waveform` | Universal playback controller (Apple Music, Spotify, and system Now Playing) with dynamic 60/120 FPS visualizer, fluid scrub bar, and live synced lyrics (LRCLIB + NetEase) with multi-candidate scoring and an in-drawer correction menu (version switcher, `±0.5s` timing offset, re-fetch, hide). |
 | **Calendar Timeline** | `calendar` | Day agenda timeline with meeting link detection (`Zoom`, `Meet`, `Teams`). |
 | **Todo Checklist** | `checklist` | System Reminders integration with one-tap completion. |
 | **Script Runway** | `terminal.fill` | Quick-fire developer automation runway for everyday maintenance tasks, with one-sentence script drafting: describe the job and review the zsh it writes. |
 
-> 🚀 **More to come**: Additional plugins, custom widgets, and third-party developer extensibility are actively in development.
+> 🔌 **Build Your Own Plugins**: Purah ships a zero-dependency C-ABI External Plugin SDK (`Examples/PurahExamplePlugin`) and instant SPM JIT loading (`Dev: Load Package...`) with host-owned rail bars, stepped cards, declarative headers, and declarative settings. See the [Plugin Development Guide (English)](docs/PLUGIN_DEVELOPMENT_GUIDE_EN.md) or [插件开发指南 (中文)](docs/PLUGIN_DEVELOPMENT_GUIDE.md).
 
 ---
 
@@ -244,8 +244,8 @@ Every release publishes its SHA-256 beside the DMG; check it with `shasum -a 256
 GitHub release downloads redirect to `objects.githubusercontent.com`, which is frequently reset there. Prefix the download URL with an acceleration proxy:
 
 ```
-https://gh-proxy.com/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
-https://ghfast.top/https://github.com/rheatin/Purah/releases/download/v0.7.18/Purah-v0.7.18-macOS.dmg
+https://gh-proxy.com/https://github.com/rheatin/Purah/releases/download/v0.7.26/Purah-v0.7.26-macOS.dmg
+https://ghfast.top/https://github.com/rheatin/Purah/releases/download/v0.7.26/Purah-v0.7.26-macOS.dmg
 ```
 
 Swap in the version you want. Purah's updater already does the same thing on its own: it retries through these prefixes when the direct download fails, with no setting to flip. The proxies are third-party, so compare the file against the SHA-256 published on the release page.
