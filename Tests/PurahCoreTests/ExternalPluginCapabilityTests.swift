@@ -14,7 +14,7 @@ struct ExternalPluginCapabilityTests {
 
     private func isolatedStore() -> PurahWorkspaceStore {
         PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "test_extcap_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make(TestDefaults.uniqueName("test_extcap"))
         )
     }
 
@@ -147,7 +147,7 @@ struct ExternalPluginCapabilityTests {
             manifest: manifest(id: "com.example.persist"),
             steppedItemsFn: { _ in nil }
         )
-        let defaults = UserDefaults(suiteName: "test_extcap_persist_\(UUID().uuidString)")!
+        let defaults = TestDefaults.make("test_extcap_persist")
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         plugin.setDecomposed(false, store: store)

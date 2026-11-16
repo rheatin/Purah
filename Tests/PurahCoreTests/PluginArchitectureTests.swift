@@ -1594,7 +1594,7 @@ struct PluginArchitectureTests {
         state.save()
 
         let plugin = HardwareVitalsPlugin(state: state)
-        let store = PurahWorkspaceStore(userDefaults: UserDefaults(suiteName: "test_vitals_admit_store_\(UUID().uuidString)")!)
+        let store = PurahWorkspaceStore(userDefaults: TestDefaults.make("test_vitals_admit_store"))
         store.registerCapabilityProvider(plugin)
         // Admission is only consulted for a decomposed pod; a composite bar has
         // no per-metric slots to run out of.

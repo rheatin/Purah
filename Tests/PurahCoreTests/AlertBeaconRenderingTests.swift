@@ -60,8 +60,8 @@ struct AlertBeaconRenderingTests {
 
     @Test("isAnyRailAlerting follows enabled pod alerts, acknowledgments, and the master switch")
     func testAnyRailAlertingState() throws {
-        let suite = "alert_beacon_any_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("alert_beacon_any")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -83,8 +83,8 @@ struct AlertBeaconRenderingTests {
 
     @Test("A docked rail window follows alert changes without moving its screen edge")
     func testDockedWindowFollowsAlertState() async throws {
-        let suite = "alert_beacon_window_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("alert_beacon_window")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let screen = try #require(NSScreen.main ?? NSScreen.screens.first)
         let store = PurahWorkspaceStore(userDefaults: defaults)

@@ -316,8 +316,8 @@ struct VitalsAndScriptTests {
 
     @Test("Rail power visibility includes decomposed power chips")
     func railPowerVisibilityFollowsEveryRailSurface() throws {
-        let suiteName = "VitalsPowerVisibility-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("VitalsPowerVisibility")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -798,7 +798,7 @@ struct VitalsAndScriptTests {
     /// clamp. The product is fine; the fixture has to own its state.
     private func isolatedStore() -> PurahWorkspaceStore {
         let s = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "test_scripts_hit_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make(TestDefaults.uniqueName("test_scripts_hit"))
         )
         s.splitPodFromMajorGroup(id: "scripts")
         return s

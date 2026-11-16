@@ -134,7 +134,7 @@ struct AIModelAttributionTests {
     func testExportCarriesAttribution() {
         let storage = ScopedPluginStorage(
             pluginId: "ai_test_attribution",
-            defaults: UserDefaults(suiteName: "test_ai_attribution_\(UUID().uuidString)")!
+            defaults: TestDefaults.make("test_ai_attribution")
         )
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_attribution")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
@@ -165,7 +165,7 @@ struct AIModelAttributionTests {
     func testExportWithoutAttribution() {
         let storage = ScopedPluginStorage(
             pluginId: "ai_test_attr_legacy",
-            defaults: UserDefaults(suiteName: "test_ai_attr_legacy_\(UUID().uuidString)")!
+            defaults: TestDefaults.make("test_ai_attr_legacy")
         )
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_attr_legacy")
         let state = AIAssistantPluginState(storage: storage, repository: repo)

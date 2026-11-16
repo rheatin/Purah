@@ -14,8 +14,8 @@ import Foundation
 struct OrphanedPodPruningTests {
 
     private func isolatedStore() -> (PurahWorkspaceStore, UserDefaults) {
-        let suiteName = "test_orphan_prune_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_orphan_prune")
+        let defaults = TestDefaults.make(suiteName)
         return (PurahWorkspaceStore(userDefaults: defaults), defaults)
     }
 

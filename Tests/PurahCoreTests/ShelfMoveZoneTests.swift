@@ -22,8 +22,8 @@ struct ShelfMoveZoneTests {
     private func makeFixture(
         storage: (any PurahPluginStorage)? = nil
     ) throws -> Fixture {
-        let suiteName = "shelf_move_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("shelf_move")
+        let defaults = TestDefaults.make(suiteName)
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("shelf-move-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
@@ -343,8 +343,8 @@ struct ShelfMoveZoneTests {
 
     @Test("A batch reports each result and writes the shelf mirror once")
     func batchReportsResultsAndUpdatesMirrorOnce() throws {
-        let suiteName = "shelf_move_batch_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("shelf_move_batch")
+        let defaults = TestDefaults.make(suiteName)
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("shelf-move-batch-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)

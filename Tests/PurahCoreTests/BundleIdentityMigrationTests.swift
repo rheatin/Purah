@@ -8,9 +8,10 @@ import Foundation
 @Suite("Bundle Identity Migration Tests", .serialized)
 struct BundleIdentityMigrationTests {
 
-    /// A suite name unique to this test, so parallel runs cannot collide.
+    /// A suite name unique to this call, so parallel runs cannot collide and a
+    /// rerun reuses the same small set of domains.
     private static func uniqueSuite(_ label: String) -> String {
-        "purah.test.\(label).\(UUID().uuidString)"
+        TestDefaults.uniqueName("purah.test.\(label)")
     }
 
     private static func cleanUp(_ suites: [String]) {
@@ -25,14 +26,14 @@ struct BundleIdentityMigrationTests {
         let newId = Self.uniqueSuite("new")
         defer { Self.cleanUp([oldId, newId]) }
 
-        let legacy = try #require(UserDefaults(suiteName: oldId))
+        let legacy = TestDefaults.make(oldId)
         legacy.set("adaptive", forKey: "purah.drawerWidthMode")
         legacy.set(8.0, forKey: "purah.railBarWidth")
         legacy.set(Data([1, 2, 3]), forKey: "purah.pods")
         // Not ours: must not be carried over.
         legacy.set("leave me", forKey: "somethingElse")
 
-        let target = try #require(UserDefaults(suiteName: newId))
+        let target = TestDefaults.make(newId)
         let migrated = BundleIdentityMigration.migrateIfNeeded(
             into: target, retiredIdentifiers: [oldId]
         )
@@ -51,10 +52,10 @@ struct BundleIdentityMigrationTests {
         let newId = Self.uniqueSuite("new")
         defer { Self.cleanUp([oldId, newId]) }
 
-        let legacy = try #require(UserDefaults(suiteName: oldId))
+        let legacy = TestDefaults.make(oldId)
         legacy.set("old-value", forKey: "purah.alertStyle")
 
-        let target = try #require(UserDefaults(suiteName: newId))
+        let target = TestDefaults.make(newId)
         // The user already ran the new build and changed this.
         target.set("new-value", forKey: "purah.alertStyle")
 
@@ -69,10 +70,10 @@ struct BundleIdentityMigrationTests {
         let newId = Self.uniqueSuite("new")
         defer { Self.cleanUp([oldId, newId]) }
 
-        let legacy = try #require(UserDefaults(suiteName: oldId))
+        let legacy = TestDefaults.make(oldId)
         legacy.set("first", forKey: "purah.currentPreset")
 
-        let target = try #require(UserDefaults(suiteName: newId))
+        let target = TestDefaults.make(newId)
         #expect(BundleIdentityMigration.migrateIfNeeded(
             into: target, retiredIdentifiers: [oldId]
         ) == [oldId])
@@ -93,7 +94,7 @@ struct BundleIdentityMigrationTests {
         let absent = Self.uniqueSuite("absent")
         defer { Self.cleanUp([newId, absent]) }
 
-        let target = try #require(UserDefaults(suiteName: newId))
+        let target = TestDefaults.make(newId)
         #expect(BundleIdentityMigration.migrateIfNeeded(
             into: target, retiredIdentifiers: [absent]
         ).isEmpty)

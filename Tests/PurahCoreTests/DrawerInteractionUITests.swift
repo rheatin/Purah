@@ -219,7 +219,7 @@ struct DrawerInteractionUITests {
     @Test("Empty area above and beside pinned drawer does not intercept clicks")
     @MainActor
     func testEmptyAreaClickThroughHitTestReturnsNil() {
-        let isolated = UserDefaults(suiteName: "test_empty_area_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_empty_area")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.togglePinItem(id: "notes")
         #expect(store.isItemPinned(id: "notes") == true)
@@ -264,7 +264,7 @@ struct DrawerInteractionUITests {
         @Test("When pod is pinned, empty area above and below guarantees 100% nil hitTest for scroll wheel and right click pass-through")
     @MainActor
     func testPinnedPodAboveBelowEmptyAreaGuaranteesPassThrough() {
-        let isolated = UserDefaults(suiteName: "test_pinned_vitals")!
+        let isolated = TestDefaults.make("test_pinned_vitals")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.movePod(id: "vitals", to: .left)
         store.togglePinItem(id: "vitals")
@@ -622,7 +622,7 @@ struct DrawerInteractionUITests {
     @Test("Right rail unpinned drawer retracts independently when left rail or other items are pinned")
     @MainActor
     func testRightRailDismissalWhenLeftRailHasPinnedItem() {
-        let isolated = UserDefaults(suiteName: "test_right_rail_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_right_rail")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         if let idx = store.pods.firstIndex(where: { $0.id == "notes" }) {
             store.pods[idx].isEnabled = true
@@ -659,7 +659,7 @@ struct DrawerInteractionUITests {
     @Test("SpringConstraintSolver enforces unidirectional bottom resize without expanding upwards")
     @MainActor
     func testBottomResizeConstraint() throws {
-        let isolated = UserDefaults(suiteName: "test_bottom_resize_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_bottom_resize")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         if let idx = store.pods.firstIndex(where: { $0.id == "notes" }) {
             store.pods[idx].isEnabled = true
@@ -700,8 +700,8 @@ struct DrawerInteractionUITests {
     @Test("Physical Co-Planar Rule: drawer card height matches rail bar height exactly")
     @MainActor
     func testPhysicalCoPlanarHeightRule() {
-        let suiteName = "test_coplanar_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_coplanar")
+        let isolated = TestDefaults.make(suiteName)
         defer { isolated.removePersistentDomain(forName: suiteName) }
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let totalH = 1000.0
@@ -1013,7 +1013,7 @@ struct DrawerInteractionUITests {
     @Test("EdgeMouseMonitor polymorphic activation correctly routes decomposed sub-items and composite pods")
     @MainActor
     func testPolymorphicEdgeMouseMonitorActivation() throws {
-        let isolated = UserDefaults(suiteName: "test_polymorphic")!
+        let isolated = TestDefaults.make("test_polymorphic")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.splitPodFromMajorGroup(id: "todo")
         let monitor = EdgeMouseMonitor(store: store)
@@ -1059,7 +1059,7 @@ struct DrawerInteractionUITests {
     @Test("Sliding between pods in expanded state switches instantly with zero delay")
     @MainActor
     func testSlidingBetweenPodsInExpandedStateHasZeroDelay() throws {
-        let isolated = UserDefaults(suiteName: "test_instant_slide")!
+        let isolated = TestDefaults.make("test_instant_slide")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let monitor = EdgeMouseMonitor(store: store)
         let visibleRect = NSRect(x: 0, y: 0, width: 1440, height: 900)
@@ -1076,8 +1076,17 @@ struct DrawerInteractionUITests {
 
         // 2. Slide directly to Pod 2 with high vertical velocity (e.g. 400 pt/s)
         let activeLayout = store.resolvedPhysicalLayout(for: .right, totalHeight: 900.0)
-        let activePod2 = activeLayout[1]
-        let edgeX = visibleRect.maxX - 6.0
+        // Pods merged into one cluster share a vertical band, so "Pod 2" has to
+        // be a pod the pointer can actually reach: the default right rail puts
+        // calendar and todo in one group at the same Y range, and a slide into
+        // that range is still a slide within Pod 1.
+        let activePod2 = try #require(activeLayout.first(where: {
+            $0.pod.id != pod1.pod.id && abs(CGFloat($0.startY) - CGFloat(pod1.startY)) >= 50.0
+        }))
+        // The rail's trigger band is `max(railBarWidth, 4)` — 4pt by default —
+        // so the slide has to stay inside it; the canvas being wide enough for
+        // the open drawer does not make 6pt off the edge a rail hit.
+        let edgeX = visibleRect.maxX - 2.0
         let screenY2 = visibleRect.maxY - (CGFloat(activePod2.startY) + 4.0)
         let slidePoint = NSPoint(x: edgeX, y: screenY2)
         monitor.customCurrentMouseLocation = slidePoint
@@ -1327,7 +1336,7 @@ struct DrawerInteractionUITests {
     @Test("TodoPlugin makeSteppedDrawerView for todo_more_items does not render an expanded drawer when docked")
     @MainActor
     func testTodoPluginMoreItemsDoesNotRenderUnconditionalDrawerWhenDocked() {
-        let isolated = UserDefaults(suiteName: "test_todo_more_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_todo_more")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let plugin = TodoPlugin()
         let pod = store.pods.first(where: { $0.id == "todo" }) ?? SlotPod(
@@ -1370,7 +1379,7 @@ struct DrawerInteractionUITests {
     @MainActor
     func testHardwareVitalsAdaptiveDrawerWidth() {
         PluginRegistry.shared.registerBuiltInPlugins()
-        let isolated = UserDefaults(suiteName: "test_vitals_width_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_vitals_width")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let plugin = HardwareVitalsPlugin()
 
@@ -1387,7 +1396,7 @@ struct DrawerInteractionUITests {
     @Test("WaveMeterAmbientView barWidth and ScriptRunway/Calendar adaptiveDrawerWidth respect composite and Shared Major Pod modes")
     @MainActor
     func testMusicBarWidthAndScriptsCalendarAdaptiveDrawerWidth() {
-        let isolated = UserDefaults(suiteName: "test_scripts_cal_width_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_scripts_cal_width")
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         // 1. WaveMeterAmbientView barWidth
@@ -1419,8 +1428,8 @@ struct DrawerInteractionUITests {
     @Test("Calendar stepped mode with 0 events expands composite drawer on hover and respects minimumDrawerHeight >= 140")
     @MainActor
     func testCalendarEmptySteppedModeExpandsDrawer() {
-        let suiteName = "test_cal_empty_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_cal_empty")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.loadPersistentState()
 
@@ -1487,7 +1496,7 @@ struct DrawerInteractionUITests {
     @Test("Todo stepped mode with 0 incomplete tasks respects minimumDrawerHeight >= 130")
     @MainActor
     func testTodoEmptySteppedModeExpandsDrawer() {
-        let isolated = UserDefaults(suiteName: "test_todo_empty_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_todo_empty")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.loadPersistentState()
 

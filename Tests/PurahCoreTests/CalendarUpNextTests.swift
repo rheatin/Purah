@@ -135,7 +135,7 @@ struct CalendarUpNextTests {
         state.maxRailEvents = 5
 
         let store = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "calendar_up_next_store_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make("calendar_up_next_store")
         )
         store._calendarEvents = []
         let pod = try #require(store.pods.first(where: { $0.id == "calendar" }))
@@ -185,8 +185,8 @@ struct CalendarUpNextTests {
             start: Date().addingTimeInterval(-60),
             duration: 3_600
         )
-        let suite = "calendar_up_next_alerts_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("calendar_up_next_alerts")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = PurahWorkspaceStore(userDefaults: defaults)
         store._calendarEvents = []

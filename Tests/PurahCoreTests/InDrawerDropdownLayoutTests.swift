@@ -26,8 +26,8 @@ struct InDrawerDropdownLayoutTests {
     @Test("Dismissing the drawer clears a reported dropdown frame")
     @MainActor
     func drawerDismissalClearsDropdownFrame() {
-        let suiteName = "test_dropdown_frame_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_dropdown_frame")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)

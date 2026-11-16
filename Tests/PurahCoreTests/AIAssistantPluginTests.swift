@@ -56,7 +56,7 @@ struct AIAssistantPluginTests {
 
     @Test("A stored ollama CLI migrates to the invocation it used to produce")
     func testOllamaCLIMigration() {
-        let isolated = UserDefaults(suiteName: "test_ollama_migration_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ollama_migration")
         let storage = ScopedPluginStorage(pluginId: "ai_migration", defaults: isolated)
         storage.set("ollama", forKey: "selectedCLI")
 
@@ -82,8 +82,8 @@ struct AIAssistantPluginTests {
 
     @Test("Ollama migration leaves an existing custom CLI path and template alone")
     func testOllamaMigrationDoesNotOverwriteCustomCLI() {
-        let suiteName = "test_ollama_existing_custom_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_ollama_existing_custom")
+        let isolated = TestDefaults.make(suiteName)
         defer { isolated.removePersistentDomain(forName: suiteName) }
         let storage = ScopedPluginStorage(pluginId: "ai_migration_existing", defaults: isolated)
         storage.set("ollama", forKey: "selectedCLI")
@@ -137,8 +137,8 @@ struct AIAssistantPluginTests {
 
     @Test("Inferred-template provenance persists, and a manual edit becomes custom again")
     func testInferredTemplateProvenancePersists() {
-        let suiteName = "test_cli_template_provenance_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_cli_template_provenance")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let storage = ScopedPluginStorage(pluginId: "ai_provenance", defaults: defaults)
         storage.set(AICLIExecutable.codex.rawValue, forKey: "selectedCLI")
@@ -390,7 +390,7 @@ struct AIAssistantPluginTests {
 
     @Test("PurahWorkspaceStore AI capability provider and decomposed state")
     func testAICapabilityProviderAndStore() {
-        let isolated = UserDefaults(suiteName: "test_ai_store_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_store")
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         #expect(store.pods.contains(where: { $0.id == "ai" }))
@@ -441,7 +441,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState lifecycle, session management, and star protection")
     func testAIAssistantPluginState() {
-        let isolated = UserDefaults(suiteName: "test_ai_state_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_state")
         let storage = ScopedPluginStorage(pluginId: "ai_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_test_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_test", customBaseDirectory: tempDir)
@@ -473,7 +473,7 @@ struct AIAssistantPluginTests {
     @Test("New Chat does not pile up, and never takes a real conversation with it")
     @MainActor
     func testNewChatDoesNotPileUp() {
-        let isolated = UserDefaults(suiteName: "test_ai_new_chat_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_new_chat")
         let storage = ScopedPluginStorage(pluginId: "ai_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah_ai_new_chat_\(UUID().uuidString)")
@@ -522,7 +522,7 @@ struct AIAssistantPluginTests {
 
     @Test("The header pill names the provider the next message will use, not the one that wrote the last answer")
     func testHeaderPillFollowsConfiguredProvider() {
-        let isolated = UserDefaults(suiteName: "test_ai_header_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_header")
         let storage = ScopedPluginStorage(pluginId: "ai_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah_ai_header_\(UUID().uuidString)")
@@ -578,7 +578,7 @@ struct AIAssistantPluginTests {
         #expect(plugin.supportedDropTypes.contains(.fileURL))
         #expect(plugin.supportedDropTypes.contains(.utf8PlainText))
 
-        let isolated = UserDefaults(suiteName: "test_ai_plugin_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_plugin")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         #expect(plugin.adaptiveDrawerWidth(store: store) == 420.0)
         #expect(plugin.minimumDrawerHeight(store: store) == 260.0)
@@ -628,7 +628,7 @@ struct AIAssistantPluginTests {
 
     @Test("Custom AI Role Presets and in-place editing")
     func testCustomAIRolePresetsAndManagement() {
-        let isolated = UserDefaults(suiteName: "test_ai_presets_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_presets")
         let storage = ScopedPluginStorage(pluginId: "ai_test", defaults: isolated)
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
@@ -708,7 +708,7 @@ struct AIAssistantPluginTests {
 
     @Test("Session retention pruning and star protection immunity")
     func testSessionRetentionAndPruning() {
-        let isolated = UserDefaults(suiteName: "test_ai_retention_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_retention")
         let storage = ScopedPluginStorage(pluginId: "ai_retention", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_ret_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_retention", customBaseDirectory: tempDir)
@@ -762,7 +762,7 @@ struct AIAssistantPluginTests {
     @Test("Stepped drawer view rendering and sub-item mapping")
     func testSteppedDrawerRendering() {
         let plugin = AIAssistantPlugin()
-        let isolated = UserDefaults(suiteName: "test_ai_stepped_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_stepped")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         plugin.state.mount(store: store)
 
@@ -829,7 +829,7 @@ struct AIAssistantPluginTests {
         #expect(!claudeModels.isEmpty)
         #expect(claudeModels.contains(where: { $0.contains("claude") }))
 
-        let isolated = UserDefaults(suiteName: "test_ai_models_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_models_fetch")
         let storage = ScopedPluginStorage(pluginId: "ai_models", defaults: isolated)
         let state = AIAssistantPluginState(storage: storage)
 
@@ -1256,7 +1256,7 @@ struct AIAssistantPluginTests {
 
     @Test("Auto-detect translation prompt direction (Chinese -> English vs Non-Chinese -> Simplified Chinese) and same-language polish")
     func testAutoDetectTranslationAndPolishDirection() {
-        let isolated = UserDefaults(suiteName: "test_ai_lang_dir_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_lang_dir")
         let storage = ScopedPluginStorage(pluginId: "ai_lang_dir_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_lang_dir_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_lang_dir_test", customBaseDirectory: tempDir)
@@ -1313,7 +1313,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState renameSession, promoteOutputToSource, and language persistence")
     func testSessionRenameAndPromoteOutput() {
-        let isolated = UserDefaults(suiteName: "test_ai_rename_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_rename")
         let storage = ScopedPluginStorage(pluginId: "ai_rename_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_rename_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_rename_test", customBaseDirectory: tempDir)
@@ -1355,7 +1355,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState step version history navigation, totalStepsCount, and stepHistory")
     func testStepVersionHistoryAndNavigation() {
-        let isolated = UserDefaults(suiteName: "test_ai_steps_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_steps")
         let storage = ScopedPluginStorage(pluginId: "ai_steps_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_steps_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_steps_test", customBaseDirectory: tempDir)
@@ -1447,7 +1447,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState chainOutputWithRole and refineCurrentOutput")
     func testRoleChainingAndRefinement() {
-        let isolated = UserDefaults(suiteName: "test_ai_chain_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_chain")
         let storage = ScopedPluginStorage(pluginId: "ai_chain_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_chain_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_chain_test", customBaseDirectory: tempDir)
@@ -1499,7 +1499,7 @@ struct AIAssistantPluginTests {
 
     @Test("A slash skill typed into the follow-up box still starts with its slash")
     func testFollowUpKeepsSlashSkillAtTheFront() {
-        let isolated = UserDefaults(suiteName: "test_ai_followup_skill_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_followup_skill")
         let storage = ScopedPluginStorage(pluginId: "ai_followup_skill_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_followup_skill_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_followup_skill_test", customBaseDirectory: tempDir)
@@ -1523,7 +1523,7 @@ struct AIAssistantPluginTests {
 
     @Test("A skill chosen on its own is a complete follow-up")
     func testFollowUpWithOnlyASkillSends() {
-        let isolated = UserDefaults(suiteName: "test_ai_followup_skill_only_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_followup_skill_only")
         let storage = ScopedPluginStorage(pluginId: "ai_followup_skill_only", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_followup_skill_only_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_followup_skill_only", customBaseDirectory: tempDir)
@@ -1552,7 +1552,7 @@ struct AIAssistantPluginTests {
 
     @Test("Model persistence in ScopedPluginStorage and auto-selection of active model")
     func testModelPersistenceAndAutoDiscovery() async {
-        let isolated = UserDefaults(suiteName: "test_ai_models_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_models_persist")
         let storage = ScopedPluginStorage(pluginId: "ai_models_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_models_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_models_test", customBaseDirectory: tempDir)
@@ -1717,7 +1717,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState MCP server management and persistence")
     func testStateMCPServerManagement() {
-        let storage = ScopedPluginStorage(pluginId: "ai_test_mcp", defaults: UserDefaults(suiteName: "test_ai_mcp_\(UUID().uuidString)")!)
+        let storage = ScopedPluginStorage(pluginId: "ai_test_mcp", defaults: TestDefaults.make("test_ai_mcp"))
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_mcp")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
 
@@ -1737,7 +1737,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState switchRoleInTopBar preserves step history without re-executing prompt")
     func testSwitchRoleInTopBarNavigation() {
-        let storage = ScopedPluginStorage(pluginId: "ai_test_roleswitch", defaults: UserDefaults(suiteName: "test_ai_roleswitch_\(UUID().uuidString)")!)
+        let storage = ScopedPluginStorage(pluginId: "ai_test_roleswitch", defaults: TestDefaults.make("test_ai_roleswitch"))
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_roleswitch")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
 
@@ -1768,7 +1768,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState refineCurrentOutput handles new source translation vs refinement meta-instruction")
     func testTranslateRefinementBehavior() {
-        let storage = ScopedPluginStorage(pluginId: "ai_test_refine", defaults: UserDefaults(suiteName: "test_ai_refine_\(UUID().uuidString)")!)
+        let storage = ScopedPluginStorage(pluginId: "ai_test_refine", defaults: TestDefaults.make("test_ai_refine"))
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_refine")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
         state.selectedRoleId = "translate"
@@ -1802,7 +1802,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState exportSessionMarkdown formats details, think block, and attachments")
     func testExportSessionMarkdown() {
-        let storage = ScopedPluginStorage(pluginId: "ai_test_export", defaults: UserDefaults(suiteName: "test_ai_export_\(UUID().uuidString)")!)
+        let storage = ScopedPluginStorage(pluginId: "ai_test_export", defaults: TestDefaults.make("test_ai_export"))
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_export")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
 
@@ -1842,7 +1842,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState ingestDropFromDrag routes properly to new session and follow up")
     func testIngestDropFromDrag() {
-        let storage = ScopedPluginStorage(pluginId: "ai_test_drag", defaults: UserDefaults(suiteName: "test_ai_drag_\(UUID().uuidString)")!)
+        let storage = ScopedPluginStorage(pluginId: "ai_test_drag", defaults: TestDefaults.make("test_ai_drag"))
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_drag")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
 
@@ -1874,7 +1874,7 @@ struct AIAssistantPluginTests {
 
     @Test("Dropped file keeps its attachment when the drop starts a new session")
     func testDroppedFileAttachmentSurvivesNewSessionReset() throws {
-        let storage = ScopedPluginStorage(pluginId: "ai_test_drop_file", defaults: UserDefaults(suiteName: "test_ai_drop_file_\(UUID().uuidString)")!)
+        let storage = ScopedPluginStorage(pluginId: "ai_test_drop_file", defaults: TestDefaults.make("test_ai_drop_file"))
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_drop_file")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
 
@@ -1900,7 +1900,7 @@ struct AIAssistantPluginTests {
 
     @Test("Dropped file stages into the follow-up composer with its attachment")
     func testDroppedFileAppendsToFollowUpStaging() throws {
-        let storage = ScopedPluginStorage(pluginId: "ai_test_drop_followup", defaults: UserDefaults(suiteName: "test_ai_drop_followup_\(UUID().uuidString)")!)
+        let storage = ScopedPluginStorage(pluginId: "ai_test_drop_followup", defaults: TestDefaults.make("test_ai_drop_followup"))
         let repo = PurahDiskRepository<AIChatSession>(pluginId: "ai_test_drop_followup")
         let state = AIAssistantPluginState(storage: storage, repository: repo)
 
@@ -2211,7 +2211,7 @@ struct AIAssistantPluginTests {
 
     @Test("AIAssistantPluginState slash command autocomplete, filtering, selection, and keyboard navigation")
     func testSlashCommandAutocompleteAndNavigation() {
-        let isolated = UserDefaults(suiteName: "test_ai_slash_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_ai_slash")
         let storage = ScopedPluginStorage(pluginId: "ai_slash_test", defaults: isolated)
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("purah_ai_slash_\(UUID().uuidString)")
         let fileStorage = PurahPluginFileStorage(pluginId: "ai_slash_test", customBaseDirectory: tempDir)

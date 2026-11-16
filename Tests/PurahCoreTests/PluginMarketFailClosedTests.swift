@@ -14,8 +14,8 @@ import Foundation
 struct PluginMarketFailClosedTests {
 
     private static func makeManager() -> (PluginMarketManager, UserDefaults) {
-        let suite = "purah.test.market.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite) ?? .standard
+        let suite = TestDefaults.uniqueName("purah.test.market")
+        let defaults = TestDefaults.make(suite)
         let manager = PluginMarketManager(availableCatalog: [], userDefaults: defaults)
         return (manager, defaults)
     }

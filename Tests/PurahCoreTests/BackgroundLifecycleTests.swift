@@ -47,8 +47,8 @@ struct BackgroundLifecycleTests {
     /// Each test gets its own defaults domain: the store persists to it, and a
     /// shared domain would make the tests order-dependent.
     private static func makeStore() -> PurahWorkspaceStore {
-        let suite = "purah.test.lifecycle.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite) ?? .standard
+        let suite = TestDefaults.uniqueName("purah.test.lifecycle")
+        let defaults = TestDefaults.make(suite)
         return PurahWorkspaceStore(userDefaults: defaults)
     }
 

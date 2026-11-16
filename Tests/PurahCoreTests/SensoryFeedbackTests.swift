@@ -194,8 +194,8 @@ struct SensoryFeedbackTests {
     @Test("PurahWorkspaceStore sensory properties persistence round-trip")
     @MainActor
     func testSensoryPropertiesPersistence() {
-        let suite = "purah.sensory.persistence.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("purah.sensory.persistence")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
@@ -217,8 +217,8 @@ struct SensoryFeedbackTests {
     @Test("A pod's alert sound follows its override, then the default again")
     @MainActor
     func testPerPodAlertSoundResolution() throws {
-        let suite = "purah.pod-alert-sound.resolution.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("purah.pod-alert-sound.resolution")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -237,8 +237,8 @@ struct SensoryFeedbackTests {
     @Test("Per-pod alert sounds round-trip through persistence")
     @MainActor
     func testPerPodAlertSoundPersistence() throws {
-        let suite = "purah.pod-alert-sound.persistence.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("purah.pod-alert-sound.persistence")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -303,8 +303,8 @@ struct SensoryFeedbackTests {
     @Test("HUD-side feedback reaches toast sound and freeze haptic seams")
     @MainActor
     func testTransientHUDControllerSensoryIntegration() {
-        let suite = "purah.sensory.hud.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("purah.sensory.hud")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = PurahWorkspaceStore(userDefaults: defaults)
         let service = SensoryFeedbackService.shared
@@ -516,8 +516,8 @@ struct SensoryFeedbackTests {
         #expect(service.hapticTriggerCount == 1) // unchanged
 
         // 3. Test SensoryFeedbackService.shared.performControlHapticIfEnabled with custom UserDefaults
-        let testSuiteName = "com.purah.test.sensory.\(UUID().uuidString)"
-        let testDefaults = UserDefaults(suiteName: testSuiteName)!
+        let testSuiteName = TestDefaults.uniqueName("com.purah.test.sensory")
+        let testDefaults = TestDefaults.make(testSuiteName)
         defer {
             testDefaults.removePersistentDomain(forName: testSuiteName)
         }

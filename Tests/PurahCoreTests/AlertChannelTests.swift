@@ -17,8 +17,8 @@ struct AlertChannelTests {
     }
 
     private func makeStore() throws -> (store: PurahWorkspaceStore, defaults: UserDefaults, suite: String) {
-        let suite = "alert_channels_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("alert_channels")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
         for podId in ["ai", "terminal", "calendar", "vitals"] {
             try setPod(podId, enabled: true, in: store)
@@ -364,8 +364,8 @@ struct AlertChannelTests {
 
     @Test("Legacy calendar switches migrate to pod channels")
     func testLegacyCalendarSwitchesMigrateToPodChannels() throws {
-        let suite = "alert_calendar_legacy_migration_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("alert_calendar_legacy_migration")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let calendarStorage = ScopedPluginStorage(pluginId: "calendar", defaults: defaults)
@@ -475,8 +475,8 @@ struct AlertChannelTests {
 
     @Test("Migration maps legacy global styles into master and override")
     func testMigration() throws {
-        let offSuite = "alert_migration_off_\(UUID().uuidString)"
-        let offDefaults = try #require(UserDefaults(suiteName: offSuite))
+        let offSuite = TestDefaults.uniqueName("alert_migration_off")
+        let offDefaults = TestDefaults.make(offSuite)
         defer { offDefaults.removePersistentDomain(forName: offSuite) }
         offDefaults.set("off", forKey: "purah.alertStyle")
 
@@ -484,8 +484,8 @@ struct AlertChannelTests {
         #expect(!offStore.isAlertMasterEnabled)
         #expect(offDefaults.string(forKey: "purah.alertStyle") == "off")
 
-        let soundSuite = "alert_migration_sound_\(UUID().uuidString)"
-        let soundDefaults = try #require(UserDefaults(suiteName: soundSuite))
+        let soundSuite = TestDefaults.uniqueName("alert_migration_sound")
+        let soundDefaults = TestDefaults.make(soundSuite)
         defer { soundDefaults.removePersistentDomain(forName: soundSuite) }
         soundDefaults.set("sonarWave", forKey: "purah.alertStyle")
         soundDefaults.set(false, forKey: "purah.isToastSoundEnabled")
@@ -495,22 +495,22 @@ struct AlertChannelTests {
         #expect(soundStore.alertStyleOverride == .sonarWave)
         #expect(soundStore.alertChannels == [.railEffect, .toast])
 
-        let glowSuite = "alert_migration_glow_\(UUID().uuidString)"
-        let glowDefaults = try #require(UserDefaults(suiteName: glowSuite))
+        let glowSuite = TestDefaults.uniqueName("alert_migration_glow")
+        let glowDefaults = TestDefaults.make(glowSuite)
         defer { glowDefaults.removePersistentDomain(forName: glowSuite) }
         glowDefaults.set("subtleGlow", forKey: "purah.alertStyle")
         let glowStore = PurahWorkspaceStore(userDefaults: glowDefaults)
         #expect(glowStore.alertStyleOverride == .subtleGlow)
 
-        let breatheSuite = "alert_migration_breathe_\(UUID().uuidString)"
-        let breatheDefaults = try #require(UserDefaults(suiteName: breatheSuite))
+        let breatheSuite = TestDefaults.uniqueName("alert_migration_breathe")
+        let breatheDefaults = TestDefaults.make(breatheSuite)
         defer { breatheDefaults.removePersistentDomain(forName: breatheSuite) }
         breatheDefaults.set("breathingBeacon", forKey: "purah.alertStyle")
         let breatheStore = PurahWorkspaceStore(userDefaults: breatheDefaults)
         #expect(breatheStore.alertStyleOverride == nil)
 
-        let inconsistentSuite = "alert_migration_inconsistent_\(UUID().uuidString)"
-        let inconsistentDefaults = try #require(UserDefaults(suiteName: inconsistentSuite))
+        let inconsistentSuite = TestDefaults.uniqueName("alert_migration_inconsistent")
+        let inconsistentDefaults = TestDefaults.make(inconsistentSuite)
         defer { inconsistentDefaults.removePersistentDomain(forName: inconsistentSuite) }
         inconsistentDefaults.set("off", forKey: "purah.alertStyle")
         inconsistentDefaults.set(true, forKey: "purah.alertMasterEnabled")

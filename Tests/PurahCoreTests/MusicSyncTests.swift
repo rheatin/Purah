@@ -42,8 +42,8 @@ struct MusicSyncTests {
         #expect(store._musicTrack.artist.isEmpty)
         #expect(store._musicTrack.isPlaying == false)
 
-        let suiteName = "test_music_fresh_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_music_fresh")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let state = MusicPluginState(
@@ -73,8 +73,8 @@ struct MusicSyncTests {
 
     @Test("togglePlayPause without a bound store never fakes playback")
     func testToggleWithoutStoreDoesNotSimulate() {
-        let suiteName = "test_music_no_store_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_music_no_store")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let state = MusicPluginState(
@@ -572,8 +572,8 @@ struct MusicSyncTests {
 
     @Test("MusicPluginState lyrics candidate switching and timing adjustment")
     func testMusicPluginStateLyricsControls() {
-        let suiteName = "test_music_lyrics_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_music_lyrics")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore()

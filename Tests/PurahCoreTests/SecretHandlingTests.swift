@@ -8,7 +8,7 @@ import Foundation
 struct SecretHandlingTests {
 
     private func makeDefaults() -> UserDefaults {
-        UserDefaults(suiteName: "test_secret_\(UUID().uuidString)")!
+        TestDefaults.make(TestDefaults.uniqueName("test_secret"))
     }
 
     private func decodeBackup(_ data: Data) throws -> PurahConfigurationBackup {

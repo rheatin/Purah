@@ -9,8 +9,8 @@ import Foundation
 struct AlertStyleResolutionTests {
 
     private func makeStore() throws -> (store: PurahWorkspaceStore, defaults: UserDefaults, suite: String) {
-        let suite = "pod_alert_style_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("pod_alert_style")
+        let defaults = TestDefaults.make(suite)
         return (PurahWorkspaceStore(userDefaults: defaults), defaults, suite)
     }
 

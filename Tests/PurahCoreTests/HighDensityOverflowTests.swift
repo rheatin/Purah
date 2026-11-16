@@ -12,8 +12,8 @@ import SwiftUI
 struct HighDensityOverflowTests {
 
     private func makeNinePodsLeftRailStore(breathingEnabled: Bool = true) -> PurahWorkspaceStore {
-        let suiteName = "test_unified_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_unified")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.isDynamicBreathingEnabled = breathingEnabled
         store.pods.removeAll(where: { $0.id == "ai" })
@@ -204,8 +204,8 @@ struct HighDensityOverflowTests {
 
     @Test("Per-Rail Independent Layout: left and right rails operate with independent cluster configurations")
     func testPerRailIndependentStrategy() throws {
-        let suiteName = "test_per_rail_independent_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_per_rail_independent")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         // Place 5 pods on left rail and 4 pods on right rail
@@ -428,8 +428,8 @@ struct HighDensityOverflowTests {
 
     @Test("Unlimited Shared Major Pod Stacking: all 9 built-in pods on right rail can stack into a single Shared Major Pod with 9 non-overlapping sub-bars")
     func testNinePodsSingleSharedMajorPodOnRightRail() throws {
-        let suiteName = "test_nine_pods_single_major_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_nine_pods_single_major")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.pods.removeAll(where: { $0.id == "ai" })
 
@@ -483,8 +483,8 @@ struct HighDensityOverflowTests {
 
     @Test("Live Rail Sculptor Mode: setLiveRailEditingMode dismisses active drawers, fires callback, and mountPod assigns to active page in Paged Spaces")
     func testLiveRailSculptorModeAndMountPod() throws {
-        let suiteName = "test_live_sculptor_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_live_sculptor")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         // Activate a drawer first
@@ -527,8 +527,8 @@ struct HighDensityOverflowTests {
 
     @Test("EdgeMouseMonitor ignores normal hover drawer triggers while isLiveRailEditingMode is true")
     func testEdgeMouseMonitorIgnoresHoverDuringLiveSculpting() throws {
-        let suiteName = "test_live_sculptor_monitor_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_live_sculptor_monitor")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.edgeTriggerMode = .hoverDwell
         store.edgeTriggerSensitivity = .agile
@@ -558,8 +558,8 @@ struct HighDensityOverflowTests {
     func testPodShorteningAcrossAllModes() throws {
         let totalHeight = 900.0
         for breathing in [true, false] {
-            let suiteName = "test_shorten_\(breathing)_\(UUID().uuidString)"
-            let isolated = UserDefaults(suiteName: suiteName)!
+            let suiteName = TestDefaults.uniqueName("test_shorten_\(breathing)")
+            let isolated = TestDefaults.make(suiteName)
             let store = PurahWorkspaceStore(userDefaults: isolated)
             store.isDynamicBreathingEnabled = breathing
             // This test is about a deliberately shortened decomposed pod: its
@@ -595,8 +595,8 @@ struct HighDensityOverflowTests {
 
     @Test("Shared Major Pod Outer Box Resizing: resizeMajorGroup scales drawerSpanH and unstackMajorGroup splits cluster")
     func testResizeMajorGroupAndUnstackCluster() throws {
-        let suiteName = "test_resize_major_group_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_resize_major_group")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.resetMajorGroups(for: .right)
         for idx in store.pods.indices {
@@ -644,8 +644,8 @@ struct HighDensityOverflowTests {
 
     @Test("Unstack All & Progressive Split in Decomposed Major Pod Mode: unstackMajorGroup and splitPodFromMajorGroup never auto-restack")
     func testUnstackAllAndProgressiveSplitNeverAutoRestack() throws {
-        let suiteName = "test_unstack_progressive_split_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_unstack_progressive_split")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         if let idx = store.pods.firstIndex(where: { $0.id == "music" }), !store.pods[idx].isEnabled {
             store.togglePodEnabled(id: "music")
@@ -702,8 +702,8 @@ struct HighDensityOverflowTests {
 
     @Test("Individual Sub-Pod Height in Stack: proportional spanH allocation and resizeSubPodInMajorGroup divider adjustment")
     func testIndividualSubPodHeightInStackAndResize() throws {
-        let suiteName = "test_subpod_height_stack_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_subpod_height_stack")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         if let idx = store.pods.firstIndex(where: { $0.id == "music" }), !store.pods[idx].isEnabled {
             store.togglePodEnabled(id: "music")
@@ -769,8 +769,8 @@ struct HighDensityOverflowTests {
 
     @Test("External Dock Drag-to-Stack: updateExternalPodDrag and commitExternalPodDrag mounts unmounted pod and merges into target stack")
     func testExternalDockDragToStack() throws {
-        let suiteName = "test_external_dock_drag_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_external_dock_drag")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.resetMajorGroups(for: .left)
 
@@ -813,8 +813,8 @@ struct HighDensityOverflowTests {
 
     @Test("Exact Visual Rail Bar Hover Bounds: solvePagedSpacesLayout caps decomposed spanH by maxVisualHeight and prevents premature drawer pop-open")
     func testExactVisualRailBarHoverBounds() throws {
-        let suiteName = "test_exact_rail_bounds_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_exact_rail_bounds")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.railBarWidth = 6.0
 
@@ -854,8 +854,8 @@ struct HighDensityOverflowTests {
 
     @Test("Water-Droplet Detach & Free Spacing Outside Stack: detachPodFromMajorGroup and solveDecomposedMajorPodLayout preserve gap between Stack and standalone pod")
     func testWaterDropletDetachAndFreeSpacingOutsideStack() throws {
-        let suiteName = "test_water_droplet_detach_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_water_droplet_detach")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         if let idx = store.pods.firstIndex(where: { $0.id == "music" }), !store.pods[idx].isEnabled {
             store.togglePodEnabled(id: "music")
@@ -920,8 +920,8 @@ struct HighDensityOverflowTests {
 
     @Test("Unified Pod Alert Detection & Cross-Page Portal Alert Beacon: setPluginAlert, acknowledgeAllAlerts, alertingPageIndices, and firstOffPageAlertingPod")
     func testUnifiedPodAlertAndCrossPagePortalBeacon() throws {
-        let suiteName = "test_pod_alert_portal_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_pod_alert_portal")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.resetMajorGroups(for: .right)
         store._calendarEvents = []
@@ -957,8 +957,8 @@ struct HighDensityOverflowTests {
 
     @Test("Standalone Composite Pod vs Stacked Sub-Pod Minimum Height Rule: standalone Music outside a Stack enforces >= 110pt (minimumDrawerHeight) while stacked Music inside a Stack allows compact sub-bar < 110pt with drawerSpanH >= 150pt")
     func testStandaloneCompositePodVsStackedSubPodMinimumHeight() throws {
-        let suiteName = "test_standalone_vs_stacked_music_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_standalone_vs_stacked_music")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
         if let idx = store.pods.firstIndex(where: { $0.id == "music" }), !store.pods[idx].isEnabled {
             store.togglePodEnabled(id: "music")
@@ -1014,8 +1014,8 @@ struct HighDensityOverflowTests {
 
     @Test("Left rail with 4 pods on 960pt screen does not trigger dynamic breathing or layout shift on hover")
     func testLeftRailFourPodsNoBreathingOrHoverShift() throws {
-        let suiteName = "test_left_rail_four_pods_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_left_rail_four_pods")
+        let isolated = TestDefaults.make(suiteName)
 
         // Simulate user's legacy plist state: vitals, clipboard, shelf, notes on left rail
         // where shelf and notes had legacy major_left_1 and overlapping ranges
@@ -1091,8 +1091,8 @@ struct HighDensityOverflowTests {
 
     @Test("Stacked mode enforces isDecomposed == false and subItemCount == 0 across all decomposable pods, and restores state when unstacked")
     func testStackedModeDisablesDecomposition() throws {
-        let suiteName = "test_stacked_decompose_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_stacked_decompose")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         // Bind UI plugins so all capabilities including Clipboard are registered
@@ -1179,8 +1179,8 @@ struct HighDensityOverflowTests {
 
     @Test("Dynamic Breathing progressive squeezing vs Page 2 overflow when disabled with 7 pods on left rail")
     func testDynamicBreathingFullRailSqueezingAndPageOverflowWhenDisabled() throws {
-        let suiteName = "test_breathing_squeezing_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_breathing_squeezing")
+        let isolated = TestDefaults.make(suiteName)
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         let demoPodIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]

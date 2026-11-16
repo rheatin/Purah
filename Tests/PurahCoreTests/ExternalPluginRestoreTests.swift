@@ -43,7 +43,7 @@ struct ExternalPluginRestoreTests {
     func testMissingPathIsForgotten() {
         let loader = PluginDynamicLoader.shared
         let store = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "test_restore_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make("test_restore")
         )
 
         loader.rememberInstalled(path: "/tmp/purah-missing-\(UUID().uuidString).dylib",
@@ -59,7 +59,7 @@ struct ExternalPluginRestoreTests {
     func testRestoreKeepsPod() throws {
         let dylib = try #require(Self.builtExampleDylib)
         let previousProcess = PluginDynamicLoader()
-        let defaults = UserDefaults(suiteName: "test_restore_pod_\(UUID().uuidString)")!
+        let defaults = TestDefaults.make("test_restore_pod")
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         // Simulate a previous launch that loaded the plugin and laid it out.

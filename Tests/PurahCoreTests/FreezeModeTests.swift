@@ -11,8 +11,8 @@ struct FreezeModeTests {
     @Test("ScreenEdgeCoordinator setFrozen hides windows and disables interactivity")
     @MainActor
     func testCoordinatorFreeze() {
-        let suite = "freeze_coord_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("freeze_coord")
+        let isolated = TestDefaults.make(suite)
         defer { isolated.removePersistentDomain(forName: suite) }
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let coordinator = ScreenEdgeCoordinator(store: store)
@@ -27,8 +27,8 @@ struct FreezeModeTests {
     @Test("EdgeMouseMonitor setFrozen toggles frozen state and resets dwell")
     @MainActor
     func testEdgeMouseMonitorFreeze() {
-        let suite = "freeze_mon_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("freeze_mon")
+        let isolated = TestDefaults.make(suite)
         defer { isolated.removePersistentDomain(forName: suite) }
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let monitor = EdgeMouseMonitor(store: store)
@@ -43,7 +43,7 @@ struct FreezeModeTests {
     @Test("PassThroughHostingView completely suppresses hit-test and interactive drawer when frozen")
     @MainActor
     func testPassThroughHostingViewFreeze() {
-        let isolated = UserDefaults(suiteName: "test_freeze")!
+        let isolated = TestDefaults.make("test_freeze")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let view = PassThroughHostingView(rootView: EmptyView(), edge: .right, store: store)
         view.frame = NSRect(x: 0, y: 0, width: 340, height: 1000)

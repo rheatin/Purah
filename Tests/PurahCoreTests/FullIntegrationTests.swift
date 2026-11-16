@@ -8,8 +8,8 @@ import Foundation
 struct FullIntegrationTests {
     @Test("Complete cycle: AutoLayout -> Drag Stretch -> Collision Solve -> Zero Overlap")
     func testCompleteLayoutCycle() {
-        let suiteName = "full_integration_\(UUID().uuidString)"
-        let userDefaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("full_integration")
+        let userDefaults = TestDefaults.make(suiteName)
         defer { userDefaults.removePersistentDomain(forName: suiteName) }
         let store = PurahWorkspaceStore(userDefaults: userDefaults)
 

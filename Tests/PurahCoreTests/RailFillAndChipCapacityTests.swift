@@ -18,8 +18,8 @@ import PurahUI
 struct RailFillAndChipCapacityTests {
 
     private func makeIsolatedStore(_ label: String) -> (PurahWorkspaceStore, UserDefaults, String) {
-        let suite = "test_rail_fill_\(label)_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_rail_fill_\(label)")
+        let defaults = TestDefaults.make(suite)
         return (PurahWorkspaceStore(userDefaults: defaults), defaults, suite)
     }
 

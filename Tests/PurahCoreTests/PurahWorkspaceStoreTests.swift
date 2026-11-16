@@ -9,7 +9,7 @@ import AppKit
 struct PurahWorkspaceStoreTests {
     @Test("Initializes with standard built-in pods including vitals and scripts")
     func testDefaultPods() {
-        let isolated = UserDefaults(suiteName: "test_default_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_default")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         #expect(store.pods.count == 10)
         #expect(store.pods.contains(where: { $0.id == "calendar" }))
@@ -26,7 +26,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Leaving the sculptor's rehearsal mode re-lays the rail out at once")
     func testRehearsalToggleInvalidatesLayoutCache() {
-        let isolated = UserDefaults(suiteName: "test_rehearsal_cache_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_rehearsal_cache")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let totalHeight = 900.0
 
@@ -47,7 +47,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("A fresh install starts on adaptive drawer widths")
     func testFreshInstallDefaultsToAdaptiveWidth() {
-        let isolated = UserDefaults(suiteName: "test_fresh_adaptive_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_fresh_adaptive")
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         // A new user has expressed no width preference, so the plugins' own
@@ -64,9 +64,9 @@ struct PurahWorkspaceStoreTests {
         #expect(relaunched.fixedDrawerWidth == 310.0)
     }
 
-    @Test("Auto-layout distributes default pods within safe rail capacity without overload warnings")
+    @Test("Auto-layout keeps the default pods on one page inside the safe rail band")
     func testAutoLayoutWithinSafeCapacity() {
-        let isolated = UserDefaults(suiteName: "test_autolayout_capacity")!
+        let isolated = TestDefaults.make("test_autolayout_capacity")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         // "Fits without overloading" is a statement about the solver, so the
         // screen it solves for has to be stated. Left unpinned, this test read
@@ -77,17 +77,29 @@ struct PurahWorkspaceStoreTests {
         store.autoLayoutAll()
 
         #expect(store.capacityRatio(for: .left) <= 1.0, "Auto-layout overloaded left rail")
-        #expect(store.capacityRatio(for: .right) <= 1.0, "Auto-layout overloaded right rail")
 
-        let leftPods = store.pods.filter { $0.edge == .left && $0.isEnabled }
-        let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
-        #expect(!leftPods.isEmpty)
-        #expect(!rightPods.isEmpty)
+        // The six default right-rail pods need 970pt at their ergonomic
+        // floors, so on a 923pt rail the required height does exceed the
+        // screen. §5.3 answers that with breathing: the pods squeeze in place
+        // rather than spilling to a page nobody asked for, so a ratio above
+        // 1.0 is the squeeze, not an overload. What must stay true is that
+        // every pod is still drawn on page 0 inside the safe band.
+        #expect(store.isDynamicBreathingEnabled, "The default rail is expected to breathe")
+        let rightPages = Set(store.pods.filter { $0.edge == .right && $0.isEnabled }.map(\.pageIndex))
+        #expect(rightPages == [0], "Default right-rail pods spilled to pages \(rightPages.sorted())")
+
+        let items = store.resolvedPhysicalLayout(for: .right, totalHeight: 923.0)
+        #expect(!items.isEmpty)
+        for item in items {
+            #expect(item.drawerStartY >= 15.5, "\(item.pod.id) starts above the safe band")
+            #expect(item.drawerStartY + item.drawerSpanH <= 923.0 - 15.5,
+                    "\(item.pod.id) ends below the safe band")
+        }
     }
 
     @Test("On a rail too short for the defaults, auto-layout paginates instead of overloading one page")
     func testAutoLayoutPaginatesOnShortScreen() {
-        let isolated = UserDefaults(suiteName: "test_autolayout_short_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_autolayout_short")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         // The flip side of the assertion above: when the rail cannot hold
         // every pod, the correct behaviour is a second page, not clipped
@@ -109,7 +121,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Auto-layout establishes non-overlapping ranges on both rails")
     func testAutoLayoutNonOverlappingRanges() {
-        let isolated = UserDefaults(suiteName: "test_autolayout_ranges")!
+        let isolated = TestDefaults.make("test_autolayout_ranges")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.autoLayoutAll()
 
@@ -124,7 +136,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Toggle pod enabled/disabled updates active layout")
     func testTogglePodEnabled() {
-        let isolated = UserDefaults(suiteName: "test_toggle")!
+        let isolated = TestDefaults.make("test_toggle")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         #expect(store.pods.first(where: { $0.id == "music" })?.isEnabled == true)
 
@@ -137,7 +149,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Fill rail expands a pod into the gap below it, never shrinking it")
     func testFillRail() throws {
-        let isolated = UserDefaults(suiteName: "test_fill_rail_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_fill_rail")
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         // Open an explicit gap below the pod: on a tightly packed rail there is
@@ -167,7 +179,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Fill rail never shrinks a tightly packed pod")
     func testFillRailNeverShrinks() throws {
-        let isolated = UserDefaults(suiteName: "test_fill_rail_packed_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_fill_rail_packed")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let before = try #require(store.pods.first(where: { $0.id == "calendar" })).range.length
 
@@ -180,7 +192,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("PurahWorkspaceStore persists settings via savePersistentState and loadPersistentState")
     func testStorePersistence() {
-        let isolated = UserDefaults(suiteName: "test_store_persistence")!
+        let isolated = TestDefaults.make("test_store_persistence")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.setPodColorHex(podId: "notes", hex: "#123456")
         store.fixedDrawerWidth = 310.0
@@ -201,7 +213,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("A colour set right before quitting is not lost to the debounce")
     func testDebouncedColorSurvivesImmediateReload() async {
-        let isolated = UserDefaults(suiteName: "test_store_color_debounce_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_store_color_debounce")
         let store = PurahWorkspaceStore(userDefaults: isolated)
 
         // The colour picker writes continuously while dragging. Those writes are
@@ -389,7 +401,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("movePodInOrder and swapPods cleanly swap relative vertical order and persist")
     func testPodReorderingAndPositionSwapping() {
-        let isolated = UserDefaults(suiteName: "test_reordering_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_reordering")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
@@ -421,7 +433,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("snapPod cleanly snaps pod to the bottom of its predecessor eliminating gap")
     func testSnapPodToPredecessor() {
-        let isolated = UserDefaults(suiteName: "test_snap_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_snap")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let rightPods = store.pods.filter { $0.edge == .right && $0.isEnabled }
             .sorted { $0.range.start < $1.range.start }
@@ -439,8 +451,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Pods persistence stores custom layout in UserDefaults and restores on launch")
     func testPodsPersistence() {
-        let suiteName = "test_pods_persistence_\(UUID().uuidString)"
-        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_pods_persistence")
+        let isolatedDefaults = TestDefaults.make(suiteName)
         defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
@@ -459,8 +471,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Layout operations immediately persist to disk without requiring app quit or explicit save")
     func testImmediateLayoutPersistenceOnOperations() {
-        let suiteName = "test_immediate_persistence_\(UUID().uuidString)"
-        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_immediate_persistence")
+        let isolatedDefaults = TestDefaults.make(suiteName)
         defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
@@ -487,8 +499,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("App launch sequence with PluginMarketManager does not overwrite custom layout")
     func testAppLaunchWithMarketManagerPreservesCustomLayout() {
-        let suiteName = "test_launch_preserve_\(UUID().uuidString)"
-        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_launch_preserve")
+        let isolatedDefaults = TestDefaults.make(suiteName)
         defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
 
         // 1. Initial run: customize layout
@@ -516,8 +528,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Disabling pods to leave only 4 active pods preserves exact 4 pods across app restarts")
     func testLeavingFourPodsPreservedAcrossRestarts() {
-        let suiteName = "test_four_pods_\(UUID().uuidString)"
-        let isolatedDefaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_four_pods")
+        let isolatedDefaults = TestDefaults.make(suiteName)
         defer { isolatedDefaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore(userDefaults: isolatedDefaults)
@@ -545,8 +557,8 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Plugin-scoped storage bridges and legacy migration ensure store purity")
     func testPluginScopedStorageBridgesAndMigration() {
-        let suiteName = "test_scoped_bridges_\(UUID().uuidString)"
-        let isolated = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("test_scoped_bridges")
+        let isolated = TestDefaults.make(suiteName)
         defer { isolated.removePersistentDomain(forName: suiteName) }
 
         // 1. Simulate legacy keys placed directly in root UserDefaults
@@ -624,7 +636,7 @@ struct PurahWorkspaceStoreTests {
 
     @Test("Onboarding Step 6 Anti-Touch Calibration initializes live gate telemetry and handles drawer states")
     func testOnboardingStep6GateTelemetry() {
-        let isolated = UserDefaults(suiteName: "test_gate_telemetry_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_gate_telemetry")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.isOnboardingGuideActive = true
         store.edgeTriggerSensitivity = .balanced

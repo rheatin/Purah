@@ -15,8 +15,8 @@ struct VitalsDrawerRenderTests {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("purah-vitals-render-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let suite = "vitals_render_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("vitals_render")
+        let defaults = TestDefaults.make(suite)
         defer {
             defaults.removePersistentDomain(forName: suite)
             try? FileManager.default.removeItem(at: directory)

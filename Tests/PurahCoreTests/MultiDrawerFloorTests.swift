@@ -12,8 +12,8 @@ import Foundation
 struct MultiDrawerFloorTests {
 
     private func makeStore() -> PurahWorkspaceStore {
-        let suiteName = "test_multi_drawer_\(UUID().uuidString)"
-        return PurahWorkspaceStore(userDefaults: UserDefaults(suiteName: suiteName)!)
+        let suiteName = TestDefaults.uniqueName("test_multi_drawer")
+        return PurahWorkspaceStore(userDefaults: TestDefaults.make(suiteName))
     }
 
     /// Pins every pod on the left rail, so the multi-expanded branch runs with

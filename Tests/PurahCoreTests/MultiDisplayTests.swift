@@ -83,7 +83,7 @@ struct MultiDisplayTests {
 
     @Test("ScreenEdgeCoordinator sleeps empty rail when all pods on that edge are disabled")
     func testSingleRailSleepWhenPodsDisabled() {
-        let isolated = UserDefaults(suiteName: "test_multi_display_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_multi_display")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         for idx in store.pods.indices where store.pods[idx].edge == .left {
             store.pods[idx].isEnabled = false
@@ -112,7 +112,7 @@ struct MultiDisplayTests {
     @Test("Coordinator cancellable collapse task prevents race when rapidly re-expanding canvas")
     func testCancellableCollapseTaskOnRapidReexpansion() async throws {
         guard !NSScreen.screens.isEmpty else { return }
-        let isolated = UserDefaults(suiteName: "test_cancellable_collapse_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_cancellable_collapse")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let coordinator = ScreenEdgeCoordinator(store: store)
         coordinator.rebuildWindows()
@@ -138,7 +138,7 @@ struct MultiDisplayTests {
     @Test("Esc key dismisses active unpinned drawer but passes through for Terminal")
     func testEscKeyDrawerDismissal() {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
-        let isolated = UserDefaults(suiteName: "test_esc_key_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make("test_esc_key")
         let store = PurahWorkspaceStore(userDefaults: isolated)
         let window = AmbientRailWindow(edge: .right, screen: screen, store: store)
 

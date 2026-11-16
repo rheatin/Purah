@@ -11,7 +11,7 @@ import Foundation
 struct ContextProfileTests {
 
     private func makeStore() -> PurahWorkspaceStore {
-        let defaults = UserDefaults(suiteName: "purah.profiles.tests.\(UUID().uuidString)")!
+        let defaults = TestDefaults.make(TestDefaults.uniqueName("purah.profiles.tests"))
         return PurahWorkspaceStore(userDefaults: defaults)
     }
 
@@ -289,8 +289,8 @@ struct ContextProfileTests {
 
     @Test("Profiles survive a store round trip")
     func testProfilesPersist() {
-        let suiteName = "purah.profiles.persist.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("purah.profiles.persist")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -308,8 +308,8 @@ struct ContextProfileTests {
 
     @Test("A malformed profile blob does not stop the store loading")
     func testMalformedBlobIgnored() {
-        let suiteName = "purah.profiles.bad.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let suiteName = TestDefaults.uniqueName("purah.profiles.bad")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.set(Data("not json".utf8), forKey: "purah.contextProfiles")

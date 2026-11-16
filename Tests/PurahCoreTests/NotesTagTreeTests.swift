@@ -8,8 +8,8 @@ struct NotesTagTreeTests {
     @Test("Note groups mirror the tag folders, current first and untagged last")
     @MainActor
     func noteGroupsMirrorFolders() throws {
-        let suite = "NotesTagTree-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("NotesTagTree")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("NotesTagTree-\(UUID().uuidString)", isDirectory: true)
@@ -51,8 +51,8 @@ struct NotesTagTreeTests {
     @Test("A tag missing from availableTags keeps its notes reachable")
     @MainActor
     func orphanTagRemainsReachable() {
-        let suite = "NotesOrphanTag-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("NotesOrphanTag")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("NotesOrphanTag-\(UUID().uuidString)", isDirectory: true)

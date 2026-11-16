@@ -35,8 +35,8 @@ struct PurahConfigBackupTests {
 
     @Test("Export backup contains purah settings and valid metadata")
     func testExportBackup() throws {
-        let suite = "test_export_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_export")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         store.fixedDrawerWidth = 320.0
@@ -59,8 +59,8 @@ struct PurahConfigBackupTests {
 
     @Test("Import backup round-trip restores store state and settings")
     func testImportBackupRoundTrip() throws {
-        let suiteA = "test_import_src_\(UUID().uuidString)"
-        let defaultsA = UserDefaults(suiteName: suiteA)!
+        let suiteA = TestDefaults.uniqueName("test_import_src")
+        let defaultsA = TestDefaults.make(suiteA)
         let storeA = PurahWorkspaceStore(userDefaults: defaultsA)
 
         storeA.fixedDrawerWidth = 350.0
@@ -70,8 +70,8 @@ struct PurahConfigBackupTests {
 
         let exportedData = try PurahConfigBackupManager.exportBackupData(from: storeA, defaults: defaultsA)
 
-        let suiteB = "test_import_dst_\(UUID().uuidString)"
-        let defaultsB = UserDefaults(suiteName: suiteB)!
+        let suiteB = TestDefaults.uniqueName("test_import_dst")
+        let defaultsB = TestDefaults.make(suiteB)
         let storeB = PurahWorkspaceStore(userDefaults: defaultsB)
 
         try PurahConfigBackupManager.importBackupData(exportedData, into: storeB, defaults: defaultsB)
@@ -83,8 +83,8 @@ struct PurahConfigBackupTests {
 
     @Test("Reset to factory defaults restores defaults and sets didAutoInstallAIPlugin")
     func testResetToFactoryDefaults() {
-        let suite = "test_reset_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_reset")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         store.fixedDrawerWidth = 400.0
@@ -109,8 +109,8 @@ struct PurahConfigBackupTests {
 
     @Test("A factory reset resets the settings nobody remembered to set by hand")
     func testResetClearsEveryPersistedSetting() {
-        let suite = "test_reset_full_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_reset_full")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         // Settings that live outside the handful the old reset assigned. The
@@ -147,8 +147,8 @@ struct PurahConfigBackupTests {
 
     @Test("Auto-installs and enables AI plugin for existing users lacking it in saved pods")
     func testAIPluginMigrationForExistingUsers() {
-        let suite = "test_ai_migration_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_ai_migration")
+        let defaults = TestDefaults.make(suite)
 
         // Simulate legacy user who saved pods before AI plugin was added
         let legacyPods = [
@@ -180,8 +180,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("startInteractiveOnboarding disables all pods and enters live editing")
     func testStartInteractiveOnboarding() {
-        let suite = "test_onboarding_start_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_onboarding_start")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         #expect(store.pods.contains(where: { $0.isEnabled }))
@@ -198,8 +198,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("Quitting the guide halfway and relaunching brings it back")
     func testRelaunchMidGuideResumesOnboarding() {
-        let suite = "test_onboarding_resume_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_onboarding_resume")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let first = PurahWorkspaceStore(userDefaults: defaults)
@@ -215,8 +215,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("Leaving the sculptor mid-guide pauses the guide instead of finishing it")
     func testExitSculptorDoesNotCompleteOnboarding() {
-        let suite = "test_onboarding_esc_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_onboarding_esc")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -231,8 +231,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("A pre-guide profile with saved pods still skips the guide")
     func testLegacyProfileSkipsGuide() throws {
-        let suite = "test_onboarding_legacy_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_onboarding_legacy")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         // This is what a profile from before the guide looks like: pods were
@@ -247,8 +247,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("Step navigation and rehearsal mechanisms")
     func testStepNavigationAndRehearsals() {
-        let suite = "test_onboarding_nav_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_onboarding_nav")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         store.startInteractiveOnboarding(clearAllPods: true)
@@ -296,8 +296,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("Skip all onboarding restores defaults and completes onboarding")
     func testSkipAllOnboardingAndLoadDefaults() {
-        let suite = "test_onboarding_skip_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_onboarding_skip")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         store.startInteractiveOnboarding(clearAllPods: true)
@@ -312,8 +312,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("Reset to factory defaults with triggerOnboarding enters onboarding")
     func testResetToFactoryDefaultsWithOnboarding() {
-        let suite = "test_reset_onboarding_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_reset_onboarding")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         PurahConfigBackupManager.resetToFactoryDefaults(store: store, defaults: defaults, triggerOnboarding: true)
@@ -350,8 +350,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("Upgrading from v0.7.22 restores default stack groups if unstacked and no manual groups seeded")
     func testRestoreDefaultStacksMigration() throws {
-        let suite = "test_restore_stacks_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_restore_stacks")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         // Simulate v0.7.22 store where all pods were unstacked (majorGroupId == nil)
@@ -377,8 +377,8 @@ struct OnboardingAndLaunchAtLoginTests {
 
     @Test("Hands-on interactive mission completion flags and prerequisite staging")
     func testHandsOnMissionCompletionAndPrerequisiteStaging() {
-        let suite = "test_onboarding_missions_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("test_onboarding_missions")
+        let defaults = TestDefaults.make(suite)
         let store = PurahWorkspaceStore(userDefaults: defaults)
 
         store.startInteractiveOnboarding(clearAllPods: true)

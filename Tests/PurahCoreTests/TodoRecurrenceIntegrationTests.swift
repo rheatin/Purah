@@ -12,7 +12,7 @@ import Foundation
 struct TodoRecurrenceIntegrationTests {
 
     private func makeState() -> TodoPluginState {
-        let defaults = UserDefaults(suiteName: "purah.todo.rec.\(UUID().uuidString)")!
+        let defaults = TestDefaults.make(TestDefaults.uniqueName("purah.todo.rec"))
         return TodoPluginState(storage: ScopedPluginStorage(pluginId: "todo", defaults: defaults))
     }
 
@@ -104,7 +104,7 @@ struct TodoRecurrenceIntegrationTests {
 
     @Test("Setting a recurrence writes it through to the store mirror")
     func testSetRecurrenceWritesThrough() {
-        let defaults = UserDefaults(suiteName: "purah.todo.rec.store.\(UUID().uuidString)")!
+        let defaults = TestDefaults.make("purah.todo.rec.store")
         let store = PurahWorkspaceStore(userDefaults: defaults)
         let state = makeState()
 
@@ -121,7 +121,7 @@ struct TodoRecurrenceIntegrationTests {
 
     @Test("Clearing a recurrence removes it from both copies")
     func testClearRecurrence() {
-        let defaults = UserDefaults(suiteName: "purah.todo.rec.clear.\(UUID().uuidString)")!
+        let defaults = TestDefaults.make("purah.todo.rec.clear")
         let store = PurahWorkspaceStore(userDefaults: defaults)
         let state = makeState()
 

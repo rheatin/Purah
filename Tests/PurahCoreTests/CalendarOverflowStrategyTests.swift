@@ -195,8 +195,8 @@ struct CalendarOverflowStrategyTests {
     @Test("Calendar delivery uses the monitor's single path and deduplicates")
     @MainActor
     func testCheckUpcomingAlertsRealTimeDispatch() {
-        let suite = "calendar_alert_delivery_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("calendar_alert_delivery")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let storage = ScopedPluginStorage(pluginId: "cal_alert_test_\(UUID().uuidString)", defaults: defaults)
         let state = CalendarPluginState(storage: storage)

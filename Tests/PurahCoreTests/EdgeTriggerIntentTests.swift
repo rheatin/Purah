@@ -887,8 +887,8 @@ struct EdgeTriggerIntentTests {
     @Test("Drag expands only after resting in the edge band and restarts after leaving")
     @MainActor
     func testDragExpansionRequiresContinuousBandDwell() throws {
-        let suiteName = "EdgeDragDwell-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("EdgeDragDwell")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let store = PurahWorkspaceStore(userDefaults: defaults)
         store.activeDrawerPodId = nil

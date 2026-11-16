@@ -12,7 +12,7 @@ import Foundation
 struct AppProfileSwitchTests {
 
     private func makeStore() -> PurahWorkspaceStore {
-        let defaults = UserDefaults(suiteName: "purah.appprofile.tests.\(UUID().uuidString)")!
+        let defaults = TestDefaults.make(TestDefaults.uniqueName("purah.appprofile.tests"))
         return PurahWorkspaceStore(userDefaults: defaults)
     }
 

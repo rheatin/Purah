@@ -16,7 +16,7 @@ struct RemindersSyncTests {
     }
 
     private func makeStore() -> PurahWorkspaceStore {
-        PurahWorkspaceStore(userDefaults: UserDefaults(suiteName: "test_reminders_\(UUID().uuidString)")!)
+        PurahWorkspaceStore(userDefaults: TestDefaults.make(TestDefaults.uniqueName("test_reminders")))
     }
 
     @Test("Add reminder falls back to in-memory store when unauthorized")

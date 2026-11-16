@@ -17,8 +17,8 @@ struct DropShelfRegressionTests {
     @Test("A persisted empty shelf stays empty after mount")
     @MainActor
     func persistedEmptyShelfStaysEmpty() throws {
-        let suiteName = "DropShelfEmpty-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("DropShelfEmpty")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -79,8 +79,8 @@ struct DropShelfRegressionTests {
     @Test("showToast keeps an SF Symbol name out of the message")
     @MainActor
     func showToastDoesNotPrefixTheIconName() throws {
-        let suiteName = "DropShelfToast-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("DropShelfToast")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -143,8 +143,8 @@ struct DropShelfRegressionTests {
     @Test("Shelf retention removes expired files but preserves favorites")
     @MainActor
     func retentionPolicyPreservesFavorites() throws {
-        let suiteName = "ShelfPolicyRetention-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("ShelfPolicyRetention")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -189,8 +189,8 @@ struct DropShelfRegressionTests {
     @Test("Shelf quota pruning removes oldest non-favorites first")
     @MainActor
     func quotaPolicyPrunesOldestFirst() throws {
-        let suiteName = "ShelfPolicyQuota-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("ShelfPolicyQuota")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -230,8 +230,8 @@ struct DropShelfRegressionTests {
     @Test("Shelf quota pruning does nothing when automatic pruning is disabled")
     @MainActor
     func quotaPolicyRespectsAutoPruneOff() throws {
-        let suiteName = "ShelfPolicyDisabled-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("ShelfPolicyDisabled")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -272,8 +272,8 @@ struct DropShelfRegressionTests {
     @Test("Shelf quota never prunes entries outside its sandbox")
     @MainActor
     func quotaPolicyIgnoresExternalFiles() throws {
-        let suiteName = "ShelfPolicyExternalQuota-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("ShelfPolicyExternalQuota")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -338,8 +338,8 @@ struct DropShelfRegressionTests {
     @Test("Shelf quota counts only bytes owned inside its sandbox")
     @MainActor
     func quotaPolicyDoesNotCountExternalFiles() throws {
-        let suiteName = "ShelfPolicyExternalSize-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("ShelfPolicyExternalSize")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -389,8 +389,8 @@ struct DropShelfRegressionTests {
     @Test("Shelf retention removes external rows without deleting their originals")
     @MainActor
     func retentionPolicyLeavesExternalFilesOnDisk() throws {
-        let suiteName = "ShelfPolicyExternalRetention-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let suiteName = TestDefaults.uniqueName("ShelfPolicyExternalRetention")
+        let defaults = TestDefaults.make(suiteName)
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let tempDir = FileManager.default.temporaryDirectory

@@ -14,7 +14,7 @@ import Foundation
 struct CalendarReadOnlyGuardTests {
 
     private func makeStore() -> PurahWorkspaceStore {
-        PurahWorkspaceStore(userDefaults: UserDefaults(suiteName: "test_cal_readonly_\(UUID().uuidString)")!)
+        PurahWorkspaceStore(userDefaults: TestDefaults.make(TestDefaults.uniqueName("test_cal_readonly")))
     }
 
     private func makeContext(store: PurahWorkspaceStore) -> PurahPluginContext {

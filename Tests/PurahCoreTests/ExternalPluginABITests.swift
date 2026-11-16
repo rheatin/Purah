@@ -12,7 +12,13 @@ import AppKit
 /// rename (`purahCreateDrawerViewWithContext` → something else) would not fail
 /// to compile — it would silently load a plugin that draws nothing. These
 /// tests keep the documented symbol names and the context payload honest.
-@Suite("External Plugin ABI Contract")
+///
+/// Serialized: two tests each compile and `dlopen` the same example plugin, and
+/// a cold JIT cache makes both compile — loading two copies puts the same
+/// Objective-C classes in the process twice, and the second copy's casts fail,
+/// so its header accessory comes back nil. That is a property of the loader,
+/// not of a plugin, so the tests must not run side by side.
+@Suite("External Plugin ABI Contract", .serialized)
 struct ExternalPluginABITests {
 
     private static let exampleRoot = URL(fileURLWithPath: #filePath)
@@ -242,7 +248,7 @@ struct ExternalPluginABITests {
         defer { PluginDynamicLoader.shared.unloadPlugin(id: plugin.manifest.id) }
 
         let store = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "test_abi_stepped_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make("test_abi_stepped")
         )
         let pod = plugin.manifest.makeDefaultSlotPod(isEnabled: true)
         store.pods.append(pod)

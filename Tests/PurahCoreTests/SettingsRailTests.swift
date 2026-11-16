@@ -56,8 +56,8 @@ struct SettingsRailTests {
     @Test("PreferencesView accepts pod and global initial selections")
     @MainActor
     func preferencesInitialSelection() {
-        let suite = "SettingsRailTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("SettingsRailTests")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = PurahWorkspaceStore(userDefaults: defaults)
 

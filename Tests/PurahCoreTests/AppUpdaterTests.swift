@@ -174,8 +174,8 @@ struct AppUpdaterTests {
 
     @Test("A hosted observable refreshes from checking to update available")
     func testHostedObservableRefreshesFromCheckingToUpdateAvailable() async throws {
-        let suite = "updater_hosted_refresh_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("updater_hosted_refresh")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let provider = SequencedJSONProvider(
@@ -353,8 +353,8 @@ struct AppUpdaterTests {
 
     @Test("Auto-check is on unless the user turned it off")
     func testAutoCheckPreference() throws {
-        let suite = "updater_auto_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("updater_auto")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let updater = AppUpdaterManager(currentVersion: "2.0.0", defaults: defaults)

@@ -11,7 +11,7 @@ import Foundation
 struct CalendarMergedOverviewTests {
 
     private func makeStore() -> (PurahWorkspaceStore, CalendarPlugin, CalendarPluginState) {
-        let isolated = UserDefaults(suiteName: "test_merged_overview_\(UUID().uuidString)")!
+        let isolated = TestDefaults.make(TestDefaults.uniqueName("test_merged_overview"))
         let store = PurahWorkspaceStore(userDefaults: isolated)
         store.loadPersistentState()
 

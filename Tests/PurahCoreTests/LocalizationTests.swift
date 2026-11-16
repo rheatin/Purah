@@ -165,7 +165,8 @@ struct LocalizationTests {
             // referenced by the strip under new key names while only the retired
             // legacy spellings existed, so the rail showed the raw key.
             // +1: music.activatePlayer
-            .traditionalChinese: 1029
+            // +1: the shelf's quota warning when starred files alone exceed it.
+            .traditionalChinese: 1030
         ]
 
         for (language, expected) in pinnedCoverage {

@@ -21,8 +21,8 @@ struct PluginLifecycleAndHitboxRegressionTests {
 
     @Test("One pod's overview cannot create another pod's hit frames")
     func testOverviewHitFramesStayScopedToTheirPod() throws {
-        let suite = "plugin_overview_hitbox_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("plugin_overview_hitbox")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)
@@ -104,8 +104,8 @@ struct PluginLifecycleAndHitboxRegressionTests {
 
     @Test("A built-in plugin can be reinstalled in the same session")
     func testBuiltInPluginReinstallsAfterUnregister() {
-        let suite = "plugin_reinstall_\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let suite = TestDefaults.uniqueName("plugin_reinstall")
+        let defaults = TestDefaults.make(suite)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let store = PurahWorkspaceStore(userDefaults: defaults)

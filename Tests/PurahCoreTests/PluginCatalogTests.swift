@@ -34,7 +34,7 @@ struct PluginCatalogTests {
     private func isolatedService() -> PluginCatalogService {
         PluginCatalogService(
             provider: nil,
-            userDefaults: UserDefaults(suiteName: "test_catalog_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make(TestDefaults.uniqueName("test_catalog"))
         )
     }
 
@@ -109,7 +109,7 @@ struct PluginCatalogTests {
     @Test("A remote entry can never shadow a built-in id")
     func testRemoteCannotShadowBuiltIn() {
         let store = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "test_catalog_shadow_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make("test_catalog_shadow")
         )
         let market = PluginMarketManager(store: store)
         let builtInCount = market.availableCatalog.count
@@ -129,7 +129,7 @@ struct PluginCatalogTests {
     @Test("Remote entries append after built-ins so grid order is stable")
     func testRemoteAppendsAfterBuiltIns() {
         let store = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "test_catalog_order_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make("test_catalog_order")
         )
         let market = PluginMarketManager(store: store)
         let builtInIds = market.builtInCatalog.map(\.id)
@@ -143,7 +143,7 @@ struct PluginCatalogTests {
     @Test("Resetting the catalog drops remote entries and keeps built-ins")
     func testReset() {
         let store = PurahWorkspaceStore(
-            userDefaults: UserDefaults(suiteName: "test_catalog_reset_\(UUID().uuidString)")!
+            userDefaults: TestDefaults.make("test_catalog_reset")
         )
         let market = PluginMarketManager(store: store)
         market.applyRemoteCatalog([manifest(id: "com.example.temp")])
@@ -168,7 +168,7 @@ struct PluginCatalogTests {
 
     @Test("A successful fetch populates and caches the entries")
     func testFetchAndCache() async throws {
-        let defaults = UserDefaults(suiteName: "test_catalog_cache_\(UUID().uuidString)")!
+        let defaults = TestDefaults.make("test_catalog_cache")
         let payload = PurahPluginCatalog(entries: [manifest(id: "com.example.cached")])
         let data = try JSONEncoder().encode(payload)
         let service = PluginCatalogService(
@@ -189,7 +189,7 @@ struct PluginCatalogTests {
 
     @Test("A failed fetch keeps the last known catalog instead of emptying it")
     func testFailureKeepsCache() async throws {
-        let defaults = UserDefaults(suiteName: "test_catalog_fail_\(UUID().uuidString)")!
+        let defaults = TestDefaults.make("test_catalog_fail")
         let payload = PurahPluginCatalog(entries: [manifest(id: "com.example.keep")])
         let seeded = PluginCatalogService(
             provider: StubProvider(data: try JSONEncoder().encode(payload)),

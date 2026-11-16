@@ -9,8 +9,8 @@ import Foundation
 struct PerPodAlertToggleTests {
 
     private func makeStore() throws -> (store: PurahWorkspaceStore, defaults: UserDefaults, suite: String) {
-        let suite = "per_pod_alert_\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let suite = TestDefaults.uniqueName("per_pod_alert")
+        let defaults = TestDefaults.make(suite)
         return (PurahWorkspaceStore(userDefaults: defaults), defaults, suite)
     }
 
