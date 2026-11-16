@@ -172,25 +172,6 @@ public final class TerminalSuggestionBridge: @unchecked Sendable {
         return ready
     }
 
-    private func checkEndpoint() -> Endpoint? {
-        lock.lock()
-        defer { lock.unlock() }
-        return isListening ? endpoint : nil
-    }
-
-    public func startIfNeededAsync(timeout: TimeInterval = 1.0) async -> Endpoint? {
-        if let immediate = checkEndpoint() {
-            return immediate
-        }
-        guard timeout > 0 else { return nil }
-        return await withCheckedContinuation { continuation in
-            queue.async { [weak self] in
-                let res = self?.startIfNeeded(timeout: timeout)
-                continuation.resume(returning: res)
-            }
-        }
-    }
-
     public func stop() {
         lock.lock()
         generation &+= 1

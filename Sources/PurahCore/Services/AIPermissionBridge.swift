@@ -181,26 +181,6 @@ public final class AIPermissionBridge: @unchecked Sendable {
         return ready
     }
 
-    private func checkIsListening() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return isListening
-    }
-
-    @discardableResult
-    public func waitUntilListeningAsync(timeout: TimeInterval = 3) async -> Bool {
-        if checkIsListening() {
-            return true
-        }
-        guard timeout > 0 else { return false }
-        return await withCheckedContinuation { continuation in
-            queue.async { [weak self] in
-                let ready = self?.waitUntilListening(timeout: timeout) ?? false
-                continuation.resume(returning: ready)
-            }
-        }
-    }
-
     public func stop() {
         lock.lock()
         listener?.cancel()

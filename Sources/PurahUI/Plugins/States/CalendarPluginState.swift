@@ -234,14 +234,6 @@ public final class CalendarPluginState: Sendable {
         return String(format: "calendar.countdown.days".localized, totalMinutes / 1_440)
     }
 
-    public func upNextMinutesUntilStart(at now: Date) -> Double? {
-        guard let event = resolveUpNextEvent(now: now) else { return nil }
-        if event.startTime <= now && now < event.endTime {
-            return 0
-        }
-        return max(event.startTime.timeIntervalSince(now) / 60.0, 0)
-    }
-
     /// A 0...1 rail fill: now is full, and an event four hours or more away is
     /// empty. The composite rail uses this with the shared telemetry colours.
     public func upNextRailRatio(at now: Date) -> Double {
