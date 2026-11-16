@@ -52,6 +52,14 @@ public final class ShelfPluginState: Sendable {
     /// touching the person's real files or Trash.
     @ObservationIgnored public var moveHandler: (URL, URL) throws -> Void
     @ObservationIgnored public var recycleHandler: (URL) throws -> Void
+    /// Warns at most once while the quota stays unreachable, so a save on every
+    /// shelf change does not fire a toast per action.
+    @ObservationIgnored private var didWarnUnattainableQuota = false
+    /// Asset file names this app itself wrote (archives, dropped images, text
+    /// and links). The orphan sweep may only delete a file from this set: a
+    /// file ingested with Move is the person's only copy, and a crash between
+    /// the move and the index write must never turn it into sweepable litter.
+    @ObservationIgnored private var generatedAssetNames: Set<String> = []
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var selectedFiles: [ShelfFileItem] {
@@ -139,6 +147,9 @@ public final class ShelfPluginState: Sendable {
         self.diskQuota = storage.codable(forKey: "diskQuota", as: PurahDiskQuota.self) ?? .mb250
         self.autoPrune = storage.string(forKey: "autoPrune") != nil ? storage.bool(forKey: "autoPrune") : true
         self.autoRemoveOnDrag = storage.string(forKey: "autoRemoveOnDrag") != nil ? storage.bool(forKey: "autoRemoveOnDrag") : true
+        self.generatedAssetNames = Set(
+            storage.codable(forKey: "generatedAssetNames", as: [String].self) ?? []
+        )
         self.moveHandler = { source, destination in
             try FileManager.default.moveItem(at: source, to: destination)
         }
@@ -192,6 +203,9 @@ public final class ShelfPluginState: Sendable {
         if storage.string(forKey: "autoRemoveOnDrag") != nil {
             self.autoRemoveOnDrag = storage.bool(forKey: "autoRemoveOnDrag")
         }
+        if let generated = storage.codable(forKey: "generatedAssetNames", as: [String].self) {
+            self.generatedAssetNames = Set(generated)
+        }
         if hasAuthoritativeIndex {
             cleanupOrphanedAssets()
             if enforceStoragePolicies() {
@@ -213,6 +227,14 @@ public final class ShelfPluginState: Sendable {
     private func persistFiles() {
         storage.setCodable(files, forKey: "stashedFiles")
         fileStorage.saveIndex(files)
+    }
+
+    /// Marks an asset as written by this app, so the orphan sweep may delete it
+    /// if its row is ever lost. A file ingested with Move is never marked: it
+    /// is the person's only copy, not something Purah can regenerate.
+    private func recordGeneratedAsset(_ url: URL) {
+        guard generatedAssetNames.insert(url.lastPathComponent).inserted else { return }
+        storage.setCodable(Array(generatedAssetNames), forKey: "generatedAssetNames")
     }
 
     /// Applies the retention and quota controls shown in Settings.
@@ -240,20 +262,35 @@ public final class ShelfPluginState: Sendable {
         }
 
         if autoPrune, let maxBytes = diskQuota.maxBytes, totalBytes > maxBytes {
-            let oldestFirst = policyCandidates
-                .filter {
-                    !$0.isFavorite
-                        && !idsToRemove.contains($0.id)
-                        && (sizes[$0.id] ?? 0) > 0
+            // Starred files are immunity, not reclaimable bytes. Counting their
+            // assets here told the loop it could get under quota, so it deleted
+            // every unstarred row — files and all — and stayed over anyway.
+            // The clipboard's quota pass made the same mistake; this mirrors
+            // the rule it now uses.
+            let starredBytes = policyCandidates
+                .filter(\.isFavorite)
+                .reduce(Int64(0)) { $0 + (sizes[$1.id] ?? 0) }
+            if starredBytes >= maxBytes {
+                reportUnattainableQuota(totalBytes: totalBytes, maxBytes: maxBytes)
+            } else {
+                let oldestFirst = policyCandidates
+                    .filter {
+                        !$0.isFavorite
+                            && !idsToRemove.contains($0.id)
+                            && (sizes[$0.id] ?? 0) > 0
+                    }
+                    .sorted {
+                        $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp
+                    }
+                for item in oldestFirst {
+                    guard totalBytes > maxBytes else { break }
+                    idsToRemove.insert(item.id)
+                    totalBytes -= sizes[item.id] ?? 0
                 }
-                .sorted {
-                    $0.timestamp == $1.timestamp ? $0.id < $1.id : $0.timestamp < $1.timestamp
-                }
-            for item in oldestFirst {
-                guard totalBytes > maxBytes else { break }
-                idsToRemove.insert(item.id)
-                totalBytes -= sizes[item.id] ?? 0
             }
+        }
+        if totalBytes <= (diskQuota.maxBytes ?? .max) {
+            didWarnUnattainableQuota = false
         }
 
         guard !idsToRemove.isEmpty else { return false }
@@ -270,6 +307,22 @@ public final class ShelfPluginState: Sendable {
         files.removeAll { idsToRemove.contains($0.id) }
         boundStore?._shelfFiles.removeAll { idsToRemove.contains($0.id) }
         return true
+    }
+
+    /// Starred rows alone are over the quota, so no legal prune can get under
+    /// it. Wiping every unstarred row would lose the shelf and change nothing.
+    private func reportUnattainableQuota(totalBytes: Int64, maxBytes: Int64) {
+        guard !didWarnUnattainableQuota else { return }
+        didWarnUnattainableQuota = true
+        let usedMB = Double(totalBytes) / (1024.0 * 1024.0)
+        let maxMB = Double(maxBytes) / (1024.0 * 1024.0)
+        boundStore?.onCapacityWarningToast?(
+            String(
+                format: "dropshelf.quotaUnattainable".localized,
+                maxMB,
+                usedMB
+            )
+        )
     }
 
     /// Only files inside the shelf sandbox can reduce disk usage when their
@@ -476,8 +529,10 @@ public final class ShelfPluginState: Sendable {
         let zipName = targets.count == 1
             ? "\(targets[0].name).zip"
             : "Shelf_Archive_\(Int(Date().timeIntervalSince1970)).zip"
-        let destZipURL = fileStorage.assetsDirectory.appendingPathComponent(zipName)
-        try? FileManager.default.removeItem(at: destZipURL)
+        // An existing archive is never replaced: another shelf row may still
+        // point at it, and a failed `zip` would leave that row dangling. A
+        // repeat compress of the same file gets its own uniquely named archive.
+        let destZipURL = uniqueAssetURL(for: zipName)
 
         var sourcePaths: [String] = []
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
@@ -517,6 +572,7 @@ public final class ShelfPluginState: Sendable {
 
         guard FileManager.default.fileExists(atPath: destZipURL.path) else { return nil }
 
+        recordGeneratedAsset(destZipURL)
         addFile(url: destZipURL, mode: .owned)
         let standardizedZipPath = destZipURL.standardizedFileURL.path
         if let newZipItem = files.first(where: {
@@ -544,6 +600,7 @@ public final class ShelfPluginState: Sendable {
 
         let fileURL = uniqueAssetURL(for: baseName)
         guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
+        recordGeneratedAsset(fileURL)
         addFile(url: fileURL, mode: .owned)
         let standardizedPath = fileURL.standardizedFileURL.path
         return files.first(where: { $0.filePath == standardizedPath })
@@ -559,6 +616,7 @@ public final class ShelfPluginState: Sendable {
         let baseName = "Snippet_\(Int(Date().timeIntervalSince1970)).txt"
         let fileURL = uniqueAssetURL(for: baseName)
         guard (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
+        recordGeneratedAsset(fileURL)
         addFile(url: fileURL, mode: .owned)
         let standardizedPath = fileURL.standardizedFileURL.path
         return files.first(where: { $0.filePath == standardizedPath })
@@ -589,6 +647,7 @@ public final class ShelfPluginState: Sendable {
         """
         guard let data = weblocPlist.data(using: .utf8),
               (try? data.write(to: fileURL, options: .atomic)) != nil else { return nil }
+        recordGeneratedAsset(fileURL)
         addFile(url: fileURL, mode: .owned)
         let standardizedPath = fileURL.standardizedFileURL.path
         return files.first(where: { $0.filePath == standardizedPath })
@@ -810,6 +869,11 @@ public final class ShelfPluginState: Sendable {
 
     /// Removes assets that no shelf row references and that are old enough
     /// that no drag receiver can still be reading them.
+    ///
+    /// Only files this app wrote itself are eligible. A file ingested with
+    /// Move is the person's only copy: if the app crashed between the move and
+    /// the index write, its row is gone but its bytes are not litter, and age
+    /// cannot tell the two apart — a renamed file keeps its original dates.
     private func cleanupOrphanedAssets(olderThan maxAge: TimeInterval = 86_400) {
         let fm = FileManager.default
         let assets = fileStorage.assetsDirectory
@@ -834,10 +898,20 @@ public final class ShelfPluginState: Sendable {
         for url in urls {
             let path = url.standardizedFileURL.path
             guard !referencedPaths.contains(path) else { continue }
+            guard generatedAssetNames.contains(url.lastPathComponent) else { continue }
             guard let values = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
                   let modified = values.contentModificationDate,
                   modified < cutoff else { continue }
             try? fm.removeItem(at: url)
+        }
+
+        // Names of files that are gone are dead weight in a stored set that is
+        // never otherwise pruned: keep only what is still on disk.
+        let onDisk = Set(urls.map(\.lastPathComponent))
+        let live = generatedAssetNames.intersection(onDisk)
+        if live.count != generatedAssetNames.count {
+            generatedAssetNames = live
+            storage.setCodable(Array(live), forKey: "generatedAssetNames")
         }
     }
 }
