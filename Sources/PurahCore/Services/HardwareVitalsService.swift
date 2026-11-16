@@ -139,7 +139,11 @@ private enum ProcessSamplingWorker {
         var names: [Int32: ProcessNameCacheEntry] = [:]
         names.reserveCapacity(pids.count)
 
-        for pid in pids {
+        for (index, pid) in pids.enumerated() {
+            // A cancelled walk must stop. The caller drops a cancelled answer,
+            // so stopping early loses nothing — and a fast drawer close/open
+            // no longer leaves the old 580-process sweep running beside the new.
+            if index % 64 == 0, Task.isCancelled { break }
             let executablePath = processTable[pid]?.executablePath
             let name: String
             if let cached = input.nameCache[pid],
@@ -272,7 +276,8 @@ private enum ProcessSamplingWorker {
         var table: [Int32: ProcessExecutableRecord] = [:]
         table.reserveCapacity(pids.count)
 
-        for pid in pids {
+        for (index, pid) in pids.enumerated() {
+            if index % 64 == 0, Task.isCancelled { break }
             var info = proc_bsdinfo()
             let size = proc_pidinfo(
                 pid,
@@ -1481,9 +1486,17 @@ public final class HardwareVitalsService {
     private nonisolated static func sampleProcessesInBackground(
         _ input: ProcessSamplingInput
     ) async -> ProcessSamplingOutput {
-        await Task.detached(priority: .utility) {
+        // Cancel the detached walk with its waiter: cancelling the outer task
+        // does not reach a `Task.detached` on its own, so the walk kept running
+        // after the Processes tab closed.
+        let walk = Task.detached(priority: .utility) {
             ProcessSamplingWorker.sample(input)
-        }.value
+        }
+        return await withTaskCancellationHandler {
+            await walk.value
+        } onCancel: {
+            walk.cancel()
+        }
     }
 
     private func publishProcessSample(_ output: ProcessSamplingOutput) {
@@ -2002,10 +2015,6 @@ public final class HardwareVitalsService {
     }
 
     // MARK: - Zero-Overhead GPU & Network Telemetry
-
-    public func readGPUUsage() -> Double {
-        readGPUUsageDetailed().device
-    }
 
     public func readGPUUsageDetailed() -> (
         device: Double,
