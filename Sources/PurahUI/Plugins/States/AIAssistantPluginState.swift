@@ -335,6 +335,14 @@ public final class AIAssistantPluginState: Sendable {
     /// replaced it, so a stopped answer broke the next one.
     @ObservationIgnored private var streamGeneration = 0
     @ObservationIgnored private var accumulatedStreamRaw: String = ""
+    /// Coalesces streamed repaints. Appending a chunk is cheap; parsing the
+    /// whole answer and republishing it on every token is O(n²) on the main
+    /// thread. Paint at most once per `streamPaintInterval`, and once more when
+    /// the turn ends.
+    @ObservationIgnored private var pendingStreamPaint: Task<Void, Never>?
+    @ObservationIgnored private var pendingStreamPaintTarget: (sessionId: String, assistantMsgId: UUID, generation: Int)?
+    @ObservationIgnored private var lastStreamPaint = Date.distantPast
+    private static let streamPaintInterval: TimeInterval = 0.05
 
     public var activeSession: AIChatSession? {
         if let match = sessions.first(where: { $0.id == activeSessionId }) {
@@ -1057,6 +1065,7 @@ public final class AIAssistantPluginState: Sendable {
         self.activeSessionId = newSession.id
         self.isEditingSource = false
         self.inputText = ""
+        discardStagedAttachmentFiles(self.stagedAttachments)
         self.stagedAttachments.removeAll()
     }
 
@@ -1670,6 +1679,9 @@ public final class AIAssistantPluginState: Sendable {
         isStreaming = true
         activeQuickAction = effectiveAction
         activeRole = role
+        pendingStreamPaint?.cancel()
+        pendingStreamPaint = nil
+        pendingStreamPaintTarget = nil
         accumulatedStreamRaw = ""
         streamGeneration &+= 1
         let generation = streamGeneration
@@ -1779,13 +1791,45 @@ public final class AIAssistantPluginState: Sendable {
     private func handleChunk(_ chunk: String, forSession sessionId: String, assistantMsgId: UUID, generation: Int) {
         guard isStreaming, generation == streamGeneration else { return }
         accumulatedStreamRaw += chunk
+        let target = (sessionId: sessionId, assistantMsgId: assistantMsgId, generation: generation)
+        pendingStreamPaintTarget = target
+        guard pendingStreamPaint == nil else { return }
+
+        if Date().timeIntervalSince(lastStreamPaint) >= Self.streamPaintInterval {
+            pendingStreamPaintTarget = nil
+            paintStreamedText(target)
+        } else {
+            pendingStreamPaint = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(50))
+                guard let self else { return }
+                self.pendingStreamPaint = nil
+                guard let target = self.pendingStreamPaintTarget else { return }
+                self.pendingStreamPaintTarget = nil
+                self.paintStreamedText(target)
+            }
+        }
+    }
+
+    private func paintStreamedText(_ target: (sessionId: String, assistantMsgId: UUID, generation: Int)) {
+        guard isStreaming, target.generation == streamGeneration else { return }
+        lastStreamPaint = Date()
         let parsed = AIThinkAndChoicesParser.parse(raw: accumulatedStreamRaw)
-        if let sIdx = sessions.firstIndex(where: { $0.id == sessionId }),
-           let aIdx = sessions[sIdx].messages.firstIndex(where: { $0.id == assistantMsgId }) {
+        if let sIdx = sessions.firstIndex(where: { $0.id == target.sessionId }),
+           let aIdx = sessions[sIdx].messages.firstIndex(where: { $0.id == target.assistantMsgId }) {
             sessions[sIdx].messages[aIdx].content = parsed.cleanText
             sessions[sIdx].messages[aIdx].reasoningContent = parsed.reasoning
             sessions[sIdx].messages[aIdx].choices = parsed.choices
         }
+    }
+
+    /// Lands a coalesced paint immediately. Called at the end of a turn and on
+    /// stop, so the last chunk before the boundary is never left unpainted.
+    private func flushPendingStreamPaint() {
+        pendingStreamPaint?.cancel()
+        pendingStreamPaint = nil
+        guard let target = pendingStreamPaintTarget else { return }
+        pendingStreamPaintTarget = nil
+        paintStreamedText(target)
     }
 
     /// Stamps the answer with what actually produced it.
@@ -1828,6 +1872,9 @@ public final class AIAssistantPluginState: Sendable {
         // A cancelled turn still reaches here after the request that replaced
         // it has started; its completion must not clear the new one's state.
         guard generation == streamGeneration else { return }
+        // The last chunk may still be waiting in the paint window; land it
+        // before the turn closes or a fast final token never reaches the text.
+        flushPendingStreamPaint()
         isStreaming = false
         activeQuickAction = nil
         currentStreamingTask = nil
@@ -1845,6 +1892,7 @@ public final class AIAssistantPluginState: Sendable {
     }
 
     public func stopStreaming() {
+        flushPendingStreamPaint()
         currentStreamingTask?.cancel()
         currentStreamingTask = nil
         isStreaming = false
@@ -1932,6 +1980,9 @@ public final class AIAssistantPluginState: Sendable {
         guard !items.isEmpty else { return false }
         let slots = max(AIAttachmentBudget.maxAttachments - stagedAttachments.count, 0)
         let staged = Array(items.prefix(slots))
+        // Over-budget attachments are dropped from the UI; their files go too,
+        // or nothing would ever own them.
+        discardStagedAttachmentFiles(Array(items.dropFirst(staged.count)))
         stagedAttachments.append(contentsOf: staged)
         // Nothing on screen would otherwise change, and a paste that appears to do nothing
         // is indistinguishable from a broken one. Name the file in the prompt, as a drop does.
@@ -1977,7 +2028,11 @@ public final class AIAssistantPluginState: Sendable {
             self.isAwaitingRoleForDroppedContent = true
         } else {
             if self.stagedAttachments.count < AIAttachmentBudget.maxAttachments {
-                self.stagedAttachments.append(contentsOf: attachments.prefix(budgetSlots))
+                let accepted = attachments.prefix(budgetSlots)
+                discardStagedAttachmentFiles(Array(attachments.dropFirst(accepted.count)))
+                self.stagedAttachments.append(contentsOf: accepted)
+            } else {
+                discardStagedAttachmentFiles(attachments)
             }
             self.refineInputText = text
             self.stagedDropText = text
@@ -1986,6 +2041,24 @@ public final class AIAssistantPluginState: Sendable {
             self.isAwaitingRoleForDroppedContent = false
         }
         self.focusRequestCounter += 1
+    }
+
+    /// Deletes staged assets that never made it into a message.
+    ///
+    /// A sent attachment is owned by the transcript, and `AIChatSession.assetPaths`
+    /// removes it with the session. One that was dropped instead — new session,
+    /// past the attachment budget — has no other owner, so its file would sit in
+    /// `assets/drops` forever. Files outside the AI sandbox are never touched:
+    /// those are the person's own documents.
+    private func discardStagedAttachmentFiles(_ attachments: [AIAttachmentItem]) {
+        guard !attachments.isEmpty else { return }
+        let root = PurahPluginFileStorage(pluginId: "ai").rootDirectory.standardized.path
+        for attachment in attachments {
+            guard let path = attachment.filePath else { continue }
+            let normalized = URL(fileURLWithPath: path).standardized.path
+            guard normalized.hasPrefix(root + "/") else { continue }
+            try? FileManager.default.removeItem(atPath: normalized)
+        }
     }
 
     /// Persists raw drag image data (`.png` / `.tiff`) into the plugin cache so it can be attached.

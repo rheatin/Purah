@@ -1495,6 +1495,31 @@ public final class AIAssistantService {
         }
     }
 
+    /// `readDataToEndOfFile` waits for every writer to close. A CLI that
+    /// backgrounded a child leaves that child holding this pipe open after the
+    /// CLI itself is gone, so there is no EOF to wait for: the call never
+    /// returns, the continuation never resumes, and `isStreaming` stays true
+    /// for the rest of the session. Drain what is already buffered, with a
+    /// deadline, the same way ScriptRunwayService's shell runner does.
+    private nonisolated static func drainRemaining(_ handle: FileHandle) -> Data {
+        let fd = handle.fileDescriptor
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        var collected = Data()
+        let deadline = Date().addingTimeInterval(1)
+        var buffer = [UInt8](repeating: 0, count: 8192)
+        while Date() < deadline {
+            let count = read(fd, &buffer, buffer.count)
+            if count > 0 {
+                collected.append(contentsOf: buffer[0..<count])
+            } else if count == 0 || (errno != EAGAIN && errno != EWOULDBLOCK) {
+                break
+            } else {
+                usleep(10_000)
+            }
+        }
+        return collected
+    }
+
     /// Argument shapes for the diagnostic log: flags survive, long values are
     /// replaced by their length. Prompts and chat history routinely exceed the
     /// whole log, and a diagnostics report gets pasted into issues.
@@ -1757,13 +1782,13 @@ public final class AIAssistantService {
                     outputPipe.fileHandleForReading.readabilityHandler = nil
                     errorPipe.fileHandleForReading.readabilityHandler = nil
 
-                    let remainingData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    let remainingData = Self.drainRemaining(outputPipe.fileHandleForReading)
                     if !remainingData.isEmpty, let remainingText = String(data: remainingData, encoding: .utf8) {
                         bytesEmitted.set(true)
                         processChunk(remainingText)
                     }
 
-                    let remainingErrData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    let remainingErrData = Self.drainRemaining(errorPipe.fileHandleForReading)
                     if !remainingErrData.isEmpty, let remainingErrText = String(data: remainingErrData, encoding: .utf8) {
                         bytesEmitted.set(true)
                         errorBuffer.append(remainingErrText)
