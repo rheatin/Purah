@@ -109,18 +109,9 @@ public final class MusicPluginState: Sendable {
     }
 
     public func seek(to progress: Double, store: PurahWorkspaceStore? = nil) {
-        let clamped = min(max(progress, 0.0), 1.0)
-        let total = max(track.durationSeconds, 1.0)
-        let targetSec = clamped * total
-        track.currentPositionSeconds = targetSec
-        track.lastUpdated = Date()
-        track.playbackProgress = clamped
-
-        let targetStore = store ?? boundStore
-        if let targetStore {
-            targetStore._musicTrack = track
-        }
+        guard let targetStore = store ?? boundStore else { return }
         SystemMusicSyncService.shared.seek(to: progress, store: targetStore)
+        self.track = targetStore._musicTrack
     }
 
     public func update(from trackInfo: MusicTrackInfo) {
@@ -136,9 +127,15 @@ public final class MusicPluginState: Sendable {
                 if merged.lyrics == nil { merged.lyrics = self.track.lyrics }
                 if merged.syncedLyrics == nil { merged.syncedLyrics = self.track.syncedLyrics }
                 if merged.artworkData == nil { merged.artworkData = self.track.artworkData }
+                if merged.sourceBundleId.isEmpty { merged.sourceBundleId = self.track.sourceBundleId }
+                if merged.sourceApp.isEmpty || merged.sourceApp == "Media Player" {
+                    merged.sourceApp = self.track.sourceApp
+                }
             }
             self.track = merged
             store._musicTrack = merged
+        } else if !self.track.title.isEmpty {
+            store._musicTrack = self.track
         }
         self.isWaveformAnimationEnabled = store.isMusicWaveformAnimationEnabled
 
@@ -153,12 +150,26 @@ public final class MusicPluginState: Sendable {
                 if merged.lyrics == nil { merged.lyrics = self.track.lyrics }
                 if merged.syncedLyrics == nil { merged.syncedLyrics = self.track.syncedLyrics }
                 if merged.artworkData == nil { merged.artworkData = self.track.artworkData }
+                if merged.sourceBundleId.isEmpty { merged.sourceBundleId = self.track.sourceBundleId }
+                if merged.sourceApp.isEmpty || merged.sourceApp == "Media Player" {
+                    merged.sourceApp = self.track.sourceApp
+                }
                 merged.lyricsOffsetSeconds = self.track.lyricsOffsetSeconds
                 merged.isLyricsHidden = self.track.isLyricsHidden
                 if merged.selectedLyricsCandidateId == nil { merged.selectedLyricsCandidateId = self.track.selectedLyricsCandidateId }
                 if merged.lyricsCandidates.isEmpty { merged.lyricsCandidates = self.track.lyricsCandidates }
             }
+            let shouldPersist = merged.title != self.track.title
+                || merged.artist != self.track.artist
+                || merged.sourceBundleId != self.track.sourceBundleId
+                || merged.sourceApp != self.track.sourceApp
+                || merged.selectedLyricsCandidateId != self.track.selectedLyricsCandidateId
+                || merged.lyricsOffsetSeconds != self.track.lyricsOffsetSeconds
+                || merged.isLyricsHidden != self.track.isLyricsHidden
             self.track = merged
+            if shouldPersist {
+                self.save()
+            }
         }
         SystemMusicSyncService.shared.startListening(into: store)
 

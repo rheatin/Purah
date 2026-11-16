@@ -102,14 +102,26 @@ public struct MusicPlugin: PurahPodPlugin {
         if lower.contains("safari") {
             return "Safari"
         }
+        if (sourceApp.isEmpty || sourceApp == "Media Player"), !bundleId.isEmpty {
+            if let known = SystemMusicSyncService.knownDisplayName(for: bundleId) {
+                return known
+            }
+            if let installed = SystemMusicSyncService.installedAppDisplayName(forBundleIdentifier: bundleId) {
+                return installed
+            }
+        }
         return sourceApp
     }
 
     public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
         let hasTrack = !state.track.title.isEmpty || !context.store._musicTrack.title.isEmpty
         guard hasTrack else { return nil }
-        let source = state.track.sourceApp
-        let bundleId = state.track.sourceBundleId
+        let source = (!state.track.sourceApp.isEmpty && state.track.sourceApp != "Media Player")
+            ? state.track.sourceApp
+            : context.store._musicTrack.sourceApp
+        let bundleId = !state.track.sourceBundleId.isEmpty
+            ? state.track.sourceBundleId
+            : context.store._musicTrack.sourceBundleId
         let displaySource = Self.normalizedSourceDisplayName(sourceApp: source, bundleId: bundleId)
         guard !displaySource.isEmpty else { return nil }
         return .badge(displaySource)

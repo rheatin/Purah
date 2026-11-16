@@ -831,6 +831,10 @@ public struct MusicDrawerView: View {
         if !bundleId.isEmpty {
             candidateBundleIds.append(bundleId)
         }
+        if let knownId = SystemMusicSyncService.knownBundleId(forSourceApp: sourceApp),
+           !candidateBundleIds.contains(knownId) {
+            candidateBundleIds.append(knownId)
+        }
 
         let lower = sourceApp.lowercased()
         if lower == "music" || lower == "apple music" {
@@ -854,6 +858,10 @@ public struct MusicDrawerView: View {
                 let icon = NSWorkspace.shared.icon(forFile: appURL.path)
                 sourceAppIconCache[cacheKey] = icon
                 return icon
+            }
+            if let runningIcon = NSRunningApplication.runningApplications(withBundleIdentifier: targetBundleId).first?.icon {
+                sourceAppIconCache[cacheKey] = runningIcon
+                return runningIcon
             }
             if targetBundleId == "com.apple.Music",
                FileManager.default.fileExists(atPath: "/System/Applications/Music.app") {
@@ -903,7 +911,7 @@ public struct MusicDrawerView: View {
     private func activateMusicPlayerApp() {
         store.triggerControlHaptic(.levelChange)
         let activeTrack = !state.track.title.isEmpty ? state.track : store._musicTrack
-        SystemMusicSyncService.shared.activateSourcePlayer(for: activeTrack)
+        SystemMusicSyncService.shared.activateSourcePlayer(for: activeTrack, store: store)
     }
 
     private func timeString(for seconds: Double) -> String {
