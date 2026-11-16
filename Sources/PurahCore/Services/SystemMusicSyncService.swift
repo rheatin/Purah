@@ -34,6 +34,7 @@ public final class SystemMusicSyncService {
     @ObservationIgnored private var mediaRemoteObserver: Any?
     @ObservationIgnored private var mediaRemoteAppObserver: Any?
     @ObservationIgnored private var mediaRemotePlayingObserver: Any?
+    @ObservationIgnored private var appTerminationObserver: Any?
     @ObservationIgnored private var cachedArtworkKey: String?
     @ObservationIgnored private var cachedArtworkData: Data?
     @ObservationIgnored private var cachedLyricsKey: String?
@@ -52,6 +53,8 @@ public final class SystemMusicSyncService {
     /// callback decides whether the AppleScript runtime has to be loaded at
     /// all; a non-empty title means it does not.
     @ObservationIgnored private var pendingStartupAppleScriptFallback = false
+    @ObservationIgnored private var lastResolvedSourceApp: String = ""
+    @ObservationIgnored private var lastResolvedSourceBundleId: String = ""
 
     public private(set) var isMusicAppConnected: Bool = false
     public private(set) var lastNotificationDate: Date?
@@ -97,6 +100,10 @@ public final class SystemMusicSyncService {
             nc.removeObserver(obs)
             mediaRemotePlayingObserver = nil
         }
+        if let obs = appTerminationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(obs)
+            appTerminationObserver = nil
+        }
         SystemMediaRemoteBridge.shared.unregisterForNotifications()
         clearArtworkCache()
     }
@@ -137,6 +144,28 @@ public final class SystemMusicSyncService {
             nonisolated(unsafe) let notif = notification
             MainActor.assumeIsolated {
                 self?.handleSpotifyInfo(notification: notif, store: store)
+            }
+        }
+
+        // 2b. App termination observer: immediately halt playback if the active source player quits
+        appTerminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self, weak store] notification in
+            nonisolated(unsafe) let notif = notification
+            MainActor.assumeIsolated {
+                guard let self, let store else { return }
+                if let terminatedApp = notif.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                   let termBundle = terminatedApp.bundleIdentifier {
+                    let activeBundle = Self.normalizeBundleIdentifier(store._musicTrack.sourceBundleId)
+                    let termNorm = Self.normalizeBundleIdentifier(termBundle)
+                    if !activeBundle.isEmpty && activeBundle.caseInsensitiveCompare(termNorm) == .orderedSame {
+                        self.haltPlaybackToPaused(store: store)
+                    }
+                } else if !Self.isSourcePlayerRunning(for: store._musicTrack) {
+                    self.haltPlaybackToPaused(store: store)
+                }
             }
         }
 
@@ -192,6 +221,9 @@ public final class SystemMusicSyncService {
                 MainActor.assumeIsolated {
                     guard let self = self, let store = store else { return }
                     guard !store.isRailsFrozen else { return }
+                    if store._musicTrack.isPlaying && !Self.isSourcePlayerRunning(for: store._musicTrack) {
+                        self.haltPlaybackToPaused(store: store)
+                    }
                     if SystemMediaRemoteBridge.shared.isAvailable {
                         self.handleMediaRemoteInfoUpdate(store: store)
                     } else if self.isMusicAppRunning {
@@ -232,16 +264,27 @@ public final class SystemMusicSyncService {
         isPlayingCheck: (String) -> Bool
     ) {
         guard let userInfo = notification.userInfo else { return }
-        playbackTimer?.invalidate()
-        playbackTimer = nil
-        lastNotificationDate = Date()
-        isMusicAppConnected = true
 
         let playerState = userInfo["Player State"] as? String ?? ""
         let isPlaying = isPlayingCheck(playerState)
         let title = userInfo["Name"] as? String ?? "Unknown Track"
         let artist = userInfo["Artist"] as? String ?? defaultArtist
         let album = userInfo["Album"] as? String ?? ""
+
+        // Do not let a paused/stopped notification from a background player overwrite a different actively playing app
+        if let store,
+           !isPlaying,
+           store._musicTrack.isPlaying,
+           !store._musicTrack.sourceBundleId.isEmpty,
+           store._musicTrack.sourceBundleId.lowercased() != sourceBundleId.lowercased(),
+           store._musicTrack.title != title {
+            return
+        }
+
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+        lastNotificationDate = Date()
+        isMusicAppConnected = true
 
         let totalTimeMs = Self.extractNumericValue(from: userInfo[durationKey]) ?? 180000.0
         let totalSec = max(totalTimeMs / 1000.0, 1.0)
@@ -278,6 +321,13 @@ public final class SystemMusicSyncService {
         let existingHidden = isSameTrack ? (store?._musicTrack.isLyricsHidden ?? false) : false
         let existingSelectedCandidateId = isSameTrack ? store?._musicTrack.selectedLyricsCandidateId : cachedLyr?.selectedCandidateId
         let existingCandidates = isSameTrack ? (store?._musicTrack.lyricsCandidates ?? []) : (cachedLyr?.candidates ?? [])
+
+        if !sourceBundleId.isEmpty {
+            lastResolvedSourceBundleId = Self.normalizeBundleIdentifier(sourceBundleId)
+        }
+        if !sourceApp.isEmpty && sourceApp != "Media Player" {
+            lastResolvedSourceApp = sourceApp
+        }
 
         if let store = store {
             store._musicTrack = MusicTrackInfo(
@@ -380,6 +430,7 @@ public final class SystemMusicSyncService {
             guard let dict else {
                 MainActor.assumeIsolated {
                     self?.runStartupAppleScriptFallbackIfNeeded(store: store)
+                    self?.haltPlaybackToPaused(store: store)
                 }
                 return
             }
@@ -391,6 +442,20 @@ public final class SystemMusicSyncService {
         }
     }
 
+    public func haltPlaybackToPaused(store: PurahWorkspaceStore?) {
+        guard let store, store._musicTrack.isPlaying || store._musicTrack.playbackRate > 0 else { return }
+        let frozenTime = store._musicTrack.calculatedCurrentTime
+        let totalSec = max(store._musicTrack.durationSeconds, 1.0)
+        store._musicTrack.currentPositionSeconds = frozenTime
+        store._musicTrack.playbackProgress = min(max(frozenTime / totalSec, 0.0), 1.0)
+        store._musicTrack.isPlaying = false
+        store._musicTrack.playbackRate = 0.0
+        store._musicTrack.lastUpdated = Date()
+        store._musicTrack.waveformSamples = [Double](repeating: 0.15, count: max(store._musicTrack.waveformSamples.count, 5))
+        updatePlaybackTimer(store: store, isPlaying: false)
+        onTrackChanged?(store._musicTrack)
+    }
+
     public func processMediaRemoteData(dict: [String: Any], pid: pid_t, store: PurahWorkspaceStore?) {
         guard let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String, !title.isEmpty else {
             runStartupAppleScriptFallbackIfNeeded(store: store)
@@ -398,13 +463,7 @@ public final class SystemMusicSyncService {
             // session (e.g. Dynamic.music clears the dict on pause). Swallowing
             // this update froze the rail on "playing" forever — honor it as a
             // stop signal, keeping the last anchor position.
-            if let store, store._musicTrack.isPlaying {
-                store._musicTrack.isPlaying = false
-                store._musicTrack.playbackRate = 0.0
-                store._musicTrack.waveformSamples = [Double](repeating: 0.15, count: store._musicTrack.waveformSamples.count)
-                updatePlaybackTimer(store: store, isPlaying: false)
-                onTrackChanged?(store._musicTrack)
-            }
+            haltPlaybackToPaused(store: store)
             return
         }
 
@@ -415,18 +474,65 @@ public final class SystemMusicSyncService {
         let duration = Self.extractNumericValue(from: dict["kMRMediaRemoteNowPlayingInfoDuration"]) ?? 180.0
         let elapsed = Self.extractNumericValue(from: dict["kMRMediaRemoteNowPlayingInfoElapsedTime"]) ?? 0.0
         let rate = Self.extractNumericValue(from: dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"]) ?? 0.0
-        let isPlaying = (rate > 0.0)
         let artworkData = dict["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data
 
         var appName = "Media Player"
         var bundleId = ""
-        if pid > 0, let resolved = Self.resolveHostApplication(for: pid) {
+        let clientBundleId = dict["kPurahMRClientBundleIdentifier"] as? String
+        let clientDisplayName = dict["kPurahMRClientDisplayName"] as? String
+        if (pid > 0 || (clientBundleId != nil && !clientBundleId!.isEmpty)),
+           let resolved = Self.resolveHostApplication(
+               for: pid,
+               clientBundleId: clientBundleId,
+               clientDisplayName: clientDisplayName
+           ) {
             appName = resolved.name
             bundleId = resolved.bundleId
         } else if let isMusicApp = dict["kMRMediaRemoteNowPlayingInfoIsMusicApp"] as? Bool, isMusicApp {
             appName = "Apple Music"
             bundleId = "com.apple.Music"
         }
+
+        // Preserve known source player identity when MediaRemote emits a snapshot
+        // after the player process has terminated (where pid == 0 or is no longer running).
+        if bundleId.isEmpty {
+            if let existing = store?._musicTrack, !existing.title.isEmpty {
+                let existingBundle = Self.normalizeBundleIdentifier(existing.sourceBundleId)
+                let inferredBundle = Self.knownBundleId(forSourceApp: existing.sourceApp) ?? ""
+                let candidateBundle = !existingBundle.isEmpty ? existingBundle : inferredBundle
+                if !candidateBundle.isEmpty && (existing.title == title || !lastResolvedSourceBundleId.isEmpty) {
+                    bundleId = candidateBundle
+                    if !existing.sourceApp.isEmpty && existing.sourceApp != "Media Player" {
+                        appName = existing.sourceApp
+                    }
+                }
+            }
+            if bundleId.isEmpty && !lastResolvedSourceBundleId.isEmpty {
+                bundleId = lastResolvedSourceBundleId
+                if !lastResolvedSourceApp.isEmpty {
+                    appName = lastResolvedSourceApp
+                }
+            }
+        }
+
+        if !bundleId.isEmpty {
+            lastResolvedSourceBundleId = Self.normalizeBundleIdentifier(bundleId)
+            if appName.isEmpty || appName == "Media Player" {
+                appName = Self.knownDisplayName(for: lastResolvedSourceBundleId)
+                    ?? Self.installedAppDisplayName(forBundleIdentifier: lastResolvedSourceBundleId)
+                    ?? appName
+            }
+            if !appName.isEmpty && appName != "Media Player" {
+                lastResolvedSourceApp = appName
+            }
+        }
+
+        let isPlayerRunning: Bool = {
+            guard !Self.isTestingEnvironment, !bundleId.isEmpty else { return true }
+            let probe = MusicTrackInfo(title: title, sourceApp: appName, sourceBundleId: bundleId)
+            return Self.isSourcePlayerRunning(for: probe)
+        }()
+        let isPlaying = (rate > 0.0) && isPlayerRunning
 
         lastNotificationDate = Date()
         isMusicAppConnected = true
@@ -571,6 +677,13 @@ public final class SystemMusicSyncService {
 
         await MainActor.run {
             guard let store = store else { return }
+            // Do not overwrite an existing non-Apple-Music track with a paused Music.app track
+            if !isPlaying,
+               !store._musicTrack.title.isEmpty,
+               !store._musicTrack.sourceBundleId.isEmpty,
+               store._musicTrack.sourceBundleId != "com.apple.Music" {
+                return
+            }
             let isSameTrack = (store._musicTrack.title == title && store._musicTrack.artist == artist)
             let existingArtwork = (isSameTrack ? store._musicTrack.artworkData : nil) ?? cachedArtwork(for: title, artist: artist)
             let cachedLyr = cachedLyrics(for: title, artist: artist)
@@ -585,6 +698,8 @@ public final class SystemMusicSyncService {
             let existingSelectedCandidateId = isSameTrack ? store._musicTrack.selectedLyricsCandidateId : cachedLyr?.selectedCandidateId
             let existingCandidates = isSameTrack ? store._musicTrack.lyricsCandidates : (cachedLyr?.candidates ?? [])
 
+            lastResolvedSourceBundleId = "com.apple.Music"
+            lastResolvedSourceApp = "Apple Music"
             store._musicTrack = MusicTrackInfo(
                 title: title,
                 artist: artist,
@@ -1101,9 +1216,9 @@ public final class SystemMusicSyncService {
             return cached
         }
 
-        // 1. Try local Apple Music AppleScript artwork
+        // 1. Try local Apple Music AppleScript artwork only when the current track matches
         if isMusicAppRunning {
-            if let data = fetchAppleMusicNativeArtwork() {
+            if let data = fetchAppleMusicNativeArtwork(matchingTitle: title) {
                 cachedArtworkKey = key
                 cachedArtworkData = data
                 return data
@@ -1138,11 +1253,15 @@ public final class SystemMusicSyncService {
         return nil
     }
 
-    private func fetchAppleMusicNativeArtwork() -> Data? {
+    private func fetchAppleMusicNativeArtwork(matchingTitle: String? = nil) -> Data? {
+        let escapedTitle = (matchingTitle ?? "")
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let titleGuard = escapedTitle.isEmpty ? "true" : "(name of current track is \"\(escapedTitle)\")"
         let script = """
         tell application "Music"
             try
-                if player state is not stopped then
+                if player state is not stopped and \(titleGuard) then
                     set art to raw data of artwork 1 of current track
                     return art
                 end if
@@ -1168,11 +1287,39 @@ public final class SystemMusicSyncService {
         !NSRunningApplication.runningApplications(withBundleIdentifier: "com.spotify.client").isEmpty
     }
 
-    public func togglePlayPause(store: PurahWorkspaceStore?) {
+    public func togglePlayPause(
+        store: PurahWorkspaceStore?,
+        runningBundleChecker: ((String) -> Bool)? = nil
+    ) {
         guard let store = store else { return }
+        let nowPlaying = !store._musicTrack.isPlaying
+        let isPlayerRunning = Self.isSourcePlayerRunning(
+            for: store._musicTrack,
+            runningBundleChecker: runningBundleChecker
+        )
+
+        // Never fake playback (progress bar moving / lyrics scrolling) when the source player app is closed
+        if nowPlaying && !isPlayerRunning {
+            haltPlaybackToPaused(store: store)
+            return
+        }
+
+        let bundleId = store._musicTrack.sourceBundleId.lowercased()
+        let isAppleMusic = bundleId.contains("apple.music") && isMusicAppRunning
+        let isSpotify = bundleId.contains("spotify") && isSpotifyRunning
+
+        if nowPlaying,
+           !Self.isTestingEnvironment,
+           runningBundleChecker == nil,
+           !isAppleMusic,
+           !isSpotify,
+           !SystemMediaRemoteBridge.shared.hasActiveNowPlayingTrack {
+            haltPlaybackToPaused(store: store)
+            return
+        }
+
         // 1. Freeze elapsed position BEFORE altering isPlaying or playbackRate
         let frozenTime = store._musicTrack.calculatedCurrentTime
-        let nowPlaying = !store._musicTrack.isPlaying
         let totalSec = max(store._musicTrack.durationSeconds, 1.0)
 
         store._musicTrack.currentPositionSeconds = frozenTime
@@ -1183,21 +1330,48 @@ public final class SystemMusicSyncService {
         updatePlaybackTimer(store: store, isPlaying: nowPlaying)
         onTrackChanged?(store._musicTrack)
 
-        let bundleId = store._musicTrack.sourceBundleId.lowercased()
-        if bundleId.contains("apple.music") && isMusicAppRunning {
+        guard isPlayerRunning else { return }
+
+        if isAppleMusic {
             Task.detached {
                 Self.executeAppleScript("tell application \"Music\" to playpause")
             }
-        } else if bundleId.contains("spotify") && isSpotifyRunning {
+        } else if isSpotify {
             Task.detached {
                 Self.executeAppleScript("tell application \"Spotify\" to playpause")
             }
         } else if SystemMediaRemoteBridge.shared.isAvailable {
             SystemMediaRemoteBridge.shared.togglePlayPause()
         }
+
+        if !Self.isTestingEnvironment {
+            schedulePostCommandVerification(store: store)
+        }
     }
 
-    public func nextTrack(store: PurahWorkspaceStore?) {
+    private func schedulePostCommandVerification(store: PurahWorkspaceStore?) {
+        for delay in [0.35, 0.9] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak store] in
+                MainActor.assumeIsolated {
+                    guard let self, let store else { return }
+                    if !Self.isSourcePlayerRunning(for: store._musicTrack) {
+                        self.haltPlaybackToPaused(store: store)
+                    } else if SystemMediaRemoteBridge.shared.isAvailable {
+                        self.handleMediaRemoteInfoUpdate(store: store)
+                    }
+                }
+            }
+        }
+    }
+
+    public func nextTrack(
+        store: PurahWorkspaceStore?,
+        runningBundleChecker: ((String) -> Bool)? = nil
+    ) {
+        if let store, !Self.isSourcePlayerRunning(for: store._musicTrack, runningBundleChecker: runningBundleChecker) {
+            haltPlaybackToPaused(store: store)
+            return
+        }
         let bundleId = store?._musicTrack.sourceBundleId.lowercased() ?? ""
         if bundleId.contains("apple.music") && isMusicAppRunning {
             Task.detached {
@@ -1212,7 +1386,14 @@ public final class SystemMusicSyncService {
         }
     }
 
-    public func previousTrack(store: PurahWorkspaceStore?) {
+    public func previousTrack(
+        store: PurahWorkspaceStore?,
+        runningBundleChecker: ((String) -> Bool)? = nil
+    ) {
+        if let store, !Self.isSourcePlayerRunning(for: store._musicTrack, runningBundleChecker: runningBundleChecker) {
+            haltPlaybackToPaused(store: store)
+            return
+        }
         let bundleId = store?._musicTrack.sourceBundleId.lowercased() ?? ""
         if bundleId.contains("apple.music") && isMusicAppRunning {
             Task.detached {
@@ -1228,8 +1409,28 @@ public final class SystemMusicSyncService {
     }
 
     // MARK: - Real-time Seeking / Scrubbing
-    public func seek(to progress: Double, store: PurahWorkspaceStore?) {
+    public func seek(
+        to progress: Double,
+        store: PurahWorkspaceStore?,
+        runningBundleChecker: ((String) -> Bool)? = nil
+    ) {
         guard let store = store else { return }
+        guard Self.isSourcePlayerRunning(for: store._musicTrack, runningBundleChecker: runningBundleChecker) else {
+            haltPlaybackToPaused(store: store)
+            return
+        }
+        let bundleId = store._musicTrack.sourceBundleId.lowercased()
+        let isAppleMusic = bundleId.contains("apple.music") && isMusicAppRunning
+        let isSpotify = bundleId.contains("spotify") && isSpotifyRunning
+        if !Self.isTestingEnvironment,
+           runningBundleChecker == nil,
+           !isAppleMusic,
+           !isSpotify,
+           !SystemMediaRemoteBridge.shared.hasActiveNowPlayingTrack {
+            haltPlaybackToPaused(store: store)
+            return
+        }
+
         let clamped = min(max(progress, 0.0), 1.0)
         let total = max(store._musicTrack.durationSeconds, 1.0)
         let targetSec = clamped * total
@@ -1239,14 +1440,16 @@ public final class SystemMusicSyncService {
         store._musicTrack.playbackProgress = clamped
         onTrackChanged?(store._musicTrack)
 
-        if isMusicAppRunning {
+        if isAppleMusic {
             Task.detached {
                 Self.executeAppleScript("tell application \"Music\" to set player position to \(targetSec)")
             }
-        } else if isSpotifyRunning {
+        } else if isSpotify {
             Task.detached {
                 Self.executeAppleScript("tell application \"Spotify\" to set player position to \(targetSec)")
             }
+        } else if SystemMediaRemoteBridge.shared.isAvailable {
+            SystemMediaRemoteBridge.shared.seek(to: targetSec)
         }
     }
 
@@ -1274,32 +1477,150 @@ public final class SystemMusicSyncService {
         "com.spotify.client",
         "com.netease.163music",
         "com.tencent.QQMusicMac",
+        "app.neiro.ui",
         "com.google.Chrome",
         "company.thebrowser.Browser", // Arc
         "com.apple.Safari",
         "com.brave.Browser",
-        "com.microsoft.edgemac"
+        "com.microsoft.edgemac",
+        "org.mozilla.firefox",
+        "com.colliderli.iina",
+        "org.videolan.vlc"
     ]
+
+    public static func knownDisplayName(for bundleId: String) -> String? {
+        switch bundleId {
+        case "com.apple.Music": return "Apple Music"
+        case "com.spotify.client": return "Spotify"
+        case "com.netease.163music": return "NetEase Music"
+        case "com.tencent.QQMusicMac": return "QQ Music"
+        case "app.neiro.ui": return "Neiro"
+        case "com.google.Chrome": return "Google Chrome"
+        case "company.thebrowser.Browser": return "Arc"
+        case "com.apple.Safari": return "Safari"
+        case "com.brave.Browser": return "Brave Browser"
+        case "com.microsoft.edgemac": return "Microsoft Edge"
+        case "org.mozilla.firefox": return "Firefox"
+        case "com.colliderli.iina": return "IINA"
+        case "org.videolan.vlc": return "VLC"
+        case "com.apple.podcasts": return "Podcasts"
+        default: return nil
+        }
+    }
+
+    public static func knownBundleId(forSourceApp sourceApp: String) -> String? {
+        let lower = sourceApp.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch lower {
+        case "apple music", "music": return "com.apple.Music"
+        case "spotify": return "com.spotify.client"
+        case "neiro": return "app.neiro.ui"
+        case "netease music", "neteasemusic", "网易云音乐": return "com.netease.163music"
+        case "qq music", "qqmusic", "qq音乐": return "com.tencent.QQMusicMac"
+        case "google chrome", "chrome": return "com.google.Chrome"
+        case "safari": return "com.apple.Safari"
+        case "arc": return "company.thebrowser.Browser"
+        case "brave", "brave browser": return "com.brave.Browser"
+        case "microsoft edge", "edge": return "com.microsoft.edgemac"
+        case "firefox": return "org.mozilla.firefox"
+        case "iina": return "com.colliderli.iina"
+        case "vlc": return "org.videolan.vlc"
+        case "podcasts": return "com.apple.podcasts"
+        default: return nil
+        }
+    }
+
+    public static func isSourcePlayerRunning(
+        for track: MusicTrackInfo,
+        runningBundleChecker: ((String) -> Bool)? = nil
+    ) -> Bool {
+        if Self.isTestingEnvironment && runningBundleChecker == nil {
+            return true
+        }
+        guard !track.title.isEmpty, !track.isSamplePlaceholder else {
+            return false
+        }
+        let checkRunning: (String) -> Bool = runningBundleChecker ?? { bundleId in
+            !NSRunningApplication.runningApplications(withBundleIdentifier: bundleId)
+                .filter { !$0.isTerminated }
+                .isEmpty
+        }
+        let normalizedBundleId = normalizeBundleIdentifier(track.sourceBundleId)
+        if !normalizedBundleId.isEmpty {
+            return checkRunning(normalizedBundleId)
+        }
+        if let inferred = knownBundleId(forSourceApp: track.sourceApp) {
+            return checkRunning(inferred)
+        }
+        return resolveRunningMediaAppFallback() != nil
+    }
 
     public static func resolveRunningMediaAppFallback() -> (name: String, bundleId: String)? {
         for bundleId in knownMediaAppBundleIds {
             if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first(where: { !$0.isTerminated }) {
-                let name = app.localizedName ?? ""
+                let name = app.localizedName ?? knownDisplayName(for: bundleId) ?? ""
                 return (name: name.isEmpty ? "Media Player" : name, bundleId: bundleId)
             }
         }
         return nil
     }
 
-    public static func resolveHostApplication(for pid: pid_t) -> (name: String, bundleId: String)? {
-        guard pid > 0 else { return resolveRunningMediaAppFallback() }
+    public static func installedAppDisplayName(forBundleIdentifier bundleId: String) -> String? {
+        let normalized = normalizeBundleIdentifier(bundleId)
+        guard !normalized.isEmpty,
+              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: normalized) else {
+            return nil
+        }
+        if let bundle = Bundle(url: appURL) {
+            if let displayName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String,
+               !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return displayName
+            }
+            if let bundleName = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String,
+               !bundleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return bundleName
+            }
+        }
+        let filename = appURL.deletingPathExtension().lastPathComponent
+        return filename.isEmpty ? nil : filename
+    }
+
+    public static func resolveHostApplication(
+        for pid: pid_t,
+        clientBundleId: String? = nil,
+        clientDisplayName: String? = nil
+    ) -> (name: String, bundleId: String)? {
+        if let rawClientBundleId = clientBundleId {
+            let normalizedClientId = normalizeBundleIdentifier(rawClientBundleId)
+            if !normalizedClientId.isEmpty && !normalizedClientId.lowercased().hasPrefix("com.apple.webkit") {
+                if let running = NSRunningApplication.runningApplications(withBundleIdentifier: normalizedClientId).first(where: { !$0.isTerminated }) {
+                    let name = running.localizedName
+                        ?? clientDisplayName
+                        ?? knownDisplayName(for: normalizedClientId)
+                        ?? running.bundleURL?.deletingPathExtension().lastPathComponent
+                        ?? ""
+                    return (name: name.isEmpty ? "Media Player" : name, bundleId: normalizedClientId)
+                }
+                let fallbackName = clientDisplayName
+                    ?? knownDisplayName(for: normalizedClientId)
+                    ?? installedAppDisplayName(forBundleIdentifier: normalizedClientId)
+                    ?? ""
+                return (name: fallbackName.isEmpty ? "Media Player" : fallbackName, bundleId: normalizedClientId)
+            }
+        }
+
+        guard pid > 0 else { return nil }
 
         var curPid = pid
+        var accessoryCandidate: (name: String, bundleId: String)?
         for _ in 0..<8 {
             if let app = NSRunningApplication(processIdentifier: curPid) {
                 let rawBundleId = app.bundleIdentifier ?? ""
                 let normalizedId = normalizeBundleIdentifier(rawBundleId)
-                let name = app.localizedName ?? app.bundleURL?.deletingPathExtension().lastPathComponent ?? ""
+                let name = app.localizedName
+                    ?? clientDisplayName
+                    ?? knownDisplayName(for: normalizedId)
+                    ?? app.bundleURL?.deletingPathExtension().lastPathComponent
+                    ?? ""
 
                 if app.activationPolicy == .regular && !normalizedId.isEmpty {
                     return (name: name.isEmpty ? "Media Player" : name, bundleId: normalizedId)
@@ -1311,6 +1632,10 @@ public final class SystemMusicSyncService {
                         return (name: mainName.isEmpty ? "Media Player" : mainName, bundleId: normalizedId)
                     }
                     return (name: name.isEmpty ? "Media Player" : name, bundleId: normalizedId)
+                }
+
+                if accessoryCandidate == nil && !normalizedId.isEmpty && !normalizedId.lowercased().hasPrefix("com.apple.webkit") {
+                    accessoryCandidate = (name: name.isEmpty ? "Media Player" : name, bundleId: normalizedId)
                 }
             }
 
@@ -1328,7 +1653,11 @@ public final class SystemMusicSyncService {
             curPid = parentPid
         }
 
-        return resolveRunningMediaAppFallback()
+        if let candidate = accessoryCandidate {
+            return candidate
+        }
+
+        return nil
     }
 
     public static func browserAppName(for bundleId: String) -> String? {
@@ -1407,29 +1736,94 @@ public final class SystemMusicSyncService {
         }
     }
 
-    public func activateSourcePlayer(for track: MusicTrackInfo? = nil, store: PurahWorkspaceStore? = nil) {
-        let activeTrack = track ?? store?._musicTrack ?? MusicTrackInfo.empty
-        var bundleId = Self.normalizeBundleIdentifier(activeTrack.sourceBundleId)
-        var appName = activeTrack.sourceApp
+    /// Resolves the target bundle identifier and display name for jumping to the source player.
+    /// Crucially, this preserves the source player's bundle ID even when that player has been quit,
+    /// so clicking the album artwork relaunches the exact player that was playing rather than
+    /// falling back to Apple Music or another running app.
+    public static func resolveTargetPlayer(
+        for track: MusicTrackInfo,
+        fallbackTrack: MusicTrackInfo? = nil,
+        lastResolvedBundleId: String = "",
+        lastResolvedAppName: String = ""
+    ) -> (bundleId: String, appName: String) {
+        var bundleId = normalizeBundleIdentifier(track.sourceBundleId)
+        var appName = track.sourceApp.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if bundleId.isEmpty || NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).isEmpty {
-            if let resolved = Self.resolveRunningMediaAppFallback() {
-                bundleId = resolved.bundleId
-                if appName.isEmpty || appName == "Media Player" {
-                    appName = resolved.name
+        if let inferred = knownBundleId(forSourceApp: appName) {
+            if bundleId.isEmpty || (bundleId == "com.apple.Music" && inferred != "com.apple.Music") {
+                bundleId = inferred
+            }
+        }
+
+        if bundleId.isEmpty, let fb = fallbackTrack {
+            let fbBundle = normalizeBundleIdentifier(fb.sourceBundleId)
+            let fbApp = fb.sourceApp.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let inferred = knownBundleId(forSourceApp: fbApp),
+               fbBundle.isEmpty || (fbBundle == "com.apple.Music" && inferred != "com.apple.Music") {
+                bundleId = inferred
+            } else if !fbBundle.isEmpty {
+                bundleId = fbBundle
+            }
+            if (appName.isEmpty || appName == "Media Player") && !fbApp.isEmpty {
+                appName = fbApp
+            }
+        }
+
+        if bundleId.isEmpty && !lastResolvedBundleId.isEmpty {
+            bundleId = normalizeBundleIdentifier(lastResolvedBundleId)
+            if (appName.isEmpty || appName == "Media Player") && !lastResolvedAppName.isEmpty {
+                appName = lastResolvedAppName
+            }
+        }
+
+        if bundleId.isEmpty && !appName.isEmpty && appName != "Media Player" {
+            let candidatePaths = [
+                "/Applications/\(appName).app",
+                "\(NSHomeDirectory())/Applications/\(appName).app"
+            ]
+            for path in candidatePaths where FileManager.default.fileExists(atPath: path) {
+                if let bundle = Bundle(path: path),
+                   let id = bundle.bundleIdentifier,
+                   !id.isEmpty {
+                    bundleId = normalizeBundleIdentifier(id)
+                    break
                 }
             }
         }
 
-        guard !bundleId.isEmpty else {
-            let defaultId = "com.apple.Music"
-            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: defaultId) {
-                let config = NSWorkspace.OpenConfiguration()
-                config.activates = true
-                NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+        if bundleId.isEmpty {
+            if let running = resolveRunningMediaAppFallback() {
+                bundleId = running.bundleId
+                if appName.isEmpty || appName == "Media Player" {
+                    appName = running.name
+                }
+            } else {
+                bundleId = "com.apple.Music"
+                if appName.isEmpty || appName == "Media Player" {
+                    appName = "Apple Music"
+                }
             }
-            return
         }
+
+        if appName.isEmpty || appName == "Media Player" {
+            appName = knownDisplayName(for: bundleId)
+                ?? installedAppDisplayName(forBundleIdentifier: bundleId)
+                ?? appName
+        }
+
+        return (bundleId: bundleId, appName: appName)
+    }
+
+    public func activateSourcePlayer(for track: MusicTrackInfo? = nil, store: PurahWorkspaceStore? = nil) {
+        let activeTrack = track ?? store?._musicTrack ?? MusicTrackInfo.empty
+        let resolved = Self.resolveTargetPlayer(
+            for: activeTrack,
+            fallbackTrack: store?._musicTrack,
+            lastResolvedBundleId: lastResolvedSourceBundleId,
+            lastResolvedAppName: lastResolvedSourceApp
+        )
+        let bundleId = resolved.bundleId
+        let appName = resolved.appName
 
         // 1. If it's a browser, attempt AppleScript Tab activation
         if let browserName = Self.browserAppName(for: bundleId) {
@@ -1441,14 +1835,27 @@ public final class SystemMusicSyncService {
             }
         }
 
-        // 2. System-level window & app activation
-        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first {
+        // 2. System-level window & app activation (launches the app if it was quit)
+        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleId).first(where: { !$0.isTerminated }) {
             _ = app.activate()
         }
         if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
             let config = NSWorkspace.OpenConfiguration()
             config.activates = true
             NSWorkspace.shared.openApplication(at: appURL, configuration: config, completionHandler: nil)
+            return
+        }
+        if !appName.isEmpty && appName != "Media Player" {
+            let candidatePaths = [
+                "/Applications/\(appName).app",
+                "\(NSHomeDirectory())/Applications/\(appName).app"
+            ]
+            for path in candidatePaths where FileManager.default.fileExists(atPath: path) {
+                let config = NSWorkspace.OpenConfiguration()
+                config.activates = true
+                NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: config, completionHandler: nil)
+                return
+            }
         }
     }
 }
