@@ -47,17 +47,24 @@ public final class DiagnosticLogger: Sendable {
 
     private let storage: OSAllocatedUnfairLock<[DiagnosticLogEntry]>
     private let stats: OSAllocatedUnfairLock<(stalls: Int, maxStallMs: Double)>
+    /// The watchdog wakes the main actor once a second, so it is not started at
+    /// launch: only the diagnostics surface needs stall numbers, and the handle
+    /// now exists to stop it.
+    private let watchdogTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
     private let maxEntries = 1000
 
     public var mainThreadStallsCount: Int {
-        stats.withLock { $0.stalls }
+        // Reading the metric is what asks for it: the diagnostics page calls
+        // this first, so the meter runs while someone can see it and not for
+        // the whole life of an ambient background app.
+        startWatchdog()
+        return stats.withLock { $0.stalls }
     }
 
     private init() {
         self.storage = OSAllocatedUnfairLock(initialState: [])
         self.stats = OSAllocatedUnfairLock(initialState: (stalls: 0, maxStallMs: 0.0))
         log(level: .info, category: "Kernel", message: "DiagnosticLogger initialized")
-        startWatchdog()
     }
 
     public func log(level: DiagnosticLogLevel, category: String, message: String) {
@@ -101,23 +108,34 @@ public final class DiagnosticLogger: Sendable {
 
     // MARK: - Main Thread Watchdog
     public func startWatchdog() {
-        Task.detached(priority: .utility) { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                let start = Date()
-                let didRespond = await withTaskCancellationHandler {
-                    await withCheckedContinuation { continuation in
-                        Task { @MainActor in
-                            continuation.resume(returning: true)
+        watchdogTask.withLock { handle in
+            guard handle == nil else { return }
+            handle = Task.detached(priority: .utility) { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    let start = Date()
+                    let didRespond = await withTaskCancellationHandler {
+                        await withCheckedContinuation { continuation in
+                            Task { @MainActor in
+                                continuation.resume(returning: true)
+                            }
                         }
-                    }
-                } onCancel: {}
+                    } onCancel: {}
 
-                let elapsedMs = Date().timeIntervalSince(start) * 1000.0
-                if didRespond && elapsedMs > 1200.0 {
-                    self?.recordStall(durationMs: elapsedMs)
+                    let elapsedMs = Date().timeIntervalSince(start) * 1000.0
+                    if didRespond && elapsedMs > 1200.0 {
+                        self?.recordStall(durationMs: elapsedMs)
+                    }
                 }
             }
+        }
+    }
+
+    /// Stops the once-a-second main-actor wake. Idempotent.
+    public func stopWatchdog() {
+        watchdogTask.withLock { handle in
+            handle?.cancel()
+            handle = nil
         }
     }
 
@@ -133,6 +151,9 @@ public final class DiagnosticLogger: Sendable {
     // MARK: - Diagnostic Report Generation
     @MainActor
     public func generateReport(store: PurahWorkspaceStore? = nil) -> String {
+        // A report is the other consumer of the stall meter: start it so the
+        // numbers on the page are real even if this is the first read.
+        startWatchdog()
         var report = "=== PROJECT PURAH DIAGNOSTIC REPORT ===\n"
         report += "Generated: \(Date().description(with: .current))\n\n"
 

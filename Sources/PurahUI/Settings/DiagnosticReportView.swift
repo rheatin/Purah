@@ -77,6 +77,9 @@ public struct DiagnosticReportView: View {
             .onDisappear {
                 focusTask?.cancel()
                 focusTask = nil
+                // The stall meter wakes the main actor once a second; it exists
+                // only while this page is on screen.
+                DiagnosticLogger.shared.stopWatchdog()
             }
             .task {
                 while !Task.isCancelled {
