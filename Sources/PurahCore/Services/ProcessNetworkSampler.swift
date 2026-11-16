@@ -157,19 +157,25 @@ public actor ProcessNetworkSampler {
         let exitCode: Int32
     }
 
-    /// Runs a command with a hard upper bound. Closing the read end is as
-    /// important as signalling the process: a descendant can keep a pipe open
-    /// after its parent exits, leaving `readDataToEndOfFile` blocked forever.
+    /// Runs a command with a hard upper bound.
+    ///
+    /// The deadline exists because a descendant can keep the pipe open after
+    /// its parent exits, so there may be no EOF to wait for. It is enforced by
+    /// reading `read(2)` on a non-blocking descriptor with its own deadline —
+    /// never by closing the handle from another thread. `NSFileHandle` raises
+    /// an Objective-C exception when a read touches a closed handle, and the
+    /// Swift runtime cannot catch one: under full CPU load the timeout block
+    /// won the race against the reading thread and the app aborted. `read(2)`
+    /// answers `EBADF` instead of throwing.
     static func runBoundedProcess(
         executablePath: String,
         arguments: [String],
         timeout: TimeInterval
     ) async -> BoundedProcessResult? {
         await withCheckedContinuation { continuation in
-            let result = BoundedProcessResultBox(continuation: continuation)
             DispatchQueue.global(qos: .utility).async {
                 guard let executablePath = ProcessLaunchSanitizer.executablePath(executablePath) else {
-                    result.resume(nil)
+                    continuation.resume(returning: nil)
                     return
                 }
                 let process = Process()
@@ -184,106 +190,56 @@ public actor ProcessNetworkSampler {
                 do {
                     try process.run()
                 } catch {
-                    result.resume(nil)
+                    continuation.resume(returning: nil)
                     return
                 }
 
                 let readHandle = output.fileHandleForReading
-                guard result.attach(process, readHandle: readHandle) else {
-                    if process.isRunning { process.terminate() }
-                    try? readHandle.close()
-                    return
+                let fd = readHandle.fileDescriptor
+                _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 65_536)
+                let deadline = Date().addingTimeInterval(timeout)
+
+                while Date() < deadline {
+                    let count = read(fd, &buffer, buffer.count)
+                    if count > 0 {
+                        data.append(contentsOf: buffer[0..<count])
+                    } else if count == 0 {
+                        break                                   // EOF: every writer closed it
+                    } else if errno != EAGAIN && errno != EWOULDBLOCK {
+                        break                                   // EBADF or a real read error
+                    } else {
+                        usleep(10_000)                          // no data yet: don't spin
+                    }
                 }
 
-                let timeoutItem = DispatchWorkItem {
-                    result.terminateAndResume()
+                // Stop the command if the deadline ended it, and make sure a
+                // descendant cannot keep `waitUntilExit` blocked forever.
+                if process.isRunning {
+                    process.terminate()
+                    let killDeadline = Date().addingTimeInterval(0.5)
+                    while process.isRunning && Date() < killDeadline {
+                        usleep(10_000)
+                    }
+                    if process.isRunning {
+                        kill(process.processIdentifier, SIGKILL)
+                    }
                 }
-                DispatchQueue.global(qos: .utility).asyncAfter(
-                    deadline: .now() + timeout,
-                    execute: timeoutItem
-                )
-
-                let data = readHandle.readDataToEndOfFile()
                 process.waitUntilExit()
-                timeoutItem.cancel()
+                try? readHandle.close()
 
                 guard process.terminationStatus == 0 else {
-                    result.resume(nil)
+                    continuation.resume(returning: nil)
                     return
                 }
-                result.resume(BoundedProcessResult(data: data, exitCode: process.terminationStatus))
+                continuation.resume(returning: BoundedProcessResult(
+                    data: data,
+                    exitCode: process.terminationStatus
+                ))
             }
         }
-    }
-}
-
-/// Keeps the continuation, process, and pipe behind one lock so the normal exit
-/// and timeout race cannot resume twice or close the read end twice.
-private final class BoundedProcessResultBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var continuation: CheckedContinuation<ProcessNetworkSampler.BoundedProcessResult?, Never>?
-    private var process: Process?
-    private var readHandle: FileHandle?
-    private var hasResumed = false
-
-    init(continuation: CheckedContinuation<ProcessNetworkSampler.BoundedProcessResult?, Never>) {
-        self.continuation = continuation
-    }
-
-    func attach(_ process: Process, readHandle: FileHandle) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !hasResumed else { return false }
-        self.process = process
-        self.readHandle = readHandle
-        return true
-    }
-
-    func resume(_ output: ProcessNetworkSampler.BoundedProcessResult?) {
-        lock.lock()
-        guard !hasResumed else {
-            lock.unlock()
-            return
-        }
-        hasResumed = true
-        let continuation = self.continuation
-        self.continuation = nil
-        let readHandle = self.readHandle
-        process = nil
-        self.readHandle = nil
-        lock.unlock()
-        try? readHandle?.close()
-        continuation?.resume(returning: output)
-    }
-
-    func terminateAndResume() {
-        lock.lock()
-        guard !hasResumed else {
-            lock.unlock()
-            return
-        }
-        hasResumed = true
-        let process = self.process
-        let readHandle = self.readHandle
-        self.process = nil
-        self.readHandle = nil
-        let continuation = self.continuation
-        self.continuation = nil
-        lock.unlock()
-
-        let pid = process?.processIdentifier ?? -1
-        if let process, process.isRunning {
-            process.terminate()
-        }
-        try? readHandle?.close()
-        if let process, pid > 0 {
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.5) {
-                if process.isRunning {
-                    kill(pid, SIGKILL)
-                }
-            }
-        }
-        continuation?.resume(returning: nil)
     }
 }
 

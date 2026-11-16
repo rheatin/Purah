@@ -102,6 +102,27 @@ struct ProcessNetworkSamplerTests {
         #expect(Date().timeIntervalSince(start) < 2)
     }
 
+    /// The reported crash: on a machine at 100% CPU the timeout block closed
+    /// the read handle while the reading thread was inside `NSFileHandle`,
+    /// which raises an Objective-C exception Swift cannot catch, and the app
+    /// aborted. A descendant that keeps the pipe open is the case the deadline
+    /// exists for, so it must end at the deadline with the output collected so
+    /// far — not with a crash.
+    @Test("A child that keeps the pipe open ends at the deadline instead of aborting")
+    func boundedProcessSurvivesDescendantHoldingPipe() async {
+        let start = Date()
+        let result = await ProcessNetworkSampler.runBoundedProcess(
+            executablePath: "/bin/sh",
+            arguments: ["-c", "echo started; (sleep 5 &); exit 0"],
+            timeout: 0.5
+        )
+
+        let elapsed = Date().timeIntervalSince(start)
+        #expect(elapsed < 3, "The deadline must end the read, took \(elapsed)s")
+        #expect(result?.exitCode == 0)
+        #expect(result?.data.isEmpty == false)
+    }
+
     @Test("Process inspector resource counters default to zero")
     func processMetricDefaultsAreZero() {
         let process = ProcessInfoItem(
