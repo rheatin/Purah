@@ -231,9 +231,14 @@ public final class PurahDiskRepository<Item: PurahStorableItem>: Sendable {
             let remainingFavorites = items.filter(\.isFavorite)
             let finalIndexBytes = (try? JSONEncoder().encode(remainingFavorites)).map { Int64($0.count) } ?? 0
             let reclaimableIndex = max(0, Self.fileSize(at: indexURL) - finalIndexBytes)
-            let reclaimableFiles = items.reduce(Int64(0)) { total, item in
-                total + Self.bytesOnDisk(atPaths: item.assetPaths)
-            }
+            // Star Protection: favourite assets are not reclaimable. Counting
+            // them here promised the loop more freed bytes than it could ever
+            // get, so it emptied every unfavourited row and still stayed over.
+            let reclaimableFiles = items
+                .filter { !$0.isFavorite }
+                .reduce(Int64(0)) { total, item in
+                    total + Self.bytesOnDisk(atPaths: item.assetPaths)
+                }
             let reclaimable = reclaimableIndex + reclaimableFiles
             let minimumSize = max(0, currentSize - reclaimable)
             guard minimumSize <= maxBytes else {

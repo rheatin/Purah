@@ -129,7 +129,12 @@ public struct ClipboardPlugin: PurahPodPlugin {
     /// hover preview can sit beside it instead of on top of it.
     public func steppedDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 290.0 }
     public func hasPinnedChild(store: PurahWorkspaceStore) -> Bool {
-        store.pinnedDrawerItemIds.contains { $0.hasPrefix("clipboard-") }
+        // A pin whose item was deleted or cleared is not a pinned child: the
+        // pod stayed docked and could not be retracted with nothing in it.
+        let pinned = store.pinnedDrawerItemIds.filter { $0.hasPrefix("clipboard-") }
+        guard !pinned.isEmpty else { return false }
+        let liveIds = Set(state.items.map { "clipboard-\($0.id)" })
+        return pinned.contains { liveIds.contains($0) }
     }
 
     // 3. Header Accessory & Trailing Tools (Directly integrated into Card Header Row 1)
@@ -927,6 +932,7 @@ public struct ClipboardFullDrawerView: View {
             Divider()
             Button(role: .destructive) {
                 state.deleteItem(id: item.id)
+                context.store.unpinItem(id: "clipboard-\(item.id)")
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -1080,6 +1086,9 @@ public struct ClipboardPluginSettingsView: View {
                     // this used to — took the favourites with it, on a button
                     // labelled "Clear Unstarred".
                     state.clearAll()
+                    for id in store.pinnedDrawerItemIds where id.hasPrefix("clipboard-") {
+                        store.unpinItem(id: id)
+                    }
                 }
             )
         }

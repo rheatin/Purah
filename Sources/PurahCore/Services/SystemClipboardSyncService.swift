@@ -178,9 +178,20 @@ public final class SystemClipboardSyncService {
         onHistoryLoaded?()
     }
 
+    /// The Storage Inspector can empty `images/`, `thumbnails/` and
+    /// `metadata/` while the app is running. Creating them only in `init` left
+    /// every later write failing silently: the clip looked saved in memory and
+    /// was gone at quit. Called at each write; `createDirectory` is idempotent.
+    private func ensureStorageDirectories() {
+        for directory in [imagesDirectory, thumbnailsDirectory, metadataURL.deletingLastPathComponent()] {
+            try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        }
+    }
+
     private func saveToDisk() {
         // Writing before the base is loaded would persist a partial list.
         guard _historyLoaded else { return }
+        ensureStorageDirectories()
         // No `.prettyPrinted`: this is machine state, and indentation roughly
         // doubles every write and every later parse.
         if let data = try? JSONEncoder().encode(_history) {
@@ -209,15 +220,6 @@ public final class SystemClipboardSyncService {
             }
         }
         return total
-    }
-
-    public func clearDiskStorage() {
-        history.removeAll()
-        saveToDisk()
-        try? FileManager.default.removeItem(at: imagesDirectory)
-        try? FileManager.default.removeItem(at: thumbnailsDirectory)
-        try? FileManager.default.createDirectory(at: imagesDirectory, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
     }
 
     // MARK: - Monitoring Lifecycle
@@ -406,7 +408,13 @@ public final class SystemClipboardSyncService {
             // quarantined copies and interrupted conversions stay, so when
             // *those* are over quota every deletion is wasted — and an earlier
             // version deleted the whole unstarred history trying.
-            let clipBytes = history.reduce(Int64(0)) { $0 + assetBytes(of: $1) }
+            //
+            // Starred clips are immunity, not reclaimable bytes: counting their
+            // assets here told the loop it could get under quota, so it deleted
+            // every unstarred item — files and all — and stayed over anyway.
+            let clipBytes = history
+                .filter { !$0.isFavorite }
+                .reduce(Int64(0)) { $0 + assetBytes(of: $1) }
             if currentSize - clipBytes >= maxBytes {
                 warn(currentSize, maxBytes)
                 return 0
@@ -608,6 +616,7 @@ public final class SystemClipboardSyncService {
 
     public func processImageData(_ data: Data, isPNG: Bool = false) -> ClipboardItem? {
         autoreleasepool {
+            ensureStorageDirectories()
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
                 return nil
             }
