@@ -403,7 +403,11 @@ public struct PluginStorageInspectorView: View {
         case .removeDirectories(let urls):
             let fileManager = FileManager.default
             for url in urls {
-                try? fileManager.removeItem(at: url)
+                // Recycle, never unlink: an uninstalled plugin's folder can still
+                // hold a shelf item ingested in Move mode — the only copy there is.
+                // A failure leaves the folder in place, so nothing is lost silently.
+                var resultingURL: NSURL?
+                try? fileManager.trashItem(at: url, resultingItemURL: &resultingURL)
             }
         }
     }
