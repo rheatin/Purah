@@ -16,6 +16,9 @@ public final class MusicPluginState: Sendable {
     public let storage: any PurahPluginStorage
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
+    /// The artwork/lyrics fetches started by `mount`. They used to outlive the
+    /// drawer: `unmount` never cancelled them, so a closed pod kept loading.
+    @ObservationIgnored private var initialFetchTasks: [Task<Void, Never>] = []
 
     public var isMusicWaveformAnimationEnabled: Bool {
         get { isWaveformAnimationEnabled }
@@ -177,43 +180,43 @@ public final class MusicPluginState: Sendable {
         let currentTitle = self.track.title
         let currentArtist = self.track.artist
         let currentAlbum = self.track.album
+        initialFetchTasks.forEach { $0.cancel() }
+        initialFetchTasks.removeAll()
         if !currentTitle.isEmpty {
             if self.track.artworkData == nil {
-                Task { [weak self] in
+                initialFetchTasks.append(Task { [weak self] in
                     if let art = await SystemMusicSyncService.shared.fetchArtwork(title: currentTitle, artist: currentArtist, album: currentAlbum) {
-                        await MainActor.run {
-                            if self?.track.title == currentTitle,
-                               self?.track.artist == currentArtist {
-                                self?.track.artworkData = art
-                                self?.boundStore?._musicTrack.artworkData = art
-                            }
+                        guard !Task.isCancelled else { return }
+                        if self?.track.title == currentTitle,
+                           self?.track.artist == currentArtist {
+                            self?.track.artworkData = art
+                            self?.boundStore?._musicTrack.artworkData = art
                         }
                     }
-                }
+                })
             }
             if self.track.lyrics == nil && self.track.syncedLyrics == nil {
-                Task { [weak self] in
+                initialFetchTasks.append(Task { [weak self] in
                     if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(
                         title: currentTitle,
                         artist: currentArtist,
                         album: currentAlbum,
                         durationSeconds: self?.track.durationSeconds ?? 0
                     ) {
-                        await MainActor.run {
-                            if self?.track.title == currentTitle,
-                               self?.track.artist == currentArtist {
-                                self?.track.lyrics = lyrResult.plainLyrics
-                                self?.track.syncedLyrics = lyrResult.syncedLyrics
-                                self?.track.lyricsCandidates = lyrResult.candidates
-                                self?.track.selectedLyricsCandidateId = lyrResult.selectedCandidateId
-                                self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
-                                self?.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
-                                self?.boundStore?._musicTrack.lyricsCandidates = lyrResult.candidates
-                                self?.boundStore?._musicTrack.selectedLyricsCandidateId = lyrResult.selectedCandidateId
-                            }
+                        guard !Task.isCancelled else { return }
+                        if self?.track.title == currentTitle,
+                           self?.track.artist == currentArtist {
+                            self?.track.lyrics = lyrResult.plainLyrics
+                            self?.track.syncedLyrics = lyrResult.syncedLyrics
+                            self?.track.lyricsCandidates = lyrResult.candidates
+                            self?.track.selectedLyricsCandidateId = lyrResult.selectedCandidateId
+                            self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
+                            self?.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
+                            self?.boundStore?._musicTrack.lyricsCandidates = lyrResult.candidates
+                            self?.boundStore?._musicTrack.selectedLyricsCandidateId = lyrResult.selectedCandidateId
                         }
                     }
-                }
+                })
             }
         }
     }
@@ -293,9 +296,15 @@ public final class MusicPluginState: Sendable {
     }
 
     public func unmount(store: PurahWorkspaceStore) {
+        initialFetchTasks.forEach { $0.cancel() }
+        initialFetchTasks.removeAll()
         SystemMusicSyncService.shared.stopListening()
         SystemMusicSyncService.shared.onTrackChanged = nil
-        SystemMusicSyncService.shared.clearArtworkCache()
+        // No `clearArtworkCache()` here: its only job here was to reset the
+        // "already tried" sets, which is exactly what made every reopening of
+        // the drawer retry the whole artwork and lyrics chain for a track that
+        // had already failed. A forced re-fetch is an explicit action, not a
+        // drawer closing.
         track.artworkData = nil
         track.lyrics = nil
         track.syncedLyrics = nil

@@ -105,7 +105,11 @@ public final class SystemMusicSyncService {
             appTerminationObserver = nil
         }
         SystemMediaRemoteBridge.shared.unregisterForNotifications()
-        clearArtworkCache()
+        // No `clearArtworkCache()` here: `startListening()` calls this first, so
+        // every drawer open wiped the "already tried this track" memory and the
+        // full artwork chain (iTunes, LRCLIB, NetEase, AppleScript) ran again for
+        // tracks that had already failed. The cache is cleared on an explicit
+        // force-refresh (AppDelegate) and when the track changes instead.
     }
 
     public func clearArtworkCache() {
@@ -643,33 +647,15 @@ public final class SystemMusicSyncService {
     public func pollCurrentPlayingState(store: PurahWorkspaceStore?) async {
         guard !Self.isTestingEnvironment else { return }
         guard isMusicAppRunning else { return }
-        let queryStartTime = Date()
-        let script = """
-        tell application "Music"
-            try
-                set pState to (player state is playing)
-                set tName to name of current track
-                set tArtist to artist of current track
-                set tAlbum to album of current track
-                set tPos to player position
-                set tDur to duration of current track
-                return {pState, tName, tArtist, tAlbum, tPos, tDur}
-            on error
-                return {}
-            end try
-        end tell
-        """
-        guard let appleScript = NSAppleScript(source: script) else { return }
-        var errorInfo: NSDictionary?
-        let descriptor = appleScript.executeAndReturnError(&errorInfo)
-        guard errorInfo == nil, descriptor.numberOfItems >= 6 else { return }
+        guard let nowPlaying = await Self.fetchNowPlayingOffMain() else { return }
 
-        let isPlaying = descriptor.atIndex(1)?.booleanValue ?? false
-        let title = descriptor.atIndex(2)?.stringValue ?? "Unknown Track"
-        let artist = descriptor.atIndex(3)?.stringValue ?? "Apple Music"
-        let album = descriptor.atIndex(4)?.stringValue ?? ""
-        let pos = descriptor.atIndex(5)?.doubleValue ?? 0.0
-        let dur = descriptor.atIndex(6)?.doubleValue ?? 180.0
+        let isPlaying = nowPlaying.isPlaying
+        let title = nowPlaying.title
+        let artist = nowPlaying.artist
+        let album = nowPlaying.album
+        let pos = nowPlaying.position
+        let dur = nowPlaying.duration
+        let queryStartTime = nowPlaying.queriedAt
         let progress = dur > 0 ? min(max(pos / dur, 0.0), 1.0) : 0.0
 
         var needsLyricsFetch = false
@@ -1218,7 +1204,7 @@ public final class SystemMusicSyncService {
 
         // 1. Try local Apple Music AppleScript artwork only when the current track matches
         if isMusicAppRunning {
-            if let data = fetchAppleMusicNativeArtwork(matchingTitle: title) {
+            if let data = await fetchAppleMusicNativeArtwork(matchingTitle: title) {
                 cachedArtworkKey = key
                 cachedArtworkData = data
                 return data
@@ -1253,7 +1239,73 @@ public final class SystemMusicSyncService {
         return nil
     }
 
-    private func fetchAppleMusicNativeArtwork(matchingTitle: String? = nil) -> Data? {
+    /// AppleScript runs an Apple Event and does not return until Music.app
+    /// answers — which never happens while it is busy or showing a modal. On the
+    /// main actor that froze the whole app (rail included) on every 2s
+    /// heartbeat. One serial queue keeps the calls ordered and off the UI; each
+    /// script is created and executed on the same thread, which NSAppleScript
+    /// requires.
+    nonisolated private static let appleScriptQueue = DispatchQueue(
+        label: "com.rheatin.purah.music.applescript",
+        qos: .utility
+    )
+
+    private struct AppleMusicNowPlaying: Sendable {
+        let isPlaying: Bool
+        let title: String
+        let artist: String
+        let album: String
+        let position: Double
+        let duration: Double
+        /// When the script answered. The time anchor must describe when the
+        /// position was read, and after awaiting the queue that moment is no
+        /// longer a few milliseconds after `queryStartTime`.
+        let queriedAt: Date
+    }
+
+    nonisolated private static func fetchNowPlayingOffMain() async -> AppleMusicNowPlaying? {
+        let script = """
+        tell application "Music"
+            try
+                set pState to (player state is playing)
+                set tName to name of current track
+                set tArtist to artist of current track
+                set tAlbum to album of current track
+                set tPos to player position
+                set tDur to duration of current track
+                return {pState, tName, tArtist, tAlbum, tPos, tDur}
+            on error
+                return {}
+            end try
+        end tell
+        """
+        return await withCheckedContinuation { continuation in
+            Self.appleScriptQueue.async {
+                guard let appleScript = NSAppleScript(source: script) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                var errorInfo: NSDictionary?
+                let descriptor = appleScript.executeAndReturnError(&errorInfo)
+                let queriedAt = Date()
+                guard errorInfo == nil, descriptor.numberOfItems >= 6 else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: AppleMusicNowPlaying(
+                    isPlaying: descriptor.atIndex(1)?.booleanValue ?? false,
+                    title: descriptor.atIndex(2)?.stringValue ?? "Unknown Track",
+                    artist: descriptor.atIndex(3)?.stringValue ?? "Apple Music",
+                    album: descriptor.atIndex(4)?.stringValue ?? "",
+                    position: descriptor.atIndex(5)?.doubleValue ?? 0.0,
+                    duration: descriptor.atIndex(6)?.doubleValue ?? 180.0,
+                    queriedAt: queriedAt
+                ))
+            }
+        }
+    }
+
+    private func fetchAppleMusicNativeArtwork(matchingTitle: String? = nil) async -> Data? {
         let escapedTitle = (matchingTitle ?? "")
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
@@ -1269,14 +1321,21 @@ public final class SystemMusicSyncService {
             return ""
         end tell
         """
-        guard let appleScript = NSAppleScript(source: script) else { return nil }
-        var errorInfo: NSDictionary?
-        let descriptor = appleScript.executeAndReturnError(&errorInfo)
-        guard errorInfo == nil else { return nil }
-        if let data = descriptor.data as Data?, data.count > 32 {
-            return data
+        return await withCheckedContinuation { continuation in
+            Self.appleScriptQueue.async {
+                guard let appleScript = NSAppleScript(source: script) else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                var errorInfo: NSDictionary?
+                let descriptor = appleScript.executeAndReturnError(&errorInfo)
+                guard errorInfo == nil, let data = descriptor.data as Data?, data.count > 32 else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                continuation.resume(returning: data)
+            }
         }
-        return nil
     }
 
     public var isMusicAppRunning: Bool {
