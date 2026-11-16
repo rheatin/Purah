@@ -14,6 +14,34 @@ extension PurahWorkspaceStore {
         defaults.removeObject(forKey: "purah.pods")
     }
 
+    /// Decodes the saved pod list one element at a time.
+    ///
+    /// Decoding the whole array at once means one renamed raw value or one
+    /// missing key fails every entry, and the load then falls back to the
+    /// default pods, which the next save writes over the person's layout. An
+    /// entry that still decodes is kept; only the broken ones are dropped.
+    /// `pods == nil` means nothing at all could be decoded.
+    static func decodeSavedPods(from data: Data) -> (pods: [SlotPod]?, droppedCount: Int) {
+        if let pods = try? JSONDecoder().decode([SlotPod].self, from: data) {
+            return (pods, 0)
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: data),
+              let elements = object as? [Any] else {
+            return (nil, 0)
+        }
+        var kept: [SlotPod] = []
+        var dropped = 0
+        for element in elements {
+            guard let elementData = try? JSONSerialization.data(withJSONObject: element),
+                  let pod = try? JSONDecoder().decode(SlotPod.self, from: elementData) else {
+                dropped += 1
+                continue
+            }
+            kept.append(pod)
+        }
+        return (kept.isEmpty ? nil : kept, dropped)
+    }
+
     public func loadPersistentState() {
         let defaults = userDefaults
         loadExternalDecomposedState()
@@ -23,8 +51,8 @@ extension PurahWorkspaceStore {
         }
 
         if let data = defaults.data(forKey: "purah.pods") {
-            let decoded = try? JSONDecoder().decode([SlotPod].self, from: data)
-            if let savedPods = decoded, !savedPods.isEmpty {
+            let restored = Self.decodeSavedPods(from: data)
+            if let savedPods = restored.pods, !savedPods.isEmpty {
                 var merged = savedPods
                 let savedIds = Set(savedPods.map(\.id))
                 for var def in Self.defaultPods() where !savedIds.contains(def.id) {
@@ -40,7 +68,7 @@ extension PurahWorkspaceStore {
                 // duplicate traps the process on the next reflow.
                 var seenIds: Set<String> = []
                 self.pods = merged.filter { seenIds.insert($0.id).inserted }
-            } else if decoded == nil {
+            } else if restored.pods == nil {
                 // Undecodable, as opposed to an empty-but-valid list. Keep the
                 // bytes: the next save writes the default pods over this key,
                 // so one added field would otherwise erase a hand-sculpted
@@ -49,6 +77,15 @@ extension PurahWorkspaceStore {
                 DiagnosticLogger.shared.warn(
                     "Workspace",
                     "purah.pods could not be decoded; the original is kept under purah.pods.corrupt"
+                )
+            } else if restored.droppedCount > 0 {
+                // Some entries still decode: the rest of the layout survives
+                // instead of being replaced by the defaults the next save
+                // would have written over it.
+                defaults.set(data, forKey: "purah.pods.corrupt")
+                DiagnosticLogger.shared.warn(
+                    "Workspace",
+                    "purah.pods dropped \(restored.droppedCount) undecodable entries; the original is kept under purah.pods.corrupt"
                 )
             }
         }

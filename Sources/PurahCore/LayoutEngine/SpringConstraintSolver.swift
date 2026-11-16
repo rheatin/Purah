@@ -49,6 +49,12 @@ public enum SpringConstraintSolver {
         let absoluteMinStart = bounds.lowerBound + minSpaceAbove
         let absoluteMaxEnd = bounds.upperBound - minSpaceBelow
 
+        // The pods' minimums do not fit on this rail at all — a page carrying
+        // more pods than it has room for. No clamp is correct: clamping lands
+        // the target at start 1.0 with length 0, which the store then persists.
+        // Refusing the drag leaves the layout exactly as it was.
+        guard absoluteMinStart <= absoluteMaxEnd else { return allPods }
+
         var clampedStart = edgePods[targetIndex].range.start
         var clampedLength = newRange.length
 

@@ -187,7 +187,6 @@ public final class PurahWorkspaceStore {
     public var onboardingTarget: OnboardingTarget { .none }
     public var onboardingCalloutTarget: OnboardingCalloutTarget? = nil
     public func publishOnboardingCalloutTarget(_ target: OnboardingCalloutTarget?, owner: String, step: OnboardingGuideStep) {}
-    public func clearOnboardingCalloutTarget() {}
     @ObservationIgnored
     public var onDecomposedStateSync: (@MainActor (String, Bool) -> Void)? = nil
 
@@ -1021,6 +1020,13 @@ public final class PurahWorkspaceStore {
         togglePinItem(id: id)
     }
 
+    /// Drops a pin without toggling. Pruning a deleted sub-item needs this:
+    /// `togglePinItem` would *insert* an id that is not pinned.
+    public func unpinItem(id: String) {
+        guard pinnedDrawerItemIds.remove(id) != nil else { return }
+        invalidateLayoutCache()
+    }
+
     public static var isTestingEnvironment: Bool {
         NSClassFromString("XCTest") != nil ||
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil ||
@@ -1703,16 +1709,21 @@ public final class PurahWorkspaceStore {
     }
 
     public func acknowledgeAllAlerts(forPodId podId: String) {
-        var acknowledgedIDs: Set<String> = [podId]
+        var acknowledgedIDs: Set<String> = []
         if podId == "calendar" {
+            acknowledgedIDs.insert(podId)
             for event in _calendarEvents where (event.isOngoing || event.isImminent(leadTime: calendarAlertLeadTime)) {
                 acknowledgedIDs.insert(event.id)
             }
-        }
-        if podId == "vitals" {
-            for metricId in ["vitals-cpu", "vitals-ram", "vitals-gpu", "vitals-power", "vitals-disk", "vitals-network"] {
-                acknowledgedIDs.insert(metricId)
-            }
+        } else if podId == "vitals" {
+            // Only the metrics breaching right now. Acknowledging the pod used to
+            // store every metric id plus a pod-level receipt, so a metric that
+            // started an hour later stayed silent for the rest of the session.
+            // Each metric's receipt ends with that metric, in
+            // `clearExpiredAcknowledgment`.
+            acknowledgedIDs.formUnion(vitalsRawBreaches().map(\.id))
+        } else {
+            acknowledgedIDs.insert(podId)
         }
         acknowledgedAlertIds.formUnion(acknowledgedIDs)
         // Acknowledgment means the person saw the alert. If the monitor has
@@ -1835,6 +1846,11 @@ public final class PurahWorkspaceStore {
     /// or the condition ending clears the receipt so a later re-entry alerts
     /// again.
     public func evaluateAlertDeliveries(now: Date = Date()) {
+        if isAlertAcknowledged(id: "vitals")
+            || acknowledgedAlertIds.contains(where: { $0.hasPrefix("vitals-") }) {
+            clearExpiredAcknowledgment()
+        }
+
         let events = currentAlertEvents(now: now)
         let activeIDs = Set(events.map { $0.id })
 
@@ -1913,10 +1929,11 @@ public final class PurahWorkspaceStore {
         }
     }
 
-    /// Every danger-level vitals metric, in the same order the rail shows them.
-    private func vitalsAlertBreaches() -> [(id: String, message: String)] {
-        guard !isAlertAcknowledged(id: "vitals") else { return [] }
-
+    /// Every danger-level vitals metric, in the same order the rail shows them,
+    /// before any acknowledgment is applied. `clearExpiredAcknowledgment` needs
+    /// the raw set: an acknowledged breach is exactly the one whose end has to
+    /// be observed so its receipt can be dropped.
+    private func vitalsRawBreaches() -> [(id: String, message: String)] {
         let enabled = Set(_vitalsEnabledMetrics)
         guard !enabled.isEmpty else { return [] }
 
@@ -1925,7 +1942,6 @@ public final class PurahWorkspaceStore {
         var breaches: [(id: String, message: String)] = []
 
         func add(_ id: String, _ message: String) {
-            guard !isAlertAcknowledged(id: id) else { return }
             breaches.append((id: id, message: message))
         }
 
@@ -1961,6 +1977,27 @@ public final class PurahWorkspaceStore {
         }
 
         return breaches
+    }
+
+    /// The breaches the person has not silenced yet.
+    private func vitalsAlertBreaches() -> [(id: String, message: String)] {
+        vitalsRawBreaches().filter { !isAlertAcknowledged(id: $0.id) }
+    }
+
+    /// Drops acknowledgments whose condition has ended.
+    ///
+    /// Acknowledging a metric lasts as long as that metric's breach, not for the
+    /// whole session: the receipt is removed the moment the metric stops
+    /// breaching, so the next breach of the same metric alerts again.
+    private func clearExpiredAcknowledgment() {
+        let breached = Set(vitalsRawBreaches().map(\.id))
+        let staleMetricIDs = acknowledgedAlertIds.filter {
+            $0.hasPrefix("vitals-") && !breached.contains($0)
+        }
+        for id in staleMetricIDs {
+            acknowledgedAlertIds.remove(id)
+            notifiedToastEventIds.remove(id)
+        }
     }
 
     // Edge Trigger Intentionality Sensitivity & Calibration
@@ -3776,6 +3813,17 @@ public final class PurahWorkspaceStore {
                     }
                 }
             }
+            // A disabled pod must not keep the rail busy: `isRailBusy` stayed
+            // true on a disabled pod, so a pending profile switch never applied.
+            let ownsDrawer = activeDrawerPodId == id
+                || activeDrawerItemId == id
+                || activeDrawerItemId.flatMap { self.pod(forItemId: $0)?.id } == id
+            if ownsDrawer {
+                dismissActiveDrawer()
+            } else if hoveredPodId == id {
+                hoveredPodId = nil
+                pendingHoverPodId = nil
+            }
             onPodEnabledChanged?(id, false)
         }
         _marketManager?.enabledPluginIds = Set(pods.filter(\.isEnabled).map(\.id))
@@ -3916,7 +3964,13 @@ public final class PurahWorkspaceStore {
         let pages = paginatedPods(for: pod.edge, totalHeight: screenH)
         let isPaged = pages.count > 1
         if isPaged {
-            let pagePods = pods.filter { $0.edge == pod.edge && $0.isEnabled && $0.pageIndex == pod.pageIndex }
+            // Pagination can split one logical page into several physical pages,
+            // so the solver must see the pods actually drawn beside the dragged
+            // one. Handing it the whole logical page let the minimums sum past
+            // 1.0, which the solver clamped into a zero-length range and the
+            // store then persisted.
+            let pagePods = pages.first(where: { page in page.contains { $0.id == id } })
+                ?? pods.filter { $0.edge == pod.edge && $0.isEnabled && $0.pageIndex == pod.pageIndex }
             let resolvedPagePods = SpringConstraintSolver.resolve(
                 draggedPodId: id,
                 newRange: newRange,
@@ -4247,10 +4301,6 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
-    public func beginOnboardingCoach(clearAllPods: Bool = false) {
-        startInteractiveOnboarding(clearAllPods: clearAllPods)
-    }
-
     public func completeOnboardingCoach() {
         finishOnboarding(useRecommendedLayout: false)
     }
@@ -4481,40 +4531,6 @@ public final class PurahWorkspaceStore {
         onWindowsRebuildNeeded?()
     }
 
-    public func rehearseDecomposeDemo(decomposed: Bool? = nil) {
-        if !pods.contains(where: { $0.id == "scripts" && $0.isEnabled }) {
-            mountPod(id: "scripts", to: .right)
-        }
-        splitPodFromMajorGroup(id: "scripts")
-        if !pods.contains(where: { $0.id == "vitals" && $0.isEnabled }) {
-            mountPod(id: "vitals", to: .left)
-        }
-        splitPodFromMajorGroup(id: "vitals")
-
-        let newVal = decomposed ?? !_isScriptsDecomposed
-        _isScriptsDecomposed = newVal
-        _isVitalsDecomposed = newVal
-        capabilityProvider(for: "scripts")?.setDecomposed(newVal, store: self)
-        capabilityProvider(for: "vitals")?.setDecomposed(newVal, store: self)
-        onDecomposedStateSync?("scripts", newVal)
-        onDecomposedStateSync?("vitals", newVal)
-        onboardingDidToggleDecompose = true
-
-        isRehearsingBreathingInSculptor = true
-        invalidateLayoutCache()
-        onWindowsRebuildNeeded?()
-        _ = triggerControlHaptic(.alignment)
-
-        onboardingRehearsalTask?.cancel()
-        onboardingRehearsalTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            guard !Task.isCancelled else { return }
-            self.isRehearsingBreathingInSculptor = false
-            self.invalidateLayoutCache()
-            self.onWindowsRebuildNeeded?()
-        }
-    }
-
     public func rehearseStackMerge() {
         saveUserLayoutSnapshotIfNeeded()
         isRehearsingBreathingInSculptor = false
@@ -4573,54 +4589,6 @@ public final class PurahWorkspaceStore {
                 self.setRailPage(0, for: .right)
                 self.restoreUserLayoutSnapshotIfNeeded()
             }
-        }
-    }
-
-    public func rehearseDynamicBreathing() {
-        saveUserLayoutSnapshotIfNeeded()
-        isUsingTemporaryDemoSandbox = true
-        let leftDemoIds = ["vitals", "shelf", "notes", "clipboard", "scripts", "terminal", "music"]
-        setRailPage(0, for: .left)
-        for id in leftDemoIds {
-            mountPod(id: id, to: .left)
-            if let idx = pods.firstIndex(where: { $0.id == id }) {
-                pods[idx].pageIndex = 0
-                pods[idx].majorGroupId = nil
-            }
-        }
-        resetMajorGroups(for: .left)
-        normalizePageRanges(for: .left)
-        isDynamicBreathingEnabled = true
-        isRehearsingBreathingInSculptor = true
-        invalidateLayoutCache()
-        onWindowsRebuildNeeded?()
-
-        let demoExpandIds = Array(leftDemoIds.prefix(3))
-        onboardingRehearsalTask?.cancel()
-        onboardingRehearsalTask = Task { @MainActor in
-            for podId in demoExpandIds {
-                guard !Task.isCancelled else { return }
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.80)) {
-                    self.hoveredPodId = podId
-                    self.activeDrawerPodId = podId
-                    self.activeDrawerItemId = podId
-                    self.onboardingBreathingHoveredPods.insert(podId)
-                    self.invalidateLayoutCache()
-                }
-                self.onWindowsRebuildNeeded?()
-                try? await Task.sleep(nanoseconds: 550_000_000)
-            }
-            guard !Task.isCancelled else { return }
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
-                self.dismissActiveDrawer()
-                self.restoreUserLayoutSnapshotIfNeeded()
-            }
-            self.onboardingBreathingHoveredPods = ["vitals", "shelf"]
-            self.isRehearsingBreathingInSculptor = false
-            self.invalidateLayoutCache()
-            self.onWindowsRebuildNeeded?()
         }
     }
 
