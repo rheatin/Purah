@@ -641,4 +641,193 @@ struct MusicSyncTests {
         state.setLyricsHidden(false, store: store)
         #expect(state.track.isLyricsHidden == false)
     }
+
+    @Test("processMediaRemoteData resolves client bundle ID and display name for Chrome, Spotify, and accessory apps")
+    func testMediaRemoteClientBundleResolution() {
+        let store = PurahWorkspaceStore()
+        let service = SystemMusicSyncService()
+
+        let neiroDict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "10月無口な君を忘れる (Piano ver.)",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Atarayo",
+            "kMRMediaRemoteNowPlayingInfoAlbum": "Acoustic Session",
+            "kMRMediaRemoteNowPlayingInfoDuration": 342.5,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 12.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1.0,
+            "kPurahMRClientBundleIdentifier": "app.neiro.ui",
+            "kPurahMRClientDisplayName": "Neiro"
+        ]
+        service.processMediaRemoteData(dict: neiroDict, pid: 0, store: store)
+        #expect(store._musicTrack.title == "10月無口な君を忘れる (Piano ver.)")
+        #expect(store._musicTrack.artist == "Atarayo")
+        #expect(store._musicTrack.sourceApp == "Neiro")
+        #expect(store._musicTrack.sourceBundleId == "app.neiro.ui")
+        #expect(store._musicTrack.isPlaying == true)
+
+        let chromeDict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "Lofi Hip Hop Radio",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Lofi Girl",
+            "kMRMediaRemoteNowPlayingInfoDuration": 3600.0,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 120.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1.0,
+            "kPurahMRClientBundleIdentifier": "com.google.Chrome.helper.renderer"
+        ]
+        service.processMediaRemoteData(dict: chromeDict, pid: 0, store: store)
+        #expect(store._musicTrack.sourceBundleId == "com.google.Chrome")
+        #expect(store._musicTrack.sourceApp == "Google Chrome")
+    }
+
+    @Test("Paused background player notification does not hijack an actively playing third-party media session")
+    func testPausedBackgroundPlayerDoesNotHijackActiveSession() {
+        let store = PurahWorkspaceStore()
+        let service = SystemMusicSyncService()
+
+        // Active playback in Chrome
+        store._musicTrack = MusicTrackInfo(
+            title: "Bilibili Live Stream",
+            artist: "Creator",
+            isPlaying: true,
+            currentPositionSeconds: 45.0,
+            durationSeconds: 300.0,
+            playbackRate: 1.0,
+            sourceApp: "Google Chrome",
+            sourceBundleId: "com.google.Chrome"
+        )
+
+        // Background Apple Music emits a Paused notification for an old song
+        let pausedAppleMusicNotif = Notification(
+            name: Notification.Name("com.apple.Music.playerInfo"),
+            object: nil,
+            userInfo: [
+                "Player State": "Paused",
+                "Name": "Old Paused Track",
+                "Artist": "Old Artist",
+                "Total Time": 200000.0
+            ]
+        )
+        service.handleAppleMusicInfo(notification: pausedAppleMusicNotif, store: store)
+
+        // Chrome session must remain intact and playing
+        #expect(store._musicTrack.title == "Bilibili Live Stream")
+        #expect(store._musicTrack.sourceBundleId == "com.google.Chrome")
+        #expect(store._musicTrack.isPlaying == true)
+
+        // If Spotify actively starts playing, it SHOULD take over
+        let playingSpotifyNotif = Notification(
+            name: Notification.Name("com.spotify.client.PlaybackStateChanged"),
+            object: nil,
+            userInfo: [
+                "Player State": "Playing",
+                "Name": "New Spotify Song",
+                "Artist": "Spotify Artist",
+                "Duration": 180000.0,
+                "Playback Position": 5.0
+            ]
+        )
+        service.handleSpotifyInfo(notification: playingSpotifyNotif, store: store)
+        #expect(store._musicTrack.title == "New Spotify Song")
+        #expect(store._musicTrack.sourceBundleId == "com.spotify.client")
+        #expect(store._musicTrack.isPlaying == true)
+    }
+
+    @Test("Closed player (Apple Music or Neiro) never fakes playback, progress advancement, or seek")
+    func testClosedPlayerNeverFakesPlaybackOrSeek() {
+        let store = PurahWorkspaceStore()
+        let service = SystemMusicSyncService()
+
+        store._musicTrack = MusicTrackInfo(
+            title: "10月無口な君を忘れる (Piano ver.)",
+            artist: "Atarayo",
+            album: "Acoustic Session",
+            isPlaying: false,
+            playbackProgress: 0.1,
+            currentPositionSeconds: 30.0,
+            durationSeconds: 300.0,
+            lastUpdated: Date(),
+            playbackRate: 0.0,
+            sourceApp: "Neiro",
+            sourceBundleId: "app.neiro.ui"
+        )
+
+        // Simulate Neiro being closed (not running)
+        let closedChecker: (String) -> Bool = { _ in false }
+
+        // Clicking Play when Neiro is closed must NOT flip isPlaying or playbackRate
+        service.togglePlayPause(store: store, runningBundleChecker: closedChecker)
+        #expect(store._musicTrack.isPlaying == false)
+        #expect(store._musicTrack.playbackRate == 0.0)
+        #expect(store._musicTrack.currentPositionSeconds == 30.0)
+        #expect(store._musicTrack.calculatedCurrentTime == 30.0)
+
+        // Scrubbing progress bar when Neiro is closed must NOT move position
+        service.seek(to: 0.75, store: store, runningBundleChecker: closedChecker)
+        #expect(store._musicTrack.currentPositionSeconds == 30.0)
+        #expect(store._musicTrack.playbackProgress == 0.1)
+
+        // If Neiro IS running, Play and Seek work normally
+        let runningChecker: (String) -> Bool = { $0 == "app.neiro.ui" }
+        service.togglePlayPause(store: store, runningBundleChecker: runningChecker)
+        #expect(store._musicTrack.isPlaying == true)
+        #expect(store._musicTrack.playbackRate == 1.0)
+
+        service.seek(to: 0.5, store: store, runningBundleChecker: runningChecker)
+        #expect(store._musicTrack.currentPositionSeconds == 150.0)
+        #expect(store._musicTrack.playbackProgress == 0.5)
+
+        // If Neiro then quits while playing, attempting any action or halting freezes position and stops playback
+        service.haltPlaybackToPaused(store: store)
+        #expect(store._musicTrack.isPlaying == false)
+        #expect(store._musicTrack.playbackRate == 0.0)
+    }
+
+    @Test("Quitting source player preserves its bundle ID so clicking album cover re-opens that exact player instead of Apple Music")
+    func testClosedPlayerArtworkJumpPreservesOriginalApp() {
+        let store = PurahWorkspaceStore()
+        let service = SystemMusicSyncService()
+
+        // 1. Neiro is playing a song
+        let playingDict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "10月無口な君を忘れる (Piano ver.)",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Atarayo",
+            "kMRMediaRemoteNowPlayingInfoDuration": 342.5,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 42.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 1.0,
+            "kPurahMRClientBundleIdentifier": "app.neiro.ui",
+            "kPurahMRClientDisplayName": "Neiro"
+        ]
+        service.processMediaRemoteData(dict: playingDict, pid: 0, store: store)
+        #expect(store._musicTrack.sourceBundleId == "app.neiro.ui")
+        #expect(store._musicTrack.sourceApp == "Neiro")
+
+        // 2. User quits Neiro; MediaRemote emits a follow-up snapshot with pid=0 and no clientBundleId
+        let postQuitDict: [String: Any] = [
+            "kMRMediaRemoteNowPlayingInfoTitle": "10月無口な君を忘れる (Piano ver.)",
+            "kMRMediaRemoteNowPlayingInfoArtist": "Atarayo",
+            "kMRMediaRemoteNowPlayingInfoDuration": 342.5,
+            "kMRMediaRemoteNowPlayingInfoElapsedTime": 42.0,
+            "kMRMediaRemoteNowPlayingInfoPlaybackRate": 0.0
+        ]
+        service.processMediaRemoteData(dict: postQuitDict, pid: 0, store: store)
+
+        // Source app and bundle ID MUST remain Neiro ("app.neiro.ui"), never wiped out or replaced with Apple Music
+        #expect(store._musicTrack.sourceBundleId == "app.neiro.ui")
+        #expect(store._musicTrack.sourceApp == "Neiro")
+
+        // 3. Resolving target player when clicking the album cover must return app.neiro.ui even though Neiro is not running
+        let target = SystemMusicSyncService.resolveTargetPlayer(
+            for: store._musicTrack,
+            fallbackTrack: store._musicTrack
+        )
+        #expect(target.bundleId == "app.neiro.ui")
+        #expect(target.appName == "Neiro")
+
+        // 4. Even if sourceBundleId was accidentally empty or defaulted to com.apple.Music while sourceApp is "Neiro" or "Spotify",
+        // resolveTargetPlayer infers the true player bundle ID from sourceApp
+        let inferredNeiro = SystemMusicSyncService.resolveTargetPlayer(
+            for: MusicTrackInfo(title: "Track", sourceApp: "Neiro", sourceBundleId: "com.apple.Music")
+        )
+        #expect(inferredNeiro.bundleId == "app.neiro.ui")
+        #expect(inferredNeiro.appName == "Neiro")
+    }
 }
+
