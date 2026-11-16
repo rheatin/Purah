@@ -41,7 +41,11 @@ struct MusicStopSignalTests {
 
         #expect(store._musicTrack.title == "Hyrule Ambience")
         #expect(store._musicTrack.artist == "Dynamic.music")
-        #expect(store._musicTrack.currentPositionSeconds == anchor)
+        // The stop signal freezes `calculatedCurrentTime`, which advances with
+        // the wall clock since the last anchor, so the frozen position is the
+        // anchor plus the microseconds between setup and the call. Exact
+        // equality is a race, not a property of the model.
+        #expect(abs(store._musicTrack.currentPositionSeconds - anchor) < 0.05)
     }
 
     @Test func repeatedEmptyPayloadsAreIdempotent() {

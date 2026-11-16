@@ -485,10 +485,16 @@ struct MusicSyncTests {
 
     @Test("Process tree tracing resolves current process and running fallback")
     func testProcessTreeTracing() {
-        let currentPid = getpid()
-        let resolved = SystemMusicSyncService.resolveHostApplication(for: currentPid)
-        #expect(resolved != nil)
-        #expect(!resolved!.bundleId.contains(".helper"))
+        // The test bundle is a plain executable launched by Xcode, a terminal
+        // or a CI shell, so its ancestor chain may contain no application at
+        // all — asking about it made this test depend on who ran it. Ask about
+        // a process that is an app instead, which is the question the resolver
+        // exists to answer.
+        if let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first {
+            let resolved = SystemMusicSyncService.resolveHostApplication(for: finder.processIdentifier)
+            #expect(resolved?.bundleId == "com.apple.finder")
+            #expect(resolved?.bundleId.contains(".helper") == false)
+        }
 
         let fallback = SystemMusicSyncService.resolveRunningMediaAppFallback()
         if let fallback {
