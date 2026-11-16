@@ -751,11 +751,14 @@ struct PluginArchitectureTests {
         let newTrack = MusicTrackInfo(title: "Song A", artist: "Artist B", isPlaying: false, durationSeconds: 200.0)
         musicState.update(from: newTrack)
         #expect(musicState.track.title == "Song A")
-        // No bound store means no player: toggling must not fake playback.
+        // No bound store means no player: neither toggling nor seeking may
+        // fake playback state on the rail. `seek` is a request to the player,
+        // so without one there is nothing to move.
         musicState.togglePlayPause()
         #expect(musicState.track.isPlaying == false)
+        let unboundProgress = musicState.track.playbackProgress
         musicState.seek(to: 0.5)
-        #expect(musicState.track.playbackProgress == 0.5)
+        #expect(musicState.track.playbackProgress == unboundProgress)
 
         // Test togglePlayPause with store synchronization (avoid double-toggle)
         let testMusicStore = PurahWorkspaceStore()
