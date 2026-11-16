@@ -78,7 +78,9 @@ public enum CommandRiskClassifier {
         ) != nil {
             return .dangerous
         }
-        if dangerousSubstrings.contains(where: { normalised.contains($0) }) {
+        // Quoted text is a search pattern or a message, not syntax: judging the
+        // raw string made `grep -r "git push --force" .` come back dangerous.
+        if dangerousSubstrings.contains(where: { unquoted.contains($0) }) {
             return .dangerous
         }
 
