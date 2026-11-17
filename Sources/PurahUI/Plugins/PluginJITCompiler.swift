@@ -6,6 +6,8 @@ import PurahCore
 public final class PluginJITCompiler {
     public static let shared = PluginJITCompiler()
 
+    public private(set) var lastCompilationError: String? = nil
+
     private init() {}
 
     /// Locates the active swift CLI tool
@@ -168,6 +170,40 @@ public final class PluginJITCompiler {
         return dylib
     }
 
+    /// Compiles and loads a local Swift Package for security review without activating it.
+    public func compileAndLoadForReview(
+        packageDir: URL,
+        configuration: String = "release"
+    ) async -> (dylibURL: URL, plugin: any PurahPodPlugin)? {
+        lastCompilationError = nil
+        do {
+            let dylib = try await compilePackage(packageDir: packageDir, configuration: configuration)
+            let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
+            return (dylib, plugin)
+        } catch {
+            lastCompilationError = error.localizedDescription
+            DiagnosticLogger.shared.warn("Plugin", "compileAndLoadForReview failed for \(packageDir.path): \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// Activates and mounts a plugin that has been approved through security confirmation.
+    public func activateReviewedPlugin(
+        _ plugin: any PurahPodPlugin,
+        dylibURL: URL,
+        packageDir: URL? = nil,
+        store: PurahWorkspaceStore
+    ) {
+        PluginDynamicLoader.shared.rememberInstalled(
+            path: dylibURL.path,
+            packagePath: packageDir?.path,
+            for: plugin.manifest.id
+        )
+        PluginRegistry.shared.register(plugin, store: store)
+        store.marketManager.install(id: plugin.manifest.id)
+        store.autoLayoutAll()
+    }
+
     /// High-level convenience: compiles local package, dynamically loads it, and mounts to workspace
     @discardableResult
     public func buildAndLoad(
@@ -175,14 +211,74 @@ public final class PluginJITCompiler {
         store: PurahWorkspaceStore,
         configuration: String = "release"
     ) async throws -> any PurahPodPlugin {
-        let dylib = try await compilePackage(packageDir: packageDir, configuration: configuration)
-        let plugin = try PluginDynamicLoader.shared.loadPlugin(from: dylib)
-        PluginDynamicLoader.shared.rememberInstalled(path: dylib.path, for: plugin.manifest.id)
-
-        PluginRegistry.shared.register(plugin, store: store)
-        store.marketManager.install(id: plugin.manifest.id)
-        store.autoLayoutAll()
-
+        guard let (dylib, plugin) = await compileAndLoadForReview(packageDir: packageDir, configuration: configuration) else {
+            throw PluginDynamicLoadError.compilationFailed(
+                lastCompilationError ?? "Failed to compile or load package at \(packageDir.path)"
+            )
+        }
+        activateReviewedPlugin(plugin, dylibURL: dylib, packageDir: packageDir, store: store)
         return plugin
+    }
+
+    // MARK: - Git Sideloading Helpers
+
+    /// Runs a git command off the main actor if git is available.
+    @discardableResult
+    nonisolated public static func runGit(
+        arguments: [String],
+        currentDirectoryURL: URL? = nil
+    ) async throws -> (status: Int32, output: String) {
+        let gitPath = "/usr/bin/git"
+        guard FileManager.default.isExecutableFile(atPath: gitPath) else {
+            throw PluginDynamicLoadError.compilationFailed("git executable not found at \(gitPath)")
+        }
+        let workDir = currentDirectoryURL ?? FileManager.default.temporaryDirectory
+        return try await runProcessOffMainThread(
+            executableURL: URL(fileURLWithPath: gitPath),
+            arguments: arguments,
+            currentDirectoryURL: workDir
+        )
+    }
+
+    /// Pulls latest changes for a package directory if it is a git repository.
+    public func gitPullIfRepository(packageDir: URL) async {
+        let gitDir = packageDir.appendingPathComponent(".git")
+        guard FileManager.default.fileExists(atPath: gitDir.path) else { return }
+        do {
+            let res = try await Self.runGit(
+                arguments: ["-C", packageDir.path, "pull", "--ff-only"],
+                currentDirectoryURL: packageDir
+            )
+            if res.status != 0 {
+                DiagnosticLogger.shared.warn("Plugin", "git pull --ff-only returned \(res.status): \(res.output)")
+            } else {
+                DiagnosticLogger.shared.info("Plugin", "git pull succeeded for \(packageDir.lastPathComponent)")
+            }
+        } catch {
+            DiagnosticLogger.shared.warn("Plugin", "git pull failed for \(packageDir.path): \(error.localizedDescription)")
+        }
+    }
+
+    /// Clones or updates a git repository into destination directory.
+    public func cloneOrPullGitRepository(from gitURL: URL, into parentDir: URL) async throws -> URL {
+        let rawName = gitURL.deletingPathExtension().lastPathComponent
+        let sanitizedName = rawName.isEmpty ? "PurahPlugin" : rawName
+        let targetDir = parentDir.appendingPathComponent(sanitizedName, isDirectory: true)
+
+        try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+
+        if FileManager.default.fileExists(atPath: targetDir.appendingPathComponent(".git").path) {
+            await gitPullIfRepository(packageDir: targetDir)
+            return targetDir
+        }
+
+        let res = try await Self.runGit(
+            arguments: ["clone", "--depth", "1", gitURL.absoluteString, targetDir.path],
+            currentDirectoryURL: parentDir
+        )
+        guard res.status == 0 else {
+            throw PluginDynamicLoadError.compilationFailed("git clone failed:\n\(res.output)")
+        }
+        return targetDir
     }
 }

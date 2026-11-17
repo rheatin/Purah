@@ -978,7 +978,7 @@ public final class PurahWorkspaceStore {
         if let existing = _marketManager {
             return existing
         }
-        let manager = PluginMarketManager(store: self)
+        let manager = PluginMarketManager(store: self, userDefaults: userDefaults)
         _marketManager = manager
         return manager
     }

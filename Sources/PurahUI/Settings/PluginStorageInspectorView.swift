@@ -64,17 +64,20 @@ public struct PluginStorageInspectorView: View {
     private let injectedPlugins: [PluginStoragePluginSpec]?
     private let focusedPluginId: String?
     private let focusNonce: Int
+    private let store: PurahWorkspaceStore?
     private let onMeasurements: (([PluginStorageMeasurement]) -> Void)?
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
 
     public init(
+        store: PurahWorkspaceStore? = nil,
         focusedPluginId: String? = nil,
         focusNonce: Int = 0
     ) {
         self.init(
             roots: .live,
             plugins: nil,
+            store: store,
             focusedPluginId: focusedPluginId,
             focusNonce: focusNonce,
             onMeasurements: nil
@@ -83,12 +86,14 @@ public struct PluginStorageInspectorView: View {
 
     public init(
         roots: PluginStorageRoots,
+        store: PurahWorkspaceStore? = nil,
         focusedPluginId: String? = nil,
         focusNonce: Int = 0
     ) {
         self.init(
             roots: roots,
             plugins: nil,
+            store: store,
             focusedPluginId: focusedPluginId,
             focusNonce: focusNonce,
             onMeasurements: nil
@@ -98,12 +103,14 @@ public struct PluginStorageInspectorView: View {
     init(
         roots: PluginStorageRoots,
         plugins: [PluginStoragePluginSpec]?,
+        store: PurahWorkspaceStore? = nil,
         focusedPluginId: String? = nil,
         focusNonce: Int = 0,
         onMeasurements: (([PluginStorageMeasurement]) -> Void)? = nil
     ) {
         self.roots = roots
         self.injectedPlugins = plugins
+        self.store = store
         self.focusedPluginId = focusedPluginId
         self.focusNonce = focusNonce
         self.onMeasurements = onMeasurements
@@ -266,6 +273,25 @@ public struct PluginStorageInspectorView: View {
             .help("diagnostics.cache.reveal".localized)
             .accessibilityLabel("diagnostics.cache.reveal".localized)
 
+            if let pluginId = row.kind.pluginId,
+               let pkgPath = PluginDynamicLoader.shared.installedPackagePath(for: pluginId),
+               FileManager.default.fileExists(atPath: pkgPath) {
+                Button {
+                    rebuildPackage(at: pkgPath, pluginId: pluginId)
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 10))
+                        .frame(
+                            width: StorageInspectorLayout.trailingControlWidth,
+                            height: StorageInspectorLayout.trailingControlWidth
+                        )
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.accentColor)
+                .help("Rebuild or update plugin from source package")
+                .accessibilityLabel("Rebuild or update plugin from source package")
+            }
+
             Menu {
                 rowMenu(row)
             } label: {
@@ -319,6 +345,16 @@ public struct PluginStorageInspectorView: View {
 
     @ViewBuilder
     private func rowMenu(_ row: PluginStorageRow) -> some View {
+        if let pluginId = row.kind.pluginId,
+           let pkgPath = PluginDynamicLoader.shared.installedPackagePath(for: pluginId),
+           FileManager.default.fileExists(atPath: pkgPath) {
+            Button {
+                rebuildPackage(at: pkgPath, pluginId: pluginId)
+            } label: {
+                Label("Rebuild / Update", systemImage: "arrow.triangle.2.circlepath")
+            }
+        }
+
         if (row.cacheBytes ?? 0) > 0 {
             Button {
                 PluginStorageScanner.clearContents(of: row.cacheLocations)
@@ -360,7 +396,19 @@ public struct PluginStorageInspectorView: View {
     private func rowHasMenuActions(_ row: PluginStorageRow) -> Bool {
         (row.cacheBytes ?? 0) > 0 ||
         (row.dataBytes ?? 0) > 0 ||
-        (row.kind == .leftovers && !row.leftoverDirectories.isEmpty)
+        (row.kind == .leftovers && !row.leftoverDirectories.isEmpty) ||
+        (row.kind.pluginId.flatMap { PluginDynamicLoader.shared.installedPackagePath(for: $0) } != nil)
+    }
+
+    private func rebuildPackage(at pkgPath: String, pluginId: String) {
+        Task { @MainActor in
+            let pkgURL = URL(fileURLWithPath: pkgPath)
+            await PluginJITCompiler.shared.gitPullIfRepository(packageDir: pkgURL)
+            if let targetStore = store ?? PluginRegistry.shared.currentStore {
+                _ = try? await PluginJITCompiler.shared.buildAndLoad(packageDir: pkgURL, store: targetStore)
+            }
+            reload()
+        }
     }
 
     private var summaryText: String {

@@ -12,6 +12,7 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
     private var pollingTasks: [String: Task<Void, Never>] = [:]
     private var mountedPluginIds: Set<String> = []
     private weak var boundStore: PurahWorkspaceStore?
+    public var currentStore: PurahWorkspaceStore? { boundStore }
 
     public init() {
         registerBuiltInPlugins()

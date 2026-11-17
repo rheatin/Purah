@@ -1047,7 +1047,9 @@ public final class PluginDynamicLoader {
     /// `pruneOrphanedPods` deleted the user's layout as if the plugin had been
     /// uninstalled.
     private var installedDylibPaths: [String: String] = [:]
+    private var installedPackagePaths: [String: String] = [:]
     private let installedPathsKey = "purah.dynamicPluginPaths"
+    private let installedPackagePathsKey = "purah.dynamicPluginPackagePaths"
 
     /// Last stepped items each dynamic plugin reported. The layout engine needs
     /// a sub-item count before any context exists, so the render pass caches
@@ -1058,19 +1060,34 @@ public final class PluginDynamicLoader {
     /// tests that need an empty resident-image set.
     init() {
         installedDylibPaths = UserDefaults.standard.dictionary(forKey: installedPathsKey) as? [String: String] ?? [:]
+        installedPackagePaths = UserDefaults.standard.dictionary(forKey: installedPackagePathsKey) as? [String: String] ?? [:]
     }
 
     // MARK: - Installation persistence
 
     /// Records a loaded plugin so it can be re-registered at next launch.
-    public func rememberInstalled(path: String, for pluginId: String) {
-        installedDylibPaths[pluginId] = path
+    public func rememberInstalled(path: String, packagePath: String? = nil, for id: String) {
+        installedDylibPaths[id] = path
         UserDefaults.standard.set(installedDylibPaths, forKey: installedPathsKey)
+        if let packagePath {
+            installedPackagePaths[id] = packagePath
+            UserDefaults.standard.set(installedPackagePaths, forKey: installedPackagePathsKey)
+        }
+    }
+
+    public func installedPackagePath(for id: String) -> String? {
+        installedPackagePaths[id]
+    }
+
+    public func forgetInstalled(id: String) {
+        installedDylibPaths.removeValue(forKey: id)
+        UserDefaults.standard.set(installedDylibPaths, forKey: installedPathsKey)
+        installedPackagePaths.removeValue(forKey: id)
+        UserDefaults.standard.set(installedPackagePaths, forKey: installedPackagePathsKey)
     }
 
     public func forgetInstalled(pluginId: String) {
-        installedDylibPaths.removeValue(forKey: pluginId)
-        UserDefaults.standard.set(installedDylibPaths, forKey: installedPathsKey)
+        forgetInstalled(id: pluginId)
     }
 
     public var installedPluginPaths: [String: String] { installedDylibPaths }
@@ -1091,6 +1108,7 @@ public final class PluginDynamicLoader {
             guard FileManager.default.fileExists(atPath: path) else {
                 DiagnosticLogger.shared.warn("Plugin", "External plugin path gone, forgetting: \(path)")
                 installedDylibPaths.removeValue(forKey: pluginId)
+                installedPackagePaths.removeValue(forKey: pluginId)
                 continue
             }
             do {
@@ -1110,6 +1128,7 @@ public final class PluginDynamicLoader {
         }
 
         UserDefaults.standard.set(installedDylibPaths, forKey: installedPathsKey)
+        UserDefaults.standard.set(installedPackagePaths, forKey: installedPackagePathsKey)
 
         if didRestore {
             // A restored pod may be missing from the saved layout (first launch

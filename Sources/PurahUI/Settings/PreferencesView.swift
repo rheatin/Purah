@@ -213,9 +213,11 @@ public struct PreferencesView: View {
         HStack(spacing: 0) {
             rail
                 .frame(width: 200)
+                .fixedSize(horizontal: true, vertical: false)
 
             selectedContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
                 .id(LocalizationManager.shared.currentLanguage)
         }
         .background(palette.background)
@@ -240,6 +242,7 @@ public struct PreferencesView: View {
                 .padding(.bottom, 10)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .layoutPriority(0)
 
             Rectangle()
                 .fill(palette.borderColor)
@@ -252,11 +255,15 @@ public struct PreferencesView: View {
                     globalButton(item)
                 }
             }
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(1)
 
             signatureBlock
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
         }
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.55))
         .overlay(alignment: .trailing) {

@@ -169,6 +169,8 @@ public final class PluginCatalogService: Sendable {
     /// marketplace at a real index is a one-line change once the repo is up.
     public static var catalogURL: URL? { nil }
 
+    public var catalogURL: URL? { Self.catalogURL }
+
     public static var productionProvider: (any PluginCatalogProviding)? {
         guard let url = catalogURL else { return nil }
         return RemotePluginCatalogProvider(url: url)
