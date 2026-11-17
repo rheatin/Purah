@@ -55,31 +55,32 @@ Last reviewed: 2026-11-15 (v0.7.26)
 
 ## Phase 1 — Making it safe to install
 
-- [ ] **1.1 Install-time permission consent** — before `Dev: Load Package...`
-      dlopens a plugin, list what it declares and what denial costs. **Half
-      done (v0.7.18):** a catalog install now goes through
-      `SecurityConfirmationSheet`, which lists every declared capability and
-      its consequence. The sideload path still mounts silently, because the
-      manifest does not exist until the package has been compiled — the
-      confirmation has to sit between "compiled" and "registered".
-- [ ] **1.2 Third-party plugin lifecycle** — install, list, update, remove.
-      **Half done (v0.7.18):** install, rebuild from the remembered package
-      folder, list (Marketplace + the System storage table), remove with
-      confirmation, and re-load on the next launch all exist. Missing: update
-      from a source, and a management surface that is not Developer Mode.
-      Start from the existing `PluginStorageInspectorView`, which already knows
-      every plugin on disk.
-- [ ] **1.3 Marketplace: fill it or hide it** — the invented catalog is gone
-      (it mounted pods that could only render their own description back).
-      `PluginCatalogService` was added to read a published index, but
-      `catalogURL` is `nil`, nothing downloads a plugin from `downloadUrl`, and
-      `PluginMarketManager.install(id:)` refuses any id without a registered
-      implementation — so the shelf lists the built-ins and nothing else.
-      Either publish a catalog *and* a downloader, or say on the page that
-      this Purah installs built-ins only.
-- [ ] **1.4 Plugin scaffold** — one command that produces a buildable, loadable
-      empty plugin. `Examples/PurahExamplePlugin` is the reference; the
-      scaffold removes the "read 300 lines of guide first" tax.
+- [x] **1.1 Install-time permission consent** — completed: sideloading local
+      Swift Packages, prebuilt `.dylib`s, and cloned Git repositories now
+      compiles/loads into memory for staging (`compileAndLoadForReview`) and
+      presents `SecurityConfirmationSheet` for full permission and risk review
+      before registration, persistence, or rail mounting. Canceling unloads the
+      handle cleanly without leaving records in `PluginRegistry` or
+      `marketManager`.
+- [x] **1.2 Third-party plugin lifecycle** — completed: `PluginDynamicLoader`
+      persists and clears source `packagePath` in `purah.dynamicPluginPackagePaths`.
+      Installed third-party plugin cards in `PluginMarketplaceView` and rows in
+      `PluginStorageInspectorView` provide a direct "Rebuild / Update" action
+      (executing `git pull --ff-only` if a `.git` directory exists and recompiling
+      in place). Added "Install from Git URL..." with automated cloning into
+      `~/Library/Application Support/Purah/InstalledPlugins/` and review.
+- [x] **1.3 Marketplace: fill it or hide it** — completed: when no remote
+      catalog endpoint is configured (`catalogURL == nil`), `PluginMarketplaceView`
+      presents a clear, honest callout explaining that the 10 core modules below
+      are built-in, while custom plugins can be loaded from local packages,
+      `.dylib`s, or Git URLs. Promoted first-class actions in the marketplace
+      header for "Load Package / .dylib...", "Install from Git URL...", and
+      "Create Plugin Template...".
+- [x] **1.4 Plugin scaffold** — completed: `PurahPluginScaffoldGenerator`
+      generates a buildable, loadable Swift 6 dynamic library package targeting
+      macOS 14 with C-ABI entry points and zero-dependency SDK. Wired to a
+      tactile configuration sheet in `PluginMarketplaceView` with one-click
+      generation, "Reveal in Finder", and immediate compilation.
 
 ## Phase 2 — Making it worth keeping
 
