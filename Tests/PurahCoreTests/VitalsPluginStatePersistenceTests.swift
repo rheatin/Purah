@@ -229,4 +229,55 @@ struct VitalsPluginStatePersistenceTests {
         #expect(state.samplingIntervalSeconds == 1)
         #expect(storage.int(forKey: "samplingIntervalSeconds") == 1)
     }
+
+    @Test("Power dashboard tab button and Battery header metric menu option do not collide")
+    func testPowerTabAndBatteryHeaderMetricActionsDoNotCollide() throws {
+        let suite = TestDefaults.uniqueName("vitals_header_power_collision")
+        let (defaults, storage) = try makeStorage(suite: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let state = VitalsPluginState(storage: storage)
+        let plugin = HardwareVitalsPlugin(state: state)
+        let store = PurahWorkspaceStore()
+        let pod = store.pods.first { $0.id == "vitals" } ?? store.pods[0]
+        let context = PurahPluginContext(
+            pod: pod,
+            edge: .left,
+            railWidth: 8.0,
+            slotHeight: 160.0,
+            drawerWidth: 400.0,
+            isExpanded: true,
+            isPinned: false,
+            accentColor: .green,
+            palette: ThemeManager.shared.palette,
+            store: store,
+            requestExpand: {},
+            requestDismiss: {},
+            togglePin: {}
+        )
+
+        #expect(state.dashboardTab == .overview)
+        #expect(state.headerMetric == .cpu)
+
+        let trailingItems = plugin.headerTrailingItems(context: context)
+        let powerTabButton = trailingItems.first { $0.help == VitalsDashboardTab.power.title }
+        #expect(powerTabButton != nil)
+
+        if let powerTabActionId = powerTabButton?.id {
+            plugin.onHeaderAction(actionId: powerTabActionId, context: context)
+        }
+        #expect(state.dashboardTab == .power)
+        #expect(state.headerMetric == .cpu)
+
+        let accessory = plugin.headerAccessory(context: context)
+        let batteryOption = accessory?.menuOptions?.first { $0.title == VitalsMetricType.power.displayName }
+        #expect(batteryOption != nil)
+
+        if let batteryMetricActionId = batteryOption?.id {
+            plugin.onHeaderAction(actionId: batteryMetricActionId, context: context)
+        }
+        #expect(state.headerMetric == .power)
+        #expect(state.dashboardTab == .power)
+    }
 }
+

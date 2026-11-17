@@ -51,6 +51,14 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
         AnyView(HardwareVitalsDrawerView(state: state, store: context.store))
     }
 
+    public static func headerMetricActionId(for metric: VitalsMetricType) -> String {
+        "metric:\(metric.rawValue)"
+    }
+
+    public static func headerTabActionId(for tab: VitalsDashboardTab) -> String {
+        "tab:\(tab.rawValue)"
+    }
+
     /// The reading the header reports, and which metric it reports.
     public func headerAccessory(context: PurahPluginContext) -> PurahHeaderAccessoryDescriptor? {
         PurahHeaderAccessoryDescriptor.menu(
@@ -58,7 +66,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
             systemIcon: state.headerMetric.systemIcon,
             options: VitalsMetricType.allCases.map { metric in
                 PurahHeaderMenuOption(
-                    id: metric.rawValue,
+                    id: Self.headerMetricActionId(for: metric),
                     title: metric.displayName,
                     systemIcon: metric.systemIcon,
                     isSelected: state.headerMetric == metric
@@ -70,7 +78,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public func headerTrailingItems(context: PurahPluginContext) -> [PurahHeaderTrailingItem] {
         VitalsDashboardTab.allCases.map { tab in
             PurahHeaderTrailingItem.button(
-                id: tab.rawValue,
+                id: Self.headerTabActionId(for: tab),
                 systemIcon: tab.icon,
                 help: tab.title,
                 isActive: state.dashboardTab == tab
@@ -79,10 +87,16 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     public func onHeaderAction(actionId: String, context: PurahPluginContext) {
-        if let metric = VitalsMetricType(rawValue: actionId) {
+        if actionId.hasPrefix("metric:"),
+           let metric = VitalsMetricType(rawValue: String(actionId.dropFirst("metric:".count))) {
             state.setHeaderMetric(metric)
+        } else if actionId.hasPrefix("tab:"),
+                  let tab = VitalsDashboardTab(rawValue: String(actionId.dropFirst("tab:".count))) {
+            withAnimation(PurahMotionPolicy.surfaceSoft) { state.dashboardTab = tab }
         } else if let tab = VitalsDashboardTab(rawValue: actionId) {
             withAnimation(PurahMotionPolicy.surfaceSoft) { state.dashboardTab = tab }
+        } else if let metric = VitalsMetricType(rawValue: actionId) {
+            state.setHeaderMetric(metric)
         }
     }
 
