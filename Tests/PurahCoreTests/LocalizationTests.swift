@@ -166,7 +166,8 @@ struct LocalizationTests {
             // legacy spellings existed, so the rail showed the raw key.
             // +1: music.activatePlayer
             // +1: the shelf's quota warning when starred files alone exceed it.
-            .traditionalChinese: 1030
+            // +35: external plugin marketplace scaffold and git install sheets.
+            .traditionalChinese: 1065
         ]
 
         for (language, expected) in pinnedCoverage {
