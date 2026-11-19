@@ -77,7 +77,12 @@ $99/year, owner action, and the only thing that would change:
 
 It does **not** buy TCC stability. The self-signed `Purah Local` identity already
 gives a designated requirement that survives updates, so calendar and reminders
-are not re-prompted on every build.
+are not re-prompted on every build. On a fresh or migrated Mac, provision it once
+with:
+
+```bash
+./scripts/setup-local-signing.sh
+```
 
 The plumbing is already here:
 
@@ -101,11 +106,13 @@ PURAH_NOTARY_PROFILE="purah-notary" \
 ```
 
 Both environment variables are optional. Without them the build is signed with
-the local `Purah Local` identity and is not notarized.
+the local `Purah Local` identity (provisioned once via
+`./scripts/setup-local-signing.sh`) and is not notarized.
 
-`release.sh --publish` refuses to run unless the tree is clean, the branch is
-`main`, and local `main` contains `origin/main` — a release tagged from an
-unmerged branch ships assets that do not match the commit its tag points at.
+`release.sh --publish` refuses to run unless a valid signing identity resolves
+(pass `--allow-unsigned` to override intentionally), the tree is clean, the
+branch is `main`, and local `main` contains `origin/main` — a release tagged from
+an unmerged branch ships assets that do not match the commit its tag points at.
 
 The DMG carries `Install Purah.command` and `Read Me.txt` from `packaging/`.
 The script is what makes an unnotarized build openable: it copies the app into

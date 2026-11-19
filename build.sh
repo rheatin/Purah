@@ -200,7 +200,14 @@ ENTITLEMENTS="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/Source
 HARDENED_ARGS=()
 ENTITLEMENTS_ARGS=()
 if [ "$SIGNING_IDENTITY" != "-" ]; then
-    HARDENED_ARGS=(--options runtime --timestamp)
+    # Notarization requires Apple's RFC 3161 timestamp server (`--timestamp`).
+    # Local and self-signed builds carry no notarization ticket, so
+    # `--timestamp=none` avoids failing offline or waiting on timestamp.apple.com.
+    if [ -n "${PURAH_NOTARY_PROFILE:-}" ]; then
+        HARDENED_ARGS=(--options runtime --timestamp)
+    else
+        HARDENED_ARGS=(--options runtime --timestamp=none)
+    fi
     if [ -f "$ENTITLEMENTS" ]; then
         ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS")
         echo -e "   └── Entitlements: $(basename "$ENTITLEMENTS")"
