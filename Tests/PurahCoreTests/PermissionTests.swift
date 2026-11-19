@@ -1,6 +1,7 @@
 // Tests/PurahCoreTests/PermissionTests.swift
 import Testing
 import EventKit
+import AppKit
 @testable import PurahCore
 
 @Suite("Permission and System Access Tests")
@@ -20,6 +21,9 @@ struct PermissionTests {
         if #available(macOS 14.0, *) {
             let fullAccess = PermissionManager.status(from: .fullAccess)
             #expect(fullAccess == .authorized)
+
+            let writeOnly = PermissionManager.status(from: .writeOnly)
+            #expect(writeOnly == .denied)
         }
     }
 
@@ -83,5 +87,46 @@ struct PermissionTests {
 
         #expect(manifest.permissions == [.calendar])
         #expect(manifest.unsupportedPermissions == ["Camera"])
+    }
+
+    @Test("External authorization changes refresh immediately on app activation and store change")
+    func testExternalAuthorizationRefresh() {
+        @MainActor
+        final class StatusStub {
+            var calendar: EKAuthorizationStatus = .notDetermined
+            var reminders: EKAuthorizationStatus = .denied
+        }
+
+        let center = NotificationCenter()
+        let stub = StatusStub()
+
+        let manager = PermissionManager(
+            notificationCenter: center,
+            calendarAuthorizationReader: { stub.calendar },
+            remindersAuthorizationReader: { stub.reminders }
+        )
+
+        #expect(manager.calendarStatus == .notDetermined)
+        #expect(manager.remindersStatus == .denied)
+
+        if #available(macOS 14.0, *) {
+            stub.calendar = .fullAccess
+            center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+            #expect(manager.calendarStatus == .authorized)
+
+            stub.calendar = .writeOnly
+            stub.reminders = .fullAccess
+            center.post(name: .EKEventStoreChanged, object: nil)
+            #expect(manager.calendarStatus == .denied)
+            #expect(manager.remindersStatus == .authorized)
+        } else {
+            stub.calendar = .authorized
+            center.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+            #expect(manager.calendarStatus == .authorized)
+
+            stub.reminders = .authorized
+            center.post(name: .EKEventStoreChanged, object: nil)
+            #expect(manager.remindersStatus == .authorized)
+        }
     }
 }

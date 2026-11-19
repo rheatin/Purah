@@ -45,17 +45,62 @@ public final class PermissionManager {
     public private(set) var microphoneStatus: AccessStatus = .notDetermined
 
     private var eventStore = EKEventStore()
+    private let notificationCenter: NotificationCenter
+    @ObservationIgnored private nonisolated(unsafe) var observerTokens: [NSObjectProtocol] = []
+    private let calendarAuthorizationReader: @MainActor () -> EKAuthorizationStatus
+    private let remindersAuthorizationReader: @MainActor () -> EKAuthorizationStatus
 
-    public init() {
+    public init(
+        notificationCenter: NotificationCenter = .default,
+        calendarAuthorizationReader: @escaping @MainActor () -> EKAuthorizationStatus = {
+            EKEventStore.authorizationStatus(for: .event)
+        },
+        remindersAuthorizationReader: @escaping @MainActor () -> EKAuthorizationStatus = {
+            EKEventStore.authorizationStatus(for: .reminder)
+        }
+    ) {
+        self.notificationCenter = notificationCenter
+        self.calendarAuthorizationReader = calendarAuthorizationReader
+        self.remindersAuthorizationReader = remindersAuthorizationReader
         refreshStatuses()
+        registerAuthorizationObservers()
+    }
+
+    deinit {
+        for token in observerTokens {
+            notificationCenter.removeObserver(token)
+        }
+    }
+
+    private func registerAuthorizationObservers() {
+        let handler: @Sendable (Notification) -> Void = { [weak self] _ in
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    self?.refreshStatuses()
+                }
+            } else {
+                Task { @MainActor [weak self] in
+                    self?.refreshStatuses()
+                }
+            }
+        }
+
+        let observedNames: [Notification.Name] = [
+            NSApplication.didBecomeActiveNotification,
+            .EKEventStoreChanged
+        ]
+
+        observerTokens = observedNames.map { name in
+            notificationCenter.addObserver(forName: name, object: nil, queue: nil, using: handler)
+        }
     }
 
     public func refreshStatuses() {
         eventStore.reset()
-        let calEKStatus = EKEventStore.authorizationStatus(for: .event)
+        let calEKStatus = calendarAuthorizationReader()
         self.calendarStatus = Self.status(from: calEKStatus)
 
-        let remEKStatus = EKEventStore.authorizationStatus(for: .reminder)
+        let remEKStatus = remindersAuthorizationReader()
         self.remindersStatus = Self.status(from: remEKStatus)
 
         // Apple Music observes standard distributed notifications without TCC prompt
@@ -104,7 +149,11 @@ public final class PermissionManager {
         case .notDetermined: .notDetermined
         case .restricted: .restricted
         case .denied: .denied
-        case .authorized, .fullAccess, .writeOnly: .authorized
+        // Purah's Calendar pod reads events and requires Full Access (`.fullAccess`).
+        // `.writeOnly` ("Add Events Only" on macOS 14+) returns 0 calendars/events when
+        // reading and must direct the user to grant Full Access in System Settings.
+        case .writeOnly: .denied
+        case .authorized, .fullAccess: .authorized
         @unknown default: .notDetermined
         }
     }
