@@ -289,13 +289,15 @@ if [ -n "$SIGN_IDENTITY" ]; then
         ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS_FILE")
     fi
 
-    find "$APP_PATH/Contents" -type f \( -name "*.dylib" -o -name "*.bundle" \) -print0 2>/dev/null \
+    TIMESTAMP_ARG="$(purah_codesign_timestamp_arg "$SIGN_IDENTITY")"
+
+    find "$APP_PATH/Contents" \( -type f -name "*.dylib" -o -type d -name "*.bundle" \) -print0 2>/dev/null \
         | while IFS= read -r -d '' nested; do
-            codesign --force --timestamp --options runtime \
+            codesign --force "$TIMESTAMP_ARG" --options runtime \
                 --sign "$SIGN_IDENTITY" "$nested" 2>/dev/null || true
         done
 
-    codesign --force --timestamp --options runtime \
+    codesign --force "$TIMESTAMP_ARG" --options runtime \
         "${ENTITLEMENTS_ARGS[@]}" \
         --sign "$SIGN_IDENTITY" \
         "$APP_PATH"
@@ -423,7 +425,7 @@ rm -rf "$DMG_STAGING"
 # before dragging the app out sees the disk image's own Gatekeeper verdict.
 if [ -n "$SIGN_IDENTITY" ] && [ -n "$NOTARY_PROFILE" ]; then
     echo -e "   └── Signing and stapling DMG..."
-    codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG_PATH"
+    codesign --force "$(purah_codesign_timestamp_arg "$SIGN_IDENTITY")" --sign "$SIGN_IDENTITY" "$DMG_PATH"
     xcrun stapler staple "$DMG_PATH" || {
         echo -e "${RED}Error: could not staple the DMG.${RESET}" >&2
         exit 1

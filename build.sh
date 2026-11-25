@@ -200,14 +200,7 @@ ENTITLEMENTS="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/Source
 HARDENED_ARGS=()
 ENTITLEMENTS_ARGS=()
 if [ "$SIGNING_IDENTITY" != "-" ]; then
-    if [[ "$SIGNING_IDENTITY" == "Developer ID "* || "$SIGNING_IDENTITY" == "Apple "* ]]; then
-        HARDENED_ARGS=(--options runtime --timestamp)
-    else
-        # Local self-signed identities (e.g. "Purah Local") are never notarized;
-        # skipping Apple's online TSA prevents "The timestamp service is not available"
-        # offline/proxy errors while keeping hardened runtime and stable TCC identity.
-        HARDENED_ARGS=(--options runtime --timestamp=none)
-    fi
+    HARDENED_ARGS=(--options runtime "$(purah_codesign_timestamp_arg "$SIGNING_IDENTITY")")
     if [ -f "$ENTITLEMENTS" ]; then
         ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS")
         echo -e "   └── Entitlements: $(basename "$ENTITLEMENTS")"
