@@ -21,6 +21,7 @@ VERSION=""
 SKIP_TESTS=false
 SKIP_TAG=false
 PUBLISH=false
+ALLOW_UNSIGNED=false
 BUMP_TYPE="patch"
 CUSTOM_NOTES=""
 CUSTOM_NOTES_FILE=""
@@ -39,6 +40,7 @@ ${BOLD}Options:${RESET}
       --skip-tag, --no-tag        Do not auto-bump version or create/push git tags
       --skip-tests                Skip test execution before packaging
       --publish                   Publish to GitHub Releases via gh CLI
+      --allow-unsigned            Allow --publish without a signing identity (resets TCC grants)
       --notes <text>              Specify release notes string
       --notes-file <file>         Specify release notes file path
   -h, --help                      Show this help message
@@ -73,6 +75,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --publish)
             PUBLISH=true
+            shift
+            ;;
+        --allow-unsigned)
+            ALLOW_UNSIGNED=true
             shift
             ;;
         --notes)
@@ -140,6 +146,16 @@ bump_semver() {
 # these checks run before anything is built, bumped, or tagged.
 # ------------------------------------------------------------------------------
 require_publish_prerequisites() {
+    if [ "$ALLOW_UNSIGNED" != true ] && [ -z "$(purah_resolve_signing_identity)" ]; then
+        echo -e "${RED}Error: no signing identity resolved — refusing to publish an ad-hoc unsigned release.${RESET}" >&2
+        echo -e "${YELLOW}   An ad-hoc unsigned release falls back to cdhash and resets every user's${RESET}" >&2
+        echo -e "${YELLOW}   Calendar/Reminders TCC permissions on update.${RESET}" >&2
+        echo -e "   Provision a local identity:  ${BOLD}./scripts/setup-local-signing.sh${RESET}" >&2
+        echo -e "   Or specify an identity:      ${BOLD}PURAH_SIGN_IDENTITY=\"...\" ./release.sh --publish${RESET}" >&2
+        echo -e "   Or override intentionally:   ${BOLD}./release.sh --publish --allow-unsigned${RESET}" >&2
+        exit 1
+    fi
+
     if ! git rev-parse --git-dir >/dev/null 2>&1; then
         echo -e "${RED}Error: --publish requires a git repository.${RESET}" >&2
         exit 1
@@ -281,6 +297,8 @@ NOTARY_PROFILE="${PURAH_NOTARY_PROFILE:-}"
 if [ -n "$SIGN_IDENTITY" ]; then
     echo -e "${CYAN}🔏 Step 2b/5: Signing with ${SIGN_IDENTITY}...${RESET}"
 
+    TIMESTAMP_FLAG="$(purah_codesign_timestamp_arg)"
+
     # Sign inner bundles first: re-signing a bundle that contains an already
     # signed nested bundle invalidates the outer seal.
     ENTITLEMENTS_FILE="Sources/PurahApp/Resources/Purah.entitlements"
@@ -289,15 +307,13 @@ if [ -n "$SIGN_IDENTITY" ]; then
         ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS_FILE")
     fi
 
-    TIMESTAMP_ARG="$(purah_codesign_timestamp_arg "$SIGN_IDENTITY")"
-
     find "$APP_PATH/Contents" \( -type f -name "*.dylib" -o -type d -name "*.bundle" \) -print0 2>/dev/null \
         | while IFS= read -r -d '' nested; do
-            codesign --force "$TIMESTAMP_ARG" --options runtime \
+            codesign --force "$TIMESTAMP_FLAG" --options runtime \
                 --sign "$SIGN_IDENTITY" "$nested" 2>/dev/null || true
         done
 
-    codesign --force "$TIMESTAMP_ARG" --options runtime \
+    codesign --force "$TIMESTAMP_FLAG" --options runtime \
         "${ENTITLEMENTS_ARGS[@]}" \
         --sign "$SIGN_IDENTITY" \
         "$APP_PATH"

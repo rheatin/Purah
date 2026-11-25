@@ -200,7 +200,7 @@ ENTITLEMENTS="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/Source
 HARDENED_ARGS=()
 ENTITLEMENTS_ARGS=()
 if [ "$SIGNING_IDENTITY" != "-" ]; then
-    HARDENED_ARGS=(--options runtime "$(purah_codesign_timestamp_arg "$SIGNING_IDENTITY")")
+    HARDENED_ARGS=(--options runtime "$(purah_codesign_timestamp_arg)")
     if [ -f "$ENTITLEMENTS" ]; then
         ENTITLEMENTS_ARGS=(--entitlements "$ENTITLEMENTS")
         echo -e "   └── Entitlements: $(basename "$ENTITLEMENTS")"

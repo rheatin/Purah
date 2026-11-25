@@ -29,14 +29,11 @@ purah_resolve_signing_identity() {
     fi
 }
 
-# Only Apple-issued Developer ID / Apple Development certificates need online TSA
-# timestamps for notarization. Local self-signed identities (e.g. "Purah Local")
-# are never notarized, so skipping Apple's online TSA avoids offline/proxy
-# "The timestamp service is not available." failures while keeping hardened
-# runtime and stable TCC identity.
+# Notarization requires Apple's RFC 3161 timestamp server (`--timestamp`).
+# Local and self-signed builds carry no notarization ticket, so
+# `--timestamp=none` avoids failing offline or waiting on timestamp.apple.com.
 purah_codesign_timestamp_arg() {
-    local identity="${1:-}"
-    if [[ "$identity" == "Developer ID "* || "$identity" == "Apple "* ]]; then
+    if [ -n "${PURAH_NOTARY_PROFILE:-}" ]; then
         printf '%s' "--timestamp"
     else
         printf '%s' "--timestamp=none"
