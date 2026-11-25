@@ -471,4 +471,21 @@ struct LocalizationTests {
             """
         )
     }
+
+    @Test("LocalizationManager persists language preference to injected UserDefaults without touching standard")
+    @MainActor
+    func testIsolatedUserDefaultsInjectionAndTypedFormat() {
+        let suiteName = "purah.test.l10n.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let loc = LocalizationManager(userDefaults: defaults)
+        loc.currentLanguage = .chinese
+        #expect(defaults.string(forKey: "purah.appLanguage") == AppLanguage.chinese.rawValue)
+
+        let reloaded = LocalizationManager(userDefaults: defaults)
+        #expect(reloaded.currentLanguage == .chinese)
+        #expect(reloaded.formatted("calendar.eventCount", int: 4).contains("4"))
+        #expect(reloaded.formatted("hud.railsFrozen", string: "⌥⇥").contains("⌥⇥"))
+    }
 }
