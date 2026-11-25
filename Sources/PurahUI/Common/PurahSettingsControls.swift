@@ -60,6 +60,7 @@ public struct PurahSettingsCard<Content: View>: View {
 public struct PurahThemedSegmentedPicker<T: Hashable>: View {
     public let options: [T]
     public let titleForOption: (T) -> String
+    public let iconForOption: ((T) -> String?)?
     @Binding public var selection: T
 
     private var palette: ThemePalette {
@@ -69,11 +70,13 @@ public struct PurahThemedSegmentedPicker<T: Hashable>: View {
     public init(
         options: [T],
         selection: Binding<T>,
-        titleForOption: @escaping (T) -> String
+        titleForOption: @escaping (T) -> String,
+        iconForOption: ((T) -> String?)? = nil
     ) {
         self.options = options
         self._selection = selection
         self.titleForOption = titleForOption
+        self.iconForOption = iconForOption
     }
 
     public var body: some View {
@@ -85,25 +88,33 @@ public struct PurahThemedSegmentedPicker<T: Hashable>: View {
                         selection = option
                     }
                 } label: {
-                    Text(titleForOption(option))
-                        .font(.system(size: 11, weight: isSelected ? .semibold : .medium, design: .rounded))
-                        .foregroundColor(isSelected ? (palette.style == .native ? palette.primaryAccent : .white) : .secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            ZStack {
-                                if isSelected {
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(palette.surfaceBackground)
-                                        .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                .stroke(palette.primaryAccent.opacity(0.35), lineWidth: 1)
-                                        )
-                                }
+                    HStack(spacing: 5) {
+                        if let iconName = iconForOption?(option), !iconName.isEmpty {
+                            Image(systemName: iconName)
+                                .font(.system(size: 10, weight: isSelected ? .semibold : .medium))
+                        }
+                        Text(titleForOption(option))
+                            .font(.system(size: 11, weight: isSelected ? .semibold : .medium, design: .rounded))
+                            .lineLimit(1)
+                    }
+                    .foregroundColor(isSelected ? (palette.style == .native ? palette.primaryAccent : .white) : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .background(
+                        ZStack {
+                            if isSelected {
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(palette.surfaceBackground)
+                                    .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .stroke(palette.primaryAccent.opacity(0.35), lineWidth: 1)
+                                    )
                             }
-                        )
+                        }
+                    )
                 }
                 .buttonStyle(.plain)
             }

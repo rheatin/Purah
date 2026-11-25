@@ -343,7 +343,7 @@ public struct ScriptsPluginSettingsView: View {
                             .background(canDraft ? palette.primaryAccent : Color.primary.opacity(0.1))
                             .cornerRadius(5)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                     .disabled(!canDraft)
                     .help("runway.draft.generate".localized)
                     .accessibilityLabel("runway.draft.generate".localized)
@@ -648,7 +648,7 @@ public struct ScriptsPluginSettingsView: View {
                                 .stroke(palette.borderColor.opacity(0.25), lineWidth: 0.8)
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
 
                     Button {
                         withAnimation(PurahMotionPolicy.microLight) {
@@ -674,7 +674,7 @@ public struct ScriptsPluginSettingsView: View {
                                 .stroke(isAddingAction ? palette.borderColor.opacity(0.3) : palette.primaryAccent.opacity(0.35), lineWidth: 0.8)
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.tactile)
                 }
             ) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -686,20 +686,12 @@ public struct ScriptsPluginSettingsView: View {
 
                             draftRow
 
-                            HStack(spacing: 8) {
-                                customInputCapsule {
-                                    TextField("Action Name (e.g. Meeting Mode)", text: $newActionName)
-                                        .textFieldStyle(.plain)
-                                        .font(.system(size: 11))
-                                }
+                            commandTypePicker(selection: $newCommandType)
 
-                                Picker("Type", selection: $newCommandType) {
-                                    Text("Shortcuts").tag(ScriptCommandType.shortcut)
-                                    Text("runway.shellLabel".localized).tag(ScriptCommandType.shell)
-                                    Text("AppleScript").tag(ScriptCommandType.appleScript)
-                                }
-                                .pickerStyle(.segmented)
-                                .frame(width: 210)
+                            customInputCapsule {
+                                TextField("Action Name (e.g. Meeting Mode)", text: $newActionName)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 11))
                             }
 
                             scriptContentInput(commandType: newCommandType, text: $newScriptContent)
@@ -756,7 +748,7 @@ public struct ScriptsPluginSettingsView: View {
                                         .background(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty ? Color.primary.opacity(0.1) : palette.primaryAccent)
                                         .cornerRadius(6)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.tactile)
                                 .disabled(newActionName.trimmingCharacters(in: .whitespaces).isEmpty || newScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
                             }
                         }
@@ -855,20 +847,12 @@ public struct ScriptsPluginSettingsView: View {
                                         Text("runway.editAction".localized)
                                             .font(.system(size: 10.5, weight: .bold, design: .rounded))
 
-                                        HStack(spacing: 8) {
-                                            customInputCapsule {
-                                                TextField("Action Name", text: $editActionName)
-                                                    .textFieldStyle(.plain)
-                                                    .font(.system(size: 11))
-                                            }
+                                        commandTypePicker(selection: $editCommandType)
 
-                                            Picker("Type", selection: $editCommandType) {
-                                                Text("Shortcuts").tag(ScriptCommandType.shortcut)
-                                                Text("runway.shellLabel".localized).tag(ScriptCommandType.shell)
-                                                Text("AppleScript").tag(ScriptCommandType.appleScript)
-                                            }
-                                            .pickerStyle(.segmented)
-                                            .frame(width: 210)
+                                        customInputCapsule {
+                                            TextField("Action Name", text: $editActionName)
+                                                .textFieldStyle(.plain)
+                                                .font(.system(size: 11))
                                         }
 
                                         scriptContentInput(commandType: editCommandType, text: $editScriptContent)
@@ -909,8 +893,9 @@ public struct ScriptsPluginSettingsView: View {
                                                     .background(Color.primary.opacity(0.04))
                                                     .cornerRadius(6)
                                             }
-                                            .buttonStyle(.plain)
+                                            .buttonStyle(.tactile)
 
+                                            let isEditSaveDisabled = editActionName.trimmingCharacters(in: .whitespaces).isEmpty || editScriptContent.trimmingCharacters(in: .whitespaces).isEmpty
                                             Button {
                                                 let trimmedName = editActionName.trimmingCharacters(in: .whitespaces)
                                                 let trimmedContent = editScriptContent.trimmingCharacters(in: .whitespaces)
@@ -932,14 +917,14 @@ public struct ScriptsPluginSettingsView: View {
                                             } label: {
                                                 Text("runway.saveChanges".localized)
                                                     .font(.system(size: 10, weight: .bold, design: .rounded))
-                                                    .foregroundColor(.white)
+                                                    .foregroundColor(isEditSaveDisabled ? .secondary : .white)
                                                     .padding(.horizontal, 9)
                                                     .padding(.vertical, 4)
-                                                    .background(palette.primaryAccent)
+                                                    .background(isEditSaveDisabled ? Color.primary.opacity(0.1) : palette.primaryAccent)
                                                     .cornerRadius(6)
                                             }
-                                            .buttonStyle(.plain)
-                                            .disabled(editActionName.trimmingCharacters(in: .whitespaces).isEmpty || editScriptContent.trimmingCharacters(in: .whitespaces).isEmpty)
+                                            .buttonStyle(.tactile)
+                                            .disabled(isEditSaveDisabled)
                                         }
                                     }
                                     .padding(8)
@@ -959,6 +944,28 @@ public struct ScriptsPluginSettingsView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func commandTypePicker(selection: Binding<ScriptCommandType>) -> some View {
+        PurahThemedSegmentedPicker(
+            options: [.shortcut, .shell, .appleScript],
+            selection: selection,
+            titleForOption: { type in
+                switch type {
+                case .shortcut: return "Shortcuts"
+                case .shell: return "runway.shellLabel".localized
+                case .appleScript: return "AppleScript"
+                }
+            },
+            iconForOption: { type in
+                switch type {
+                case .shortcut: return "square.2.layers.3d.top.filled"
+                case .shell: return "terminal"
+                case .appleScript: return "applescript"
+                }
+            }
+        )
     }
 
     private func typeBadge(_ type: ScriptCommandType) -> String {
