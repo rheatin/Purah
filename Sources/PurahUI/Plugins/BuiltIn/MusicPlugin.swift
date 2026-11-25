@@ -22,7 +22,7 @@ public struct MusicRailBarContainerView: View {
         let hasTrack = !liveTrack.title.isEmpty
         // No track, no transport: a dormant amp is not a play button.
         let isPlaying = hasTrack
-            && (storeTrack.isPlaying || state.isPlaying || (SystemAudioLiveMonitor.shared.currentLevel > 0.008))
+            && (storeTrack.isPlaying || state.isPlaying || (state.currentAudioLevel > 0.008))
 
         WaveMeterAmbientView(
             style: state.railStyle,
@@ -37,7 +37,7 @@ public struct MusicRailBarContainerView: View {
         )
         .frame(width: railWidth, height: slotHeight)
         .onAppear {
-            SystemAudioLiveMonitor.shared.latencyOffsetMs = state.rhythmOffsetMs
+            state.syncAudioLatencyOffset()
         }
     }
 }
@@ -70,8 +70,8 @@ public struct MusicPlugin: PurahPodPlugin {
         let liveTrack = storeTrack.isPlaying ? storeTrack : (!storeTrack.title.isEmpty ? storeTrack : state.track)
         let hasTrack = !liveTrack.title.isEmpty
         let isPlaying = hasTrack
-            && (storeTrack.isPlaying || state.isPlaying || (SystemAudioLiveMonitor.shared.currentLevel > 0.008))
-        SystemAudioLiveMonitor.shared.latencyOffsetMs = state.rhythmOffsetMs
+            && (storeTrack.isPlaying || state.isPlaying || (state.currentAudioLevel > 0.008))
+        state.syncAudioLatencyOffset()
 
         return .audioWave(
             style: state.railStyle,
@@ -308,7 +308,7 @@ public struct MusicPluginSettingsView: View {
                                 set: {
                                     state.rhythmOffsetMs = $0
                                     state.save()
-                                    SystemAudioLiveMonitor.shared.latencyOffsetMs = $0
+                                    state.syncAudioLatencyOffset($0)
                                 }
                             ), in: 0...200, step: 10)
                             .accessibilityLabel("music.beatAlignment".localized)

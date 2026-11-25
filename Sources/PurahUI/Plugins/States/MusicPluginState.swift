@@ -14,6 +14,8 @@ public final class MusicPluginState: Sendable {
     public var rhythmOffsetMs: Double
     public var isWaveformAnimationEnabled: Bool
     public let storage: any PurahPluginStorage
+    public let syncService: SystemMusicSyncService
+    public let audioMonitor: SystemAudioLiveMonitor
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
     /// The artwork/lyrics fetches started by `mount`. They used to outlive the
@@ -35,8 +37,22 @@ public final class MusicPluginState: Sendable {
         set { track.waveformSamples = newValue }
     }
 
-    public init(storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "music")) {
+    public var currentAudioLevel: Float {
+        audioMonitor.currentLevel
+    }
+
+    public func syncAudioLatencyOffset(_ offsetMs: Double? = nil) {
+        audioMonitor.latencyOffsetMs = offsetMs ?? rhythmOffsetMs
+    }
+
+    public init(
+        storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "music"),
+        syncService: SystemMusicSyncService = .shared,
+        audioMonitor: SystemAudioLiveMonitor = .shared
+    ) {
         self.storage = storage
+        self.syncService = syncService
+        self.audioMonitor = audioMonitor
         self.railStyle = storage.codable(forKey: "railStyle", as: MusicRailStyle.self) ?? .dynamicWaveform
         self.dynamicSubStyle = storage.codable(forKey: "dynamicSubStyle", as: DynamicWaveformSubStyle.self) ?? .neonVUTower
         self.rhythmOffsetMs = max(storage.double(forKey: "rhythmOffsetMs"), 0.0)
@@ -96,25 +112,31 @@ public final class MusicPluginState: Sendable {
         // Playback is the system's, never ours. With no store there is no
         // player to ask, and a locally flipped flag would be fiction.
         guard let targetStore = store ?? boundStore else { return }
-        SystemMusicSyncService.shared.togglePlayPause(store: targetStore)
+        syncService.togglePlayPause(store: targetStore)
         self.track = targetStore._musicTrack
         self.isPlaying = targetStore._musicTrack.isPlaying
     }
 
     public func nextTrack(store: PurahWorkspaceStore? = nil) {
         let targetStore = store ?? boundStore
-        SystemMusicSyncService.shared.nextTrack(store: targetStore)
+        syncService.nextTrack(store: targetStore)
     }
 
     public func previousTrack(store: PurahWorkspaceStore? = nil) {
         let targetStore = store ?? boundStore
-        SystemMusicSyncService.shared.previousTrack(store: targetStore)
+        syncService.previousTrack(store: targetStore)
     }
 
     public func seek(to progress: Double, store: PurahWorkspaceStore? = nil) {
         guard let targetStore = store ?? boundStore else { return }
-        SystemMusicSyncService.shared.seek(to: progress, store: targetStore)
+        syncService.seek(to: progress, store: targetStore)
         self.track = targetStore._musicTrack
+    }
+
+    public func activateSourcePlayer(store: PurahWorkspaceStore? = nil) {
+        let targetStore = store ?? boundStore
+        let activeTrack = !track.title.isEmpty ? track : (targetStore?._musicTrack ?? track)
+        syncService.activateSourcePlayer(for: activeTrack, store: targetStore)
     }
 
     public func update(from trackInfo: MusicTrackInfo) {
@@ -122,19 +144,45 @@ public final class MusicPluginState: Sendable {
         self.boundStore?._musicTrack = trackInfo
     }
 
+    /// Single track-preservation merge path shared by `mount` and live `onTrackChanged`
+    /// notifications so lyrics, artwork, source identity, and user offsets never drift.
+    public static func mergeTrackFields(
+        incoming: MusicTrackInfo,
+        existing: MusicTrackInfo,
+        preserveLyricsPreferences: Bool
+    ) -> MusicTrackInfo {
+        var merged = incoming
+        guard merged.title == existing.title && merged.artist == existing.artist else {
+            return merged
+        }
+        if merged.lyrics == nil { merged.lyrics = existing.lyrics }
+        if merged.syncedLyrics == nil { merged.syncedLyrics = existing.syncedLyrics }
+        if merged.artworkData == nil { merged.artworkData = existing.artworkData }
+        if merged.sourceBundleId.isEmpty { merged.sourceBundleId = existing.sourceBundleId }
+        if merged.sourceApp.isEmpty || merged.sourceApp == "Media Player" {
+            merged.sourceApp = existing.sourceApp
+        }
+        if preserveLyricsPreferences {
+            merged.lyricsOffsetSeconds = existing.lyricsOffsetSeconds
+            merged.isLyricsHidden = existing.isLyricsHidden
+            if merged.selectedLyricsCandidateId == nil {
+                merged.selectedLyricsCandidateId = existing.selectedLyricsCandidateId
+            }
+            if merged.lyricsCandidates.isEmpty {
+                merged.lyricsCandidates = existing.lyricsCandidates
+            }
+        }
+        return merged
+    }
+
     public func mount(store: PurahWorkspaceStore) {
         self.boundStore = store
         if !store._musicTrack.title.isEmpty {
-            var merged = store._musicTrack
-            if merged.title == self.track.title && merged.artist == self.track.artist {
-                if merged.lyrics == nil { merged.lyrics = self.track.lyrics }
-                if merged.syncedLyrics == nil { merged.syncedLyrics = self.track.syncedLyrics }
-                if merged.artworkData == nil { merged.artworkData = self.track.artworkData }
-                if merged.sourceBundleId.isEmpty { merged.sourceBundleId = self.track.sourceBundleId }
-                if merged.sourceApp.isEmpty || merged.sourceApp == "Media Player" {
-                    merged.sourceApp = self.track.sourceApp
-                }
-            }
+            let merged = Self.mergeTrackFields(
+                incoming: store._musicTrack,
+                existing: self.track,
+                preserveLyricsPreferences: false
+            )
             self.track = merged
             store._musicTrack = merged
         } else if !self.track.title.isEmpty {
@@ -146,22 +194,13 @@ public final class MusicPluginState: Sendable {
         // Music, Spotify and MediaRemote. This state used to add its own
         // duplicate distributed observers, so every player notification was
         // handled twice (including two artwork/lyrics fetches per track).
-        SystemMusicSyncService.shared.onTrackChanged = { [weak self] newTrack in
+        syncService.onTrackChanged = { [weak self] newTrack in
             guard let self = self else { return }
-            var merged = newTrack
-            if merged.title == self.track.title && merged.artist == self.track.artist {
-                if merged.lyrics == nil { merged.lyrics = self.track.lyrics }
-                if merged.syncedLyrics == nil { merged.syncedLyrics = self.track.syncedLyrics }
-                if merged.artworkData == nil { merged.artworkData = self.track.artworkData }
-                if merged.sourceBundleId.isEmpty { merged.sourceBundleId = self.track.sourceBundleId }
-                if merged.sourceApp.isEmpty || merged.sourceApp == "Media Player" {
-                    merged.sourceApp = self.track.sourceApp
-                }
-                merged.lyricsOffsetSeconds = self.track.lyricsOffsetSeconds
-                merged.isLyricsHidden = self.track.isLyricsHidden
-                if merged.selectedLyricsCandidateId == nil { merged.selectedLyricsCandidateId = self.track.selectedLyricsCandidateId }
-                if merged.lyricsCandidates.isEmpty { merged.lyricsCandidates = self.track.lyricsCandidates }
-            }
+            let merged = Self.mergeTrackFields(
+                incoming: newTrack,
+                existing: self.track,
+                preserveLyricsPreferences: true
+            )
             let shouldPersist = merged.title != self.track.title
                 || merged.artist != self.track.artist
                 || merged.sourceBundleId != self.track.sourceBundleId
@@ -174,7 +213,7 @@ public final class MusicPluginState: Sendable {
                 self.save()
             }
         }
-        SystemMusicSyncService.shared.startListening(into: store)
+        syncService.startListening(into: store)
 
         // Initial fetch of artwork and local lyrics if not yet cached
         let currentTitle = self.track.title
@@ -185,35 +224,37 @@ public final class MusicPluginState: Sendable {
         if !currentTitle.isEmpty {
             if self.track.artworkData == nil {
                 initialFetchTasks.append(Task { [weak self] in
-                    if let art = await SystemMusicSyncService.shared.fetchArtwork(title: currentTitle, artist: currentArtist, album: currentAlbum) {
+                    guard let self else { return }
+                    if let art = await self.syncService.fetchArtwork(title: currentTitle, artist: currentArtist, album: currentAlbum) {
                         guard !Task.isCancelled else { return }
-                        if self?.track.title == currentTitle,
-                           self?.track.artist == currentArtist {
-                            self?.track.artworkData = art
-                            self?.boundStore?._musicTrack.artworkData = art
+                        if self.track.title == currentTitle,
+                           self.track.artist == currentArtist {
+                            self.track.artworkData = art
+                            self.boundStore?._musicTrack.artworkData = art
                         }
                     }
                 })
             }
             if self.track.lyrics == nil && self.track.syncedLyrics == nil {
                 initialFetchTasks.append(Task { [weak self] in
-                    if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(
+                    guard let self else { return }
+                    if let lyrResult = await self.syncService.fetchOnlineLyrics(
                         title: currentTitle,
                         artist: currentArtist,
                         album: currentAlbum,
-                        durationSeconds: self?.track.durationSeconds ?? 0
+                        durationSeconds: self.track.durationSeconds
                     ) {
                         guard !Task.isCancelled else { return }
-                        if self?.track.title == currentTitle,
-                           self?.track.artist == currentArtist {
-                            self?.track.lyrics = lyrResult.plainLyrics
-                            self?.track.syncedLyrics = lyrResult.syncedLyrics
-                            self?.track.lyricsCandidates = lyrResult.candidates
-                            self?.track.selectedLyricsCandidateId = lyrResult.selectedCandidateId
-                            self?.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
-                            self?.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
-                            self?.boundStore?._musicTrack.lyricsCandidates = lyrResult.candidates
-                            self?.boundStore?._musicTrack.selectedLyricsCandidateId = lyrResult.selectedCandidateId
+                        if self.track.title == currentTitle,
+                           self.track.artist == currentArtist {
+                            self.track.lyrics = lyrResult.plainLyrics
+                            self.track.syncedLyrics = lyrResult.syncedLyrics
+                            self.track.lyricsCandidates = lyrResult.candidates
+                            self.track.selectedLyricsCandidateId = lyrResult.selectedCandidateId
+                            self.boundStore?._musicTrack.lyrics = lyrResult.plainLyrics
+                            self.boundStore?._musicTrack.syncedLyrics = lyrResult.syncedLyrics
+                            self.boundStore?._musicTrack.lyricsCandidates = lyrResult.candidates
+                            self.boundStore?._musicTrack.selectedLyricsCandidateId = lyrResult.selectedCandidateId
                         }
                     }
                 })
@@ -229,7 +270,7 @@ public final class MusicPluginState: Sendable {
         targetStore?._musicTrack.selectedLyricsCandidateId = candidate.id
         targetStore?._musicTrack.lyrics = candidate.plainLyrics
         targetStore?._musicTrack.syncedLyrics = candidate.syncedLyrics
-        SystemMusicSyncService.shared.cacheLyrics(
+        syncService.cacheLyrics(
             for: track.title,
             artist: track.artist,
             result: OnlineLyricsResult(
@@ -268,7 +309,8 @@ public final class MusicPluginState: Sendable {
         guard !currentTitle.isEmpty else { return }
 
         Task { [weak self] in
-            if let lyrResult = await SystemMusicSyncService.shared.fetchOnlineLyrics(
+            guard let self else { return }
+            if let lyrResult = await self.syncService.fetchOnlineLyrics(
                 title: currentTitle,
                 artist: currentArtist,
                 album: currentAlbum,
@@ -276,8 +318,7 @@ public final class MusicPluginState: Sendable {
                 forceRefresh: true
             ) {
                 await MainActor.run {
-                    guard let self = self,
-                          self.track.title == currentTitle,
+                    guard self.track.title == currentTitle,
                           self.track.artist == currentArtist else { return }
                     self.track.lyrics = lyrResult.plainLyrics
                     self.track.syncedLyrics = lyrResult.syncedLyrics
@@ -298,8 +339,8 @@ public final class MusicPluginState: Sendable {
     public func unmount(store: PurahWorkspaceStore) {
         initialFetchTasks.forEach { $0.cancel() }
         initialFetchTasks.removeAll()
-        SystemMusicSyncService.shared.stopListening()
-        SystemMusicSyncService.shared.onTrackChanged = nil
+        syncService.stopListening()
+        syncService.onTrackChanged = nil
         // No `clearArtworkCache()` here: its only job here was to reset the
         // "already tried" sets, which is exactly what made every reopening of
         // the drawer retry the whole artwork and lyrics chain for a track that

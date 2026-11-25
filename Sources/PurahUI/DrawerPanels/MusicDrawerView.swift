@@ -910,8 +910,7 @@ public struct MusicDrawerView: View {
 
     private func activateMusicPlayerApp() {
         store.triggerControlHaptic(.levelChange)
-        let activeTrack = !state.track.title.isEmpty ? state.track : store._musicTrack
-        SystemMusicSyncService.shared.activateSourcePlayer(for: activeTrack, store: store)
+        state.activateSourcePlayer(store: store)
     }
 
     private func timeString(for seconds: Double) -> String {
@@ -1088,18 +1087,6 @@ public struct FluidWaveformScrubber: View {
 }
 
 // MARK: - Native Flowing Time-Synced Lyrics View (Apple Music Style Auto-Scroll)
-public struct ParsedLyricLine: Identifiable, Sendable {
-    public let id: Int
-    public let time: TimeInterval
-    public let text: String
-
-    public init(id: Int, time: TimeInterval, text: String) {
-        self.id = id
-        self.time = time
-        self.text = text
-    }
-}
-
 public struct LyricsDisplayView: View {
     public let rawLyrics: String
     public let currentTime: Double
@@ -1109,14 +1096,6 @@ public struct LyricsDisplayView: View {
     public let palette: ThemePalette
     public let maxHeight: CGFloat
     public let onSeek: (Double) -> Void
-
-    private static let timestampRegex = try? NSRegularExpression(
-        pattern: "\\[(\\d{2}):(\\d{2})(?:\\.(\\d{2,3}))?\\]",
-        options: []
-    )
-    private static let parseCacheLock = NSLock()
-    nonisolated(unsafe) private static var cachedLyricsRaw: String?
-    nonisolated(unsafe) private static var cachedLyricsParsed: [ParsedLyricLine] = []
 
     private var parsedLines: [ParsedLyricLine] {
         Self.parseLyrics(rawLyrics)
@@ -1219,221 +1198,11 @@ public struct LyricsDisplayView: View {
     }
 
     public static func parseLyrics(_ raw: String) -> [ParsedLyricLine] {
-        Self.parseCacheLock.lock()
-        if Self.cachedLyricsRaw == raw {
-            let cached = Self.cachedLyricsParsed
-            Self.parseCacheLock.unlock()
-            return cached
-        }
-        Self.parseCacheLock.unlock()
-
-        let rawLines = raw.components(separatedBy: .newlines)
-        var parsed: [ParsedLyricLine] = []
-        let regex = Self.timestampRegex
-
-        var lineId = 0
-        for line in rawLines {
-            let nsLine = line as NSString
-            if let regex {
-                let matches = regex.matches(in: line, options: [], range: NSRange(location: 0, length: nsLine.length))
-                if let firstMatch = matches.first, firstMatch.numberOfRanges >= 3 {
-                    let minStr = nsLine.substring(with: firstMatch.range(at: 1))
-                    let secStr = nsLine.substring(with: firstMatch.range(at: 2))
-                    var ms: Double = 0.0
-                    if firstMatch.numberOfRanges >= 4 && firstMatch.range(at: 3).location != NSNotFound {
-                        let msStr = nsLine.substring(with: firstMatch.range(at: 3))
-                        let msVal = Double(msStr) ?? 0.0
-                        ms = msStr.count == 2 ? (msVal / 100.0) : (msVal / 1000.0)
-                    }
-                    let minutes = Double(minStr) ?? 0.0
-                    let seconds = Double(secStr) ?? 0.0
-                    let totalTime = minutes * 60.0 + seconds + ms
-                    let text = nsLine.substring(from: firstMatch.range.location + firstMatch.range.length).trimmingCharacters(in: .whitespaces)
-
-                    if !text.isEmpty {
-                        parsed.append(ParsedLyricLine(id: lineId, time: totalTime, text: text))
-                        lineId += 1
-                    }
-                    continue
-                }
-            }
-
-            // Fallback for non-timestamped lyrics lines
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if !trimmed.isEmpty && !trimmed.hasPrefix("[ti:") && !trimmed.hasPrefix("[ar:") && !trimmed.hasPrefix("[al:") && !trimmed.hasPrefix("[by:") {
-                parsed.append(ParsedLyricLine(id: lineId, time: 0, text: trimmed))
-                lineId += 1
-            }
-        }
-
-        let sorted = parsed.sorted(by: { $0.time < $1.time })
-        Self.parseCacheLock.lock()
-        Self.cachedLyricsRaw = raw
-        Self.cachedLyricsParsed = sorted
-        Self.parseCacheLock.unlock()
-        return sorted
+        LRCParser.parse(raw)
     }
 
     public static func activeLyricLine(in raw: String, at currentTime: Double) -> String? {
-        let lines = parseLyrics(raw)
-        guard !lines.isEmpty else { return nil }
-        var active = 0
-        for (idx, line) in lines.enumerated() {
-            if line.time <= currentTime + 0.25 {
-                active = idx
-            } else {
-                break
-            }
-        }
-        return lines[active].text
-    }
-}
-
-// MARK: - CoreAudio Output Device Quick-Switcher
-public struct AudioOutputDevice: Identifiable, Equatable, Sendable {
-    public let id: AudioDeviceID
-    public let name: String
-
-    public init(id: AudioDeviceID, name: String) {
-        self.id = id
-        self.name = name
-    }
-
-    public var systemIcon: String {
-        let lower = name.lowercased()
-        if lower.contains("airpods") {
-            return "airpodspro"
-        } else if lower.contains("headphone") || lower.contains("beats") || lower.contains("ear") {
-            return "headphones"
-        } else if lower.contains("display") || lower.contains("hdmi") {
-            return "display"
-        } else {
-            return "speaker.wave.2.fill"
-        }
-    }
-}
-
-@MainActor
-public final class AudioOutputDeviceManager: ObservableObject {
-    public static let shared = AudioOutputDeviceManager()
-
-    @Published public private(set) var outputDevices: [AudioOutputDevice] = []
-    @Published public private(set) var defaultOutputDeviceId: AudioDeviceID = 0
-
-    private init() {
-        refreshDevices()
-    }
-
-    public var activeDevice: AudioOutputDevice? {
-        outputDevices.first(where: { $0.id == defaultOutputDeviceId }) ?? outputDevices.first
-    }
-
-    public func refreshDevices() {
-        var defaultId = AudioDeviceID(0)
-        var defaultSize = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var defaultAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let defaultStatus = AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &defaultAddress,
-            0,
-            nil,
-            &defaultSize,
-            &defaultId
-        )
-        if defaultStatus == noErr {
-            self.defaultOutputDeviceId = defaultId
-        }
-
-        var devicesAddress = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(
-            AudioObjectID(kAudioObjectSystemObject),
-            &devicesAddress,
-            0,
-            nil,
-            &dataSize
-        ) == noErr, dataSize > 0 else {
-            return
-        }
-
-        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
-        var deviceIds = [AudioDeviceID](repeating: 0, count: deviceCount)
-        guard AudioObjectGetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &devicesAddress,
-            0,
-            nil,
-            &dataSize,
-            &deviceIds
-        ) == noErr else {
-            return
-        }
-
-        var discovered: [AudioOutputDevice] = []
-        for devId in deviceIds {
-            var streamAddress = AudioObjectPropertyAddress(
-                mSelector: kAudioDevicePropertyStreams,
-                mScope: kAudioObjectPropertyScopeOutput,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            var streamSize: UInt32 = 0
-            guard AudioObjectGetPropertyDataSize(devId, &streamAddress, 0, nil, &streamSize) == noErr,
-                  streamSize > 0 else {
-                continue
-            }
-
-            var nameAddress = AudioObjectPropertyAddress(
-                mSelector: kAudioObjectPropertyName,
-                mScope: kAudioObjectPropertyScopeGlobal,
-                mElement: kAudioObjectPropertyElementMain
-            )
-            var cfName: Unmanaged<CFString>? = nil
-            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-            let status = withUnsafeMutablePointer(to: &cfName) { ptr in
-                AudioObjectGetPropertyData(devId, &nameAddress, 0, nil, &nameSize, ptr)
-            }
-            if status == noErr, let unwrapped = cfName?.takeUnretainedValue() as String? {
-                let trimmed = unwrapped.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    discovered.append(AudioOutputDevice(id: devId, name: trimmed))
-                }
-            }
-        }
-
-        self.outputDevices = discovered
-    }
-
-    @discardableResult
-    public func selectOutputDevice(id: AudioDeviceID) -> Bool {
-        var mutableId = id
-        let size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultOutputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let status = AudioObjectSetPropertyData(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            0,
-            nil,
-            size,
-            &mutableId
-        )
-        if status == noErr {
-            defaultOutputDeviceId = id
-            SensoryFeedbackService.shared.performControlHapticIfEnabled(.alignment)
-            return true
-        }
-        return false
+        LRCParser.activeLine(in: raw, at: currentTime)
     }
 }
 
