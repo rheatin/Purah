@@ -62,10 +62,19 @@ public final class AIAssistantService {
     public var lastCapturedSelection: String? = nil
     public var lastCapturedApp: String? = nil
     public private(set) var lastCapturedRunningApp: NSRunningApplication? = nil
-    private var lastFocusedAXElement: AXUIElement? = nil
+    public typealias StreamTransport = @Sendable (
+        _ request: AIExecutionRequest,
+        _ onCLISessionId: (@Sendable (String) -> Void)?,
+        _ onServedModel: (@Sendable (String) -> Void)?,
+        _ onChunk: (@Sendable (String) -> Void)?
+    ) async throws -> String
 
-    public init() {
-        self.availableCLIs = detectAvailableCLIs()
+    private var lastFocusedAXElement: AXUIElement? = nil
+    private let transport: StreamTransport?
+
+    public init(transport: StreamTransport? = nil) {
+        self.transport = transport
+        self.availableCLIs = transport == nil ? detectAvailableCLIs() : []
     }
 
     // MARK: - Apple Intelligence Availability
@@ -462,6 +471,40 @@ public final class AIAssistantService {
     /// it is not the one you picked.
     public static let appleOnDeviceModelName = "Apple Intelligence (on-device)"
 
+    /// Primary narrow execution interface taking one resolved `AIExecutionRequest`.
+    @discardableResult
+    public func streamChat(
+        _ request: AIExecutionRequest,
+        onCLISessionId: (@Sendable (String) -> Void)? = nil,
+        onServedModel: (@Sendable (String) -> Void)? = nil,
+        onChunk: (@Sendable (String) -> Void)? = nil
+    ) async throws -> String {
+        if let transport {
+            isStreaming = true
+            defer { isStreaming = false }
+            return try await transport(request, onCLISessionId, onServedModel, onChunk)
+        }
+        return try await streamChat(
+            messages: request.messages,
+            provider: request.settings.provider,
+            cliExecutable: request.settings.cli,
+            customCLIPath: request.settings.customCLIPath,
+            customCLIArguments: request.settings.customCLIArguments,
+            customCLIArgumentsAreInferred: request.settings.customCLIArgumentsAreInferred,
+            apiKey: request.settings.apiKey,
+            endpoint: request.settings.endpoint,
+            model: request.settings.model,
+            targetLanguage: request.targetLanguage,
+            systemPromptOverride: request.systemPromptOverride,
+            skillDirectories: request.skillDirectories,
+            mcpConfigPath: request.mcpConfigPath,
+            resumeCLISessionId: request.resumeCLISessionId,
+            onCLISessionId: onCLISessionId,
+            onServedModel: onServedModel,
+            onChunk: onChunk
+        )
+    }
+
     @discardableResult
     public func streamChat(
         messages: [AIChatMessage],
@@ -482,6 +525,30 @@ public final class AIAssistantService {
         onServedModel: (@Sendable (String) -> Void)? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
+        if let transport {
+            let settings = AISettingsSnapshot(
+                provider: provider,
+                cli: cliExecutable,
+                customCLIPath: customCLIPath,
+                customCLIArguments: customCLIArguments,
+                customCLIArgumentsAreInferred: customCLIArgumentsAreInferred,
+                apiKey: apiKey,
+                endpoint: endpoint,
+                model: model
+            )
+            let req = AIExecutionRequest(
+                messages: messages,
+                settings: settings,
+                targetLanguage: targetLanguage,
+                systemPromptOverride: systemPromptOverride,
+                skillDirectories: skillDirectories,
+                mcpConfigPath: mcpConfigPath,
+                resumeCLISessionId: resumeCLISessionId
+            )
+            isStreaming = true
+            defer { isStreaming = false }
+            return try await transport(req, onCLISessionId, onServedModel, onChunk)
+        }
         isStreaming = true
         defer { isStreaming = false }
 

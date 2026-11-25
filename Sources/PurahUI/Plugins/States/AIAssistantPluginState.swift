@@ -76,6 +76,7 @@ public final class AIAssistantPluginState: Sendable {
     public let storage: any PurahPluginStorage
     /// Credentials are kept out of `UserDefaults` and out of config backups.
     public let secretStore: any SecretStore
+    public let aiService: AIAssistantService
     @ObservationIgnored public weak var boundStore: PurahWorkspaceStore?
 
     // MARK: - File Permission Control
@@ -223,6 +224,41 @@ public final class AIAssistantPluginState: Sendable {
 
     public var enabledRoles: [AIRolePreset] {
         rolePresets.filter(\.isEnabled)
+    }
+
+    /// Single resolved view of the active AI provider, credentials, endpoint,
+    /// and model — derived through `AISettingsSnapshot.resolve`.
+    public var currentSettingsSnapshot: AISettingsSnapshot {
+        AISettingsSnapshot.resolve(
+            provider: selectedProvider,
+            cli: selectedCLI,
+            customCLIPath: customCLIPath,
+            customCLIArguments: customCLIArguments,
+            customCLIArgumentsAreInferred: customCLIArgumentsAreInferred,
+            openAIAPIKey: openAIAPIKey,
+            anthropicAPIKey: anthropicAPIKey,
+            openAIBaseURL: openAIBaseURL,
+            ollamaBaseURL: ollamaBaseURL,
+            openAIModel: openAIModel,
+            anthropicModel: anthropicModel,
+            ollamaModel: ollamaModel
+        )
+    }
+
+    /// Executes a single-turn streaming request (e.g. stepped role chip) through
+    /// this state's injected `AIAssistantService` and resolved provider snapshot.
+    @discardableResult
+    public func streamEphemeralTurn(
+        messages: [AIChatMessage],
+        systemPromptOverride: String?,
+        onChunk: @escaping @Sendable (String) -> Void
+    ) async throws -> String {
+        let request = AIExecutionRequest(
+            messages: messages,
+            settings: currentSettingsSnapshot,
+            systemPromptOverride: systemPromptOverride
+        )
+        return try await aiService.streamChat(request, onChunk: onChunk)
     }
 
     public var enabledActions: [AIQuickActionType] {
@@ -705,9 +741,11 @@ public final class AIAssistantPluginState: Sendable {
     public init(
         storage: any PurahPluginStorage = ScopedPluginStorage(pluginId: "ai"),
         repository: PurahDiskRepository<AIChatSession> = PurahDiskRepository(pluginId: "ai"),
-        secretStore: any SecretStore = FileSecretStore()
+        secretStore: any SecretStore = FileSecretStore(),
+        aiService: AIAssistantService = .shared
     ) {
         self.storage = storage
+        self.aiService = aiService
         self.repository = repository
         self.secretStore = secretStore
 
@@ -1699,57 +1737,28 @@ public final class AIAssistantPluginState: Sendable {
             msgsToSend = [single]
         }
         let targetSessionId = activeSessionId
-        let provider = selectedProvider
-        let cli = selectedCLI
-        let customPath = customCLIPath
-        let customArgs = customCLIArguments
-        let customArgsAreInferred = customCLIArgumentsAreInferred
-        let apiKey: String? = {
-            switch provider {
-            case .httpOpenAI: return openAIAPIKey
-            case .httpAnthropic: return anthropicAPIKey
-            default: return nil
-            }
-        }()
-        let endpoint: String? = {
-            switch provider {
-            case .httpOpenAI: return openAIBaseURL
-            case .httpOllama: return ollamaBaseURL
-            default: return nil
-            }
-        }()
-        let model: String? = {
-            switch provider {
-            case .httpOpenAI: return openAIModel
-            case .httpAnthropic: return anthropicModel
-            case .httpOllama: return ollamaModel
-            default: return nil
-            }
-        }()
+        let settings = currentSettingsSnapshot
+        let provider = settings.provider
 
         // The CLI's own record of this conversation. Captured on the process's
         // reader thread and written back when the turn ends: a half-finished
         // turn must not claim a session it never completed.
         let sessionIdBox = CLIStreamSessionIDBox()
         let resumeCLISessionId = sessions[sessionIdx].cliSessionId
+        let request = AIExecutionRequest(
+            messages: msgsToSend,
+            settings: settings,
+            systemPromptOverride: effectivePromptOverride,
+            skillDirectories: skillDirectories,
+            mcpConfigPath: AIAssistantService.mcpConfigPath(servers: mcpServers),
+            resumeCLISessionId: resumeCLISessionId
+        )
 
         currentStreamingTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await AIAssistantService.shared.streamChat(
-                    messages: msgsToSend,
-                    provider: provider,
-                    cliExecutable: cli,
-                    customCLIPath: customPath,
-                    customCLIArguments: customArgs,
-                    customCLIArgumentsAreInferred: customArgsAreInferred,
-                    apiKey: apiKey,
-                    endpoint: endpoint,
-                    model: model,
-                    systemPromptOverride: effectivePromptOverride,
-                    skillDirectories: skillDirectories,
-                    mcpConfigPath: AIAssistantService.mcpConfigPath(servers: mcpServers),
-                    resumeCLISessionId: resumeCLISessionId,
+                try await self.aiService.streamChat(
+                    request,
                     onCLISessionId: { sessionIdBox.set($0) },
                     onServedModel: { [weak self] served in
                         Task { @MainActor [weak self] in

@@ -461,42 +461,10 @@ public struct AIAssistantSteppedDrawerView: View {
             roleId: role.id
         )
 
-        let provider = state.selectedProvider
-        let apiKey: String? = {
-            switch provider {
-            case .httpOpenAI: return state.openAIAPIKey
-            case .httpAnthropic: return state.anthropicAPIKey
-            default: return nil
-            }
-        }()
-        let endpoint: String? = {
-            switch provider {
-            case .httpOpenAI: return state.openAIBaseURL
-            case .httpOllama: return state.ollamaBaseURL
-            default: return nil
-            }
-        }()
-        let model: String? = {
-            switch provider {
-            case .httpOpenAI: return state.openAIModel
-            case .httpAnthropic: return state.anthropicModel
-            case .httpOllama: return state.ollamaModel
-            default: return nil
-            }
-        }()
-
         currentStreamTask = Task { @MainActor in
             do {
-                _ = try await AIAssistantService.shared.streamChat(
+                _ = try await state.streamEphemeralTurn(
                     messages: [userMsg],
-                    provider: provider,
-                    cliExecutable: state.selectedCLI,
-                    customCLIPath: state.customCLIPath,
-                    customCLIArguments: state.customCLIArguments,
-                    customCLIArgumentsAreInferred: state.customCLIArgumentsAreInferred,
-                    apiKey: apiKey,
-                    endpoint: endpoint,
-                    model: model,
                     systemPromptOverride: systemPrompt,
                     onChunk: { chunk in
                         Task { @MainActor in

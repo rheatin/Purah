@@ -167,13 +167,16 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     }
 
     private func configuredModelName(for kind: AIProviderKind) -> String? {
-        switch kind {
-        case .httpOpenAI: return state.openAIModel
-        case .httpAnthropic: return state.anthropicModel
-        case .httpOllama: return state.ollamaModel
-        // Apple's on-device and the CLI agents have no host-visible model id.
-        default: return nil
+        guard state.selectedProvider == kind else {
+            return AISettingsSnapshot.resolve(
+                provider: kind,
+                cli: state.selectedCLI,
+                openAIModel: state.openAIModel,
+                anthropicModel: state.anthropicModel,
+                ollamaModel: state.ollamaModel
+            ).model
         }
+        return state.currentSettingsSnapshot.model
     }
 
     public func makeHeaderTrailingView(context: PurahPluginContext) -> AnyView? {
