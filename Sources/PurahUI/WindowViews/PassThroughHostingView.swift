@@ -121,8 +121,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         }
         let winPoint = event.locationInWindow
         if isSculptStripMode {
-            let sculptW: CGFloat = 215.0
-            let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
+            let isInsideSculptStrip = RailSpatialEngine.isPointInsideSculptorStrip(winPoint, bounds: bounds, edge: edge)
             if isInsideSculptStrip {
                 if let panel = self.window as? NSPanel {
                     panel.ignoresMouseEvents = false
@@ -188,8 +187,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
 
         let winPoint = event.locationInWindow
         if isSculptStripMode {
-            let sculptW: CGFloat = 215.0
-            let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
+            let isInsideSculptStrip = RailSpatialEngine.isPointInsideSculptorStrip(winPoint, bounds: bounds, edge: edge)
             if let panel = self.window as? NSPanel {
                 panel.ignoresMouseEvents = !isInsideSculptStrip
             }
@@ -227,9 +225,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         if let win = self.window, win.frame.contains(mouseLoc) {
             let winPoint = win.convertPoint(fromScreen: mouseLoc)
             if isSculptStripMode {
-                let sculptW: CGFloat = 215.0
-                let isInsideSculptStrip = (edge == .right) ? (winPoint.x >= bounds.maxX - sculptW) : (winPoint.x <= bounds.minX + sculptW)
-                if isInsideSculptStrip {
+                if RailSpatialEngine.isPointInsideSculptorStrip(winPoint, bounds: bounds, edge: edge) {
                     return
                 }
             } else {
@@ -252,9 +248,7 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         guard !store.isRailsFrozen else { return nil }
         let bounds = self.bounds
         if isSculptStripMode {
-            let sculptW: CGFloat = 215.0
-            let isInsideSculptStrip = (edge == .right) ? (point.x >= bounds.maxX - sculptW) : (point.x <= bounds.minX + sculptW)
-            if isInsideSculptStrip {
+            if RailSpatialEngine.isPointInsideSculptorStrip(point, bounds: bounds, edge: edge) {
                 if let panel = self.window as? NSPanel, panel.ignoresMouseEvents {
                     panel.ignoresMouseEvents = false
                 }
@@ -267,13 +261,14 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
         let totalH = Double(bounds.height)
         let currentWindowY = totalH - Double(point.y)
 
-        if ((currentWindowY >= 20.0 && currentWindowY <= 44.0) || (currentWindowY >= (totalH - 44.0) && currentWindowY <= (totalH - 20.0))),
-           store.paginatedPods(for: edge, totalHeight: totalH).count > 1 {
-            let portalHitW: CGFloat = max(barW + 8.0, 16.0)
-            let isOverPortal = (edge == .right) ? (point.x >= bounds.maxX - portalHitW) : (point.x <= bounds.minX + barW + 8.0)
-            if isOverPortal {
-                return super.hitTest(point)
-            }
+        if RailSpatialEngine.isPointOverPagePortal(
+            point,
+            bounds: bounds,
+            edge: edge,
+            railBarWidth: barW,
+            pageCount: store.paginatedPods(for: edge, totalHeight: totalH).count
+        ) {
+            return super.hitTest(point)
         }
 
         let isOnRail = (edge == .right) ? (point.x >= bounds.maxX - barW) : (point.x <= bounds.minX + barW)
@@ -285,26 +280,8 @@ public final class PassThroughHostingView<Content: View>: NSHostingView<Content>
             let railIsBreathing = store.isBreathingActive(for: edge, totalHeight: totalH)
             let isOverPod = cache.cachedLayoutItems.contains(where: { item in
                 let topY = item.startY
-                let actualSpan: Double
-                let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
-                if !isSharedMajorSubBar,
-                   store.isPodDecomposed(item.pod.id),
-                   let provider = store.capabilityProvider(for: item.pod.id) {
-                    let policy = provider.decomposedPolicy(store: store)
-                    let rawCount = provider.subItemCount(store: store)
-                    let layout = policy.resolveLayout(spanHeight: CGFloat(item.spanH), rawCount: rawCount, isDynamicAccordion: railIsBreathing)
-                    // Zero sub-items draws the composite bar (AGENTS §3), so
-                    // the hit box is the whole pod. The chip maths gave a
-                    // zero-height box and nothing to click.
-                    guard layout.count > 0 else {
-                        return currentWindowY >= topY && currentWindowY <= topY + item.spanH
-                    }
-                    actualSpan = Double(layout.actualSpan)
-                } else {
-                    actualSpan = item.spanH
-                }
-                let bottomY = topY + actualSpan
-                return currentWindowY >= topY && currentWindowY <= bottomY
+                let actualSpan = RailSpatialEngine.occupiedSpan(for: item, store: store, isBreathing: railIsBreathing)
+                return currentWindowY >= topY && currentWindowY <= topY + actualSpan
             })
             if isOverPod {
                 return super.hitTest(point)

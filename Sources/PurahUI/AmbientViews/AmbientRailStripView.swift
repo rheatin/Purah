@@ -112,7 +112,7 @@ public struct AmbientRailStripView: View {
                     let startY = CGFloat(item.startY)
                     let drawerStartY = CGFloat(item.drawerStartY)
                     let drawerSpanH = CGFloat(item.drawerSpanH)
-                    let isSharedMajorSubBar = (item.majorGroupId != nil && abs(drawerSpanH - spanH) > 1.0)
+                    let isSharedMajorSubBar = item.isSharedMajorSubBar
                     let shouldShowDrawer = store.shouldRenderDrawer(for: item, in: layoutItems)
                     let isThisPodActive = shouldShowDrawer || (store.hoveredPodId == pod.id || store.activePod?.id == pod.id || store.isItemPinned(id: pod.id) || store.capabilityProvider(for: pod.id)?.hasPinnedChild(store: store) == true)
                     let activeBarW: CGFloat = (isBreathing && isThisPodActive) ? (barW + 2.5) : barW

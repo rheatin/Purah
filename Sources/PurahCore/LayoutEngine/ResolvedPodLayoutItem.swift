@@ -25,4 +25,10 @@ public struct ResolvedPodLayoutItem: Identifiable, Sendable {
         self.drawerSpanH = drawerSpanH ?? spanH
         self.majorGroupId = majorGroupId
     }
+
+    /// True when this item is a sub-bar inside a multi-pod shared stack whose
+    /// drawer spans a taller combined region than the sub-bar itself.
+    public var isSharedMajorSubBar: Bool {
+        majorGroupId != nil && abs(drawerSpanH - spanH) > 1.0
+    }
 }

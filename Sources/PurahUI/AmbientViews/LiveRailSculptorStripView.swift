@@ -59,39 +59,9 @@ public struct LiveRailSculptorStripView: View {
     }
 
     private func buildClusters(from layoutItems: [ResolvedPodLayoutItem]) -> [SculptRailCluster] {
-        var clusters: [SculptRailCluster] = []
-        var currentGroup: String? = nil
-        var currentItems: [ResolvedPodLayoutItem] = []
-
-        func flushCurrent() {
-            guard !currentItems.isEmpty else { return }
-            if let gid = currentGroup, currentItems.count >= 2 {
-                clusters.append(SculptRailCluster(id: "cluster_\(gid)", groupId: gid, items: currentItems))
-            } else {
-                for item in currentItems {
-                    clusters.append(SculptRailCluster(id: item.id, groupId: nil, items: [item]))
-                }
-            }
-            currentItems.removeAll()
-            currentGroup = nil
+        RailSpatialEngine.groupAdjacentClusters(from: layoutItems).map { cluster in
+            SculptRailCluster(id: cluster.id, groupId: cluster.groupId, items: cluster.items)
         }
-
-        for item in layoutItems {
-            if let gid = item.majorGroupId {
-                if currentGroup == gid {
-                    currentItems.append(item)
-                } else {
-                    flushCurrent()
-                    currentGroup = gid
-                    currentItems = [item]
-                }
-            } else {
-                flushCurrent()
-                clusters.append(SculptRailCluster(id: item.id, groupId: nil, items: [item]))
-            }
-        }
-        flushCurrent()
-        return clusters
     }
 
     private func detectStackTargetPodId(
@@ -156,8 +126,8 @@ public struct LiveRailSculptorStripView: View {
         // Check if cursor crossed across the screen to the opposite rail
         let screenLoc = NSEvent.mouseLocation
         let screenFrame = NSScreen.main?.visibleFrame ?? CGRect(x: 0, y: 0, width: 1440, height: 900)
-        let isOnOppositeRail = (edge == .left && screenLoc.x >= screenFrame.maxX - 215)
-            || (edge == .right && screenLoc.x <= screenFrame.minX + 215)
+        let isOnOppositeRail = (edge == .left && screenLoc.x >= screenFrame.maxX - RailSpatialEngine.sculptorStripWidth)
+            || (edge == .right && screenLoc.x <= screenFrame.minX + RailSpatialEngine.sculptorStripWidth)
         if isOnOppositeRail {
             if hoveredStackTargetPodId != nil {
                 scheduleHoverMerge(draggedPodId: item.pod.id, targetPodId: nil)

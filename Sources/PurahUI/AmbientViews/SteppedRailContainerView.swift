@@ -41,63 +41,23 @@ public struct SteppedRailContainerView: View {
         let policy = plugin.decomposedPolicy(store: store)
         let allItems = plugin.steppedItems(context: context)
         let minChipH: CGFloat = policy.minChipHeight
-        let maxChipH: CGFloat = policy.maxChipHeight
         let spacing: CGFloat = policy.spacing
         let isDynamicAccordion = store.isBreathingActive(for: edge)
-        let maxAllowedItems = isDynamicAccordion
-            ? max(policy.maxRailItems, 1)
-            : max(min(Int((totalHeight + spacing) / (minChipH + spacing)), policy.maxRailItems), 1)
-
-        let items: [PurahPluginSubItem] = {
-            guard allItems.count > maxAllowedItems else { return allItems }
-            switch policy.overflowStrategy {
-            case .truncate, .compactScale:
-                return Array(allItems.prefix(maxAllowedItems))
-            case .smartFold:
-                if allItems.last?.id.contains("more_") == true {
-                    return Array(allItems.prefix(maxAllowedItems))
-                }
-                let visibleCount = max(maxAllowedItems - 1, 1)
-                var result = Array(allItems.prefix(visibleCount))
-                let remaining = allItems.count - visibleCount
-                if remaining > 0 {
-                    result.append(PurahPluginSubItem(
-                        id: PurahPluginSubItem.moreItemsID(forPod: pod.id),
-                        title: "+\(remaining) More",
-                        systemIcon: "ellipsis",
-                        badge: "\(remaining)",
-                        state: .normal
-                    ))
-                }
-                return result
-            }
-        }()
-
-        let effectiveMinChipH: CGFloat = isDynamicAccordion ? 6.0 : minChipH
-
         let barW = max(context.railWidth, CGFloat(store.railBarWidth))
 
-        // Merged overview state: when the smart-fold "+N" chip is hovered-open
-        // or pinned, the item list folds down to just that chip and its slot
-        // grows to the pod's full height — same ForEach identity, so chips
-        // fading out, the bar stretching, and the drawer sliding in all run as
-        // ONE animation transaction instead of a two-stage swap.
-        let mergedChip = PurahPluginSubItem.mergedOverviewChip(
-            in: items,
+        let slice = RailSpatialEngine.resolveSteppedSlice(
+            allItems: allItems,
+            podId: pod.id,
+            policy: policy,
+            spanHeight: totalHeight,
+            isDynamicAccordion: isDynamicAccordion,
             activeDrawerItemId: store.activeDrawerItemId,
             isItemPinned: { store.isItemPinned(id: $0) }
         )
-        let displayItems: [PurahPluginSubItem] = mergedChip.map { [$0] } ?? items
-        // "+N" exclusion set = everything the rail displayed before merging;
-        // merging collapses chips visually but they stay excluded.
-        let railChipIDs = Set(items.map(\.id))
-        let isMerged = mergedChip != nil
-        let slotCount = max(displayItems.count, 1)
-        let slotSpacing = spacing * CGFloat(slotCount - 1)
-        let slotH: CGFloat = isMerged
-            ? totalHeight
-            : min(max((totalHeight - slotSpacing) / CGFloat(slotCount), effectiveMinChipH), maxChipH)
-        let displaySpanH = CGFloat(displayItems.count) * slotH + slotSpacing
+        let displayItems = slice.displayItems
+        let railChipIDs = slice.railChipIDs
+        let slotH = slice.slotHeight
+        let displaySpanH = slice.displaySpanHeight
 
         Group {
             if displayItems.isEmpty {

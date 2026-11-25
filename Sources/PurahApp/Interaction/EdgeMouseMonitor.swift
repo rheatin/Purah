@@ -725,17 +725,8 @@ public final class EdgeMouseMonitor {
     /// `isBreathing` is passed in by the per-item loops: the answer is the same
     /// for every pod on the rail, and solving it is not cheap.
     public func actualOccupiedHeight(for item: ResolvedPodLayoutItem, isBreathing: Bool? = nil) -> CGFloat {
-        let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
         let isDynamicAccordion = isBreathing ?? store.isBreathingActive(for: item.pod.edge)
-        if !isSharedMajorSubBar,
-           store.isPodDecomposed(item.pod.id),
-           let provider = store.capabilityProvider(for: item.pod.id),
-           provider.subItemCount(store: store) > 0 {
-            let policy = provider.decomposedPolicy(store: store)
-            let layout = policy.resolveLayout(spanHeight: CGFloat(item.spanH), rawCount: provider.subItemCount(store: store), isDynamicAccordion: isDynamicAccordion)
-            return layout.actualSpan
-        }
-        return CGFloat(item.spanH)
+        return CGFloat(RailSpatialEngine.occupiedSpan(for: item, store: store, isBreathing: isDynamicAccordion))
     }
 
     private func handleMouse(event: NSEvent) {
@@ -1230,44 +1221,26 @@ public final class EdgeMouseMonitor {
         coordinator?.setInteractive(true, for: edge)
 
         let wasDocked = (store.activeDrawerPodId == nil && store.activeDrawerItemId == nil)
-        let isSharedMajorSubBar = (matched.majorGroupId != nil && abs(matched.drawerSpanH - matched.spanH) > 1.0)
         let isDynamicAccordion = store.isBreathingActive(for: edge)
 
-        if !isSharedMajorSubBar,
-           let provider = store.capabilityProvider(for: candidate.id),
-           provider.isDecomposed(store: store),
-           provider.subItemCount(store: store) > 0 {
-            let policy = provider.decomposedPolicy(store: store)
-            let rawCount = provider.subItemCount(store: store)
-            let layout = policy.resolveLayout(spanHeight: CGFloat(matched.spanH), rawCount: rawCount, isDynamicAccordion: isDynamicAccordion)
-            let count = layout.count
-            let maxAllowed = layout.maxAllowed
-            let itemH = layout.itemHeight
-            let spacing = layout.spacing
-            let actualSpan = layout.actualSpan
-
-            let podY = currentWindowY - CGFloat(matched.startY)
-            // Cursor is in empty space below the actual chips: do NOT trigger any chip!
-            guard podY >= 0.0 && podY <= actualSpan else {
-                if store.activeDrawerPodId == candidate.id && !store.isItemPinned(id: store.activeDrawerItemId ?? "") {
-                    withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
-                        store.dismissActiveDrawer()
-                    }
-                }
-                return
-            }
-
-            let itemPitch = itemH + spacing
-            let rawIdx = Int(max(podY, 0.0) / itemPitch)
-            guard rawIdx >= 0 && rawIdx < count else { return }
-            let isSmartFoldSlot = (policy.overflowStrategy == .smartFold && rawCount > maxAllowed && maxAllowed >= 2 && rawIdx == count - 1)
-            let subItemId = isSmartFoldSlot ? PurahPluginSubItem.moreItemsID(forPod: candidate.id) : (provider.subItemId(at: rawIdx, store: store) ?? candidate.id)
-
+        switch RailSpatialEngine.resolveSteppedSlotHit(
+            for: matched,
+            windowY: currentWindowY,
+            store: store,
+            isBreathing: isDynamicAccordion
+        ) {
+        case .subItem(let subItemId):
             if store.activeDrawerItemId != subItemId || store.activeDrawerPodId != candidate.id {
                 store.activateDrawer(podId: candidate.id, itemId: subItemId, openedByEdge: true)
                 store.triggerEdgePopHaptic(isInitialOpen: wasDocked)
             }
-        } else {
+        case .emptySpaceBelowChips:
+            if store.activeDrawerPodId == candidate.id && !store.isItemPinned(id: store.activeDrawerItemId ?? "") {
+                withAnimation(.spring(response: 0.20, dampingFraction: 0.92)) {
+                    store.dismissActiveDrawer()
+                }
+            }
+        case .composite:
             if store.activeDrawerPodId != candidate.id {
                 store.activateDrawer(podId: candidate.id, openedByEdge: true)
                 store.triggerEdgePopHaptic(isInitialOpen: wasDocked)

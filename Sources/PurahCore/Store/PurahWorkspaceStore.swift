@@ -3242,8 +3242,7 @@ public final class PurahWorkspaceStore {
             guard isPodActive || isPodPinned || hasChild else { continue }
 
             // In Shared Major Pod mode, check if this pod is the active drawer owner in its Major Group
-            let isSharedMajorSubBar = (item.majorGroupId != nil && abs(item.drawerSpanH - item.spanH) > 1.0)
-            if isSharedMajorSubBar {
+            if item.isSharedMajorSubBar {
                 guard shouldRenderDrawer(for: item, in: layoutItems) else { continue }
                 let topOfPodY = totalHeight - item.drawerStartY
                 let bottomOfPodY = topOfPodY - item.drawerSpanH
