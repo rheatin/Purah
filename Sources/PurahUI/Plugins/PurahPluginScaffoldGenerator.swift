@@ -71,7 +71,7 @@ public enum PurahPluginScaffoldGenerator {
         try packageSwiftContent.write(to: packageSwiftURL, atomically: true, encoding: .utf8)
 
         // 2. PurahExternalPluginSDK.swift
-        let sdkContent = resolveSDKSource()
+        let sdkContent = try canonicalSDKSource()
         let sdkURL = sourcesDir.appendingPathComponent("PurahExternalPluginSDK.swift")
         try sdkContent.write(to: sdkURL, atomically: true, encoding: .utf8)
 
@@ -289,7 +289,8 @@ public enum PurahPluginScaffoldGenerator {
 
         @MainActor
         @_cdecl("purahOnSettingChanged")
-        public func purahOnSettingChanged(key: UnsafePointer<CChar>, value: UnsafePointer<CChar>) {
+        public func purahOnSettingChanged(contextJSON: UnsafePointer<CChar>, key: UnsafePointer<CChar>, value: UnsafePointer<CChar>) {
+            _ = PurahExternalContext.decode(from: contextJSON)
             let k = String(cString: key)
             let v = String(cString: value)
             _ = (k, v)
@@ -316,279 +317,15 @@ public enum PurahPluginScaffoldGenerator {
         """
     }
 
-    private static func resolveSDKSource() -> String {
-        // 1. Try resolving relative to #filePath (development / testing environment)
-        let repoRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // Plugins
-            .deletingLastPathComponent() // PurahUI
-            .deletingLastPathComponent() // Sources
-            .deletingLastPathComponent() // Repo root
-        let exampleSDKURL = repoRoot.appendingPathComponent("Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift")
-        if let contents = try? String(contentsOf: exampleSDKURL, encoding: .utf8), !contents.isEmpty {
-            return contents
+    static func canonicalSDKSource() throws -> String {
+        let bundleURL = Bundle.module.url(
+            forResource: "PurahExternalPluginSDK",
+            withExtension: "swift",
+            subdirectory: "Resources"
+        )
+        guard let bundleURL else {
+            throw PluginDynamicLoadError.fileNotFound("PurahExternalPluginSDK.swift in PurahUI resources")
         }
-
-        // 2. Try bundle resource
-        if let bundleURL = Bundle.main.url(forResource: "PurahExternalPluginSDK", withExtension: "swift"),
-           let contents = try? String(contentsOf: bundleURL, encoding: .utf8), !contents.isEmpty {
-            return contents
-        }
-
-        // 3. Embedded fallback SDK
-        return embeddedSDKSource
+        return try String(contentsOf: bundleURL, encoding: .utf8)
     }
-
-    private static let embeddedSDKSource: String = """
-    // PurahExternalPluginSDK.swift
-    // Embedded Zero-Dependency C-ABI SDK for Purah External Plugins
-    import SwiftUI
-    import AppKit
-    import Foundation
-
-    // MARK: - Context Payload
-    public struct PurahExternalContext: Codable, Sendable {
-        public let pluginId: String
-        public let edge: String
-        public let railWidth: Double
-        public let slotHeight: Double
-        public let drawerWidth: Double
-        public let isExpanded: Bool
-        public let isPinned: Bool
-        public let isDark: Bool
-        public let accentColorHex: String
-        public let storageDirectoryPath: String
-        public let visibleSubItemIds: [String]
-        public let isDecomposed: Bool
-        public let paletteStyle: String
-        public let primaryAccentHex: String
-        public let borderColorHex: String
-        public let grantedPermissions: [String]
-
-        public init(
-            pluginId: String,
-            edge: String,
-            railWidth: Double,
-            slotHeight: Double,
-            drawerWidth: Double,
-            isExpanded: Bool,
-            isPinned: Bool,
-            isDark: Bool,
-            accentColorHex: String,
-            storageDirectoryPath: String,
-            visibleSubItemIds: [String] = [],
-            isDecomposed: Bool = false,
-            paletteStyle: String = "native",
-            primaryAccentHex: String = "#00D1FF",
-            borderColorHex: String = "#888888",
-            grantedPermissions: [String] = []
-        ) {
-            self.pluginId = pluginId
-            self.edge = edge
-            self.railWidth = railWidth
-            self.slotHeight = slotHeight
-            self.drawerWidth = drawerWidth
-            self.isExpanded = isExpanded
-            self.isPinned = isPinned
-            self.isDark = isDark
-            self.accentColorHex = accentColorHex
-            self.storageDirectoryPath = storageDirectoryPath
-            self.visibleSubItemIds = visibleSubItemIds
-            self.isDecomposed = isDecomposed
-            self.paletteStyle = paletteStyle
-            self.primaryAccentHex = primaryAccentHex
-            self.borderColorHex = borderColorHex
-            self.grantedPermissions = grantedPermissions
-        }
-
-        public static func decode(from cString: UnsafePointer<CChar>?) -> PurahExternalContext? {
-            guard let cString else { return nil }
-            let jsonString = String(cString: cString)
-            guard let data = jsonString.data(using: .utf8) else { return nil }
-            return try? JSONDecoder().decode(PurahExternalContext.self, from: data)
-        }
-    }
-
-    // MARK: - Manifest
-    public struct PurahExternalManifest: Codable, Sendable {
-        public let id: String
-        public let displayName: String
-        public let author: String
-        public let description: String
-        public let version: String
-        public let systemIcon: String
-        public let defaultColorHex: String
-        public let defaultEdge: String
-        public let category: String
-        public let supportedDrawerModes: [String]
-        public let minimumDrawerHeight: Double
-        public let preferredDrawerHeight: Double
-
-        public init(
-            id: String,
-            displayName: String,
-            author: String,
-            description: String,
-            version: String,
-            systemIcon: String,
-            defaultColorHex: String,
-            defaultEdge: String,
-            category: String,
-            supportedDrawerModes: [String] = ["composite"],
-            minimumDrawerHeight: Double = 120.0,
-            preferredDrawerHeight: Double = 280.0
-        ) {
-            self.id = id
-            self.displayName = displayName
-            self.author = author
-            self.description = description
-            self.version = version
-            self.systemIcon = systemIcon
-            self.defaultColorHex = defaultColorHex
-            self.defaultEdge = defaultEdge
-            self.category = category
-            self.supportedDrawerModes = supportedDrawerModes
-            self.minimumDrawerHeight = minimumDrawerHeight
-            self.preferredDrawerHeight = preferredDrawerHeight
-        }
-
-        public func toCString() -> UnsafePointer<CChar> {
-            let data = (try? JSONEncoder().encode(self)) ?? Data()
-            let str = String(data: data, encoding: .utf8) ?? "{}"
-            return (str as NSString).utf8String!
-        }
-    }
-
-    // MARK: - Rail Bar State
-    public struct PurahExternalRailBarState: Codable, Sendable {
-        public let style: String
-        public let ratio: Double
-        public let colorHex: String
-
-        public init(style: String, ratio: Double, colorHex: String) {
-            self.style = style
-            self.ratio = ratio
-            self.colorHex = colorHex
-        }
-
-        public func toCString() -> UnsafePointer<CChar> {
-            let data = (try? JSONEncoder().encode(self)) ?? Data()
-            let str = String(data: data, encoding: .utf8) ?? "{}"
-            return (str as NSString).utf8String!
-        }
-    }
-
-    // MARK: - Header Accessory
-    public struct PurahExternalHeaderAccessory: Codable, Sendable {
-        public let type: String
-        public let title: String
-        public let systemIcon: String
-        public let actionId: String
-
-        public init(type: String, title: String, systemIcon: String, actionId: String) {
-            self.type = type
-            self.title = title
-            self.systemIcon = systemIcon
-            self.actionId = actionId
-        }
-
-        public func toCString() -> UnsafePointer<CChar> {
-            let data = (try? JSONEncoder().encode(self)) ?? Data()
-            let str = String(data: data, encoding: .utf8) ?? "{}"
-            return (str as NSString).utf8String!
-        }
-    }
-
-    // MARK: - Settings Schema
-    public struct PurahExternalSettingsItem: Codable, Sendable {
-        public let id: String
-        public let label: String
-        public let helpText: String
-        public let type: String
-        public let defaultValue: String
-
-        public init(id: String, label: String, helpText: String, type: String, defaultValue: String) {
-            self.id = id
-            self.label = label
-            self.helpText = helpText
-            self.type = type
-            self.defaultValue = defaultValue
-        }
-    }
-
-    public struct PurahExternalSettingsSection: Codable, Sendable {
-        public let id: String
-        public let title: String
-        public let icon: String
-        public let items: [PurahExternalSettingsItem]
-
-        public init(id: String, title: String, icon: String, items: [PurahExternalSettingsItem]) {
-            self.id = id
-            self.title = title
-            self.icon = icon
-            self.items = items
-        }
-
-        public static func encodeListToCString(_ sections: [PurahExternalSettingsSection]) -> UnsafePointer<CChar> {
-            let data = (try? JSONEncoder().encode(sections)) ?? Data()
-            let str = String(data: data, encoding: .utf8) ?? "[]"
-            return (str as NSString).utf8String!
-        }
-    }
-
-    // MARK: - Host Action Bridge
-    @MainActor
-    public final class PurahHostBridge: @unchecked Sendable {
-        public static let shared = PurahHostBridge()
-        private var bridgeFn: (@convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafePointer<CChar>?) -> Void)?
-
-        private init() {}
-
-        public func registerBridge(_ fn: @escaping @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>, UnsafePointer<CChar>?) -> Void) {
-            self.bridgeFn = fn
-        }
-
-        public func performHaptic(pluginId: String, type: String) {
-            guard let bridgeFn else { return }
-            (pluginId as NSString).utf8String.map { pStr in
-                ("performHaptic" as NSString).utf8String.map { aStr in
-                    (type as NSString).utf8String.map { tStr in
-                        bridgeFn(pStr, aStr, tStr)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - View Host Container
-    @MainActor
-    public enum PurahViewHost {
-        public static func retain<V: View>(_ view: V) -> UnsafeMutableRawPointer {
-            let hosting = NSHostingView(rootView: view)
-            hosting.wantsLayer = true
-            return Unmanaged.passRetained(hosting).toOpaque()
-        }
-    }
-
-    extension Color {
-        init(hex: String) {
-            let clean = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-            var int: UInt64 = 0
-            Scanner(string: clean).scanHexInt64(&int)
-            let r, g, b: UInt64
-            switch clean.count {
-            case 6:
-                (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
-            default:
-                (r, g, b) = (0, 0, 0)
-            }
-            self.init(
-                .sRGB,
-                red: Double(r) / 255,
-                green: Double(g) / 255,
-                blue: Double(b) / 255,
-                opacity: 1
-            )
-        }
-    }
-    """
 }

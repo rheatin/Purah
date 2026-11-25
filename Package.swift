@@ -52,6 +52,9 @@ let package = Package(
                 "PurahCore",
                 .product(name: "SwiftTerm", package: "SwiftTerm")
             ],
+            resources: [
+                .copy("Resources")
+            ],
             swiftSettings: firstPartyStrictness
         ),
         .executableTarget(

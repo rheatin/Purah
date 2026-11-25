@@ -116,12 +116,7 @@ public struct PluginMarketplaceView: View {
 
             case .stagedReview(let staged):
                 SecurityConfirmationSheet(manifest: staged.manifest, palette: palette) {
-                    PluginJITCompiler.shared.activateReviewedPlugin(
-                        staged.plugin,
-                        dylibURL: staged.dylibURL,
-                        packageDir: staged.packageDir,
-                        store: store
-                    )
+                    ExternalPluginWorkflowCoordinator.shared.activateReviewedPlugin(staged, store: store)
                     if let pkg = staged.packageDir {
                         activeDevPackageURL = pkg
                     }
@@ -131,7 +126,7 @@ public struct PluginMarketplaceView: View {
                     store.triggerControlHaptic(.alignment)
                     activeModal = nil
                 } onCancel: {
-                    PluginDynamicLoader.shared.unloadPlugin(id: staged.manifest.id)
+                    ExternalPluginWorkflowCoordinator.shared.cancelStagedReview(staged)
                     activeModal = nil
                 }
 
@@ -781,10 +776,12 @@ public struct PluginMarketplaceView: View {
         isCompiling = true
         feedbackBanner = "Updating \(displayName)..."
         Task {
-            let pkgURL = URL(fileURLWithPath: packagePath)
-            await PluginJITCompiler.shared.gitPullIfRepository(packageDir: pkgURL)
             do {
-                let plugin = try await PluginJITCompiler.shared.buildAndLoad(packageDir: pkgURL, store: store)
+                let plugin = try await ExternalPluginWorkflowCoordinator.shared.rebuildFromSource(
+                    packagePath: packagePath,
+                    pullUpdates: true,
+                    store: store
+                )
                 isCompiling = false
                 feedbackBanner = "Updated & reloaded \(plugin.manifest.displayName)"
                 store.triggerControlHaptic(.alignment)

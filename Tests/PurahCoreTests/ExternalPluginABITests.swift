@@ -385,7 +385,90 @@ struct ExternalPluginABITests {
         #expect(sections.first?.items[2].type == "pills")
         #expect(sections.first?.items[2].options?.count == 2)
     }
+
+    @Test("Scaffold generator exports 3-arg purahOnSettingChanged and loads canonical SDK from PurahUI resources")
+    @MainActor
+    func testScaffoldCanonicalSDKAndThreeArgSettingCallback() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-scaffold-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let options = PurahPluginScaffoldOptions(
+            pluginId: "demo-abi-check",
+            displayName: "Demo ABI Check",
+            author: "Purah Tests",
+            description: "Verifies canonical SDK and 3-arg setting callback",
+            systemIcon: "bolt.fill",
+            defaultColorHex: "#00B4D8"
+        )
+        let packageDir = try PurahPluginScaffoldGenerator.generatePackage(options: options, in: tempRoot)
+
+        let pluginSwift = try String(
+            contentsOf: packageDir.appendingPathComponent("Sources/DemoABICheck/DemoABICheck.swift"),
+            encoding: .utf8
+        )
+        #expect(pluginSwift.contains("public func purahOnSettingChanged(contextJSON: UnsafePointer<CChar>, key: UnsafePointer<CChar>, value: UnsafePointer<CChar>)"))
+
+        let generatedSDK = try String(
+            contentsOf: packageDir.appendingPathComponent("Sources/DemoABICheck/PurahExternalPluginSDK.swift"),
+            encoding: .utf8
+        )
+        let canonicalSDK = try PurahPluginScaffoldGenerator.canonicalSDKSource()
+        #expect(generatedSDK == canonicalSDK)
+        #expect(canonicalSDK.contains("PurahHostBridge"))
+
+        // Pin that Examples/PurahExamplePlugin's SDK copy stays byte-identical to PurahUI's canonical resource.
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let exampleSDKURL = repoRoot.appendingPathComponent(
+            "Examples/PurahExamplePlugin/Sources/PurahExamplePlugin/PurahExternalPluginSDK.swift"
+        )
+        let exampleSDK = try String(contentsOf: exampleSDKURL, encoding: .utf8)
+        #expect(canonicalSDK == exampleSDK)
+    }
+
+    @Test("PluginDynamicLoader isolates installed path persistence to injected UserDefaults")
+    @MainActor
+    func testPluginDynamicLoaderIsolatedUserDefaults() {
+        let suiteName = "purah.test.dynamic-loader.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let loader = PluginDynamicLoader(userDefaults: defaults)
+        loader.rememberInstalled(path: "/tmp/libDemo.dylib", packagePath: "/tmp/DemoPkg", for: "demo-plugin")
+        #expect(loader.installedPackagePath(for: "demo-plugin") == "/tmp/DemoPkg")
+
+        let reloaded = PluginDynamicLoader(userDefaults: defaults)
+        #expect(reloaded.installedPackagePath(for: "demo-plugin") == "/tmp/DemoPkg")
+
+        reloaded.forgetInstalled(id: "demo-plugin")
+        #expect(reloaded.installedPackagePath(for: "demo-plugin") == nil)
+    }
+
+    @Test("PluginStorageScanner measures plugin roots directly from PurahCore")
+    func testPluginStorageScannerInPurahCore() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("purah-storage-scan-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+        let pluginsBase = tempRoot.appendingPathComponent("Plugins", isDirectory: true)
+        let dataDir = pluginsBase.appendingPathComponent("sample-pod/data", isDirectory: true)
+        try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
+        try Data("hello".utf8).write(to: dataDir.appendingPathComponent("state.json"))
+
+        let roots = PluginStorageRoots(
+            pluginsBase: pluginsBase,
+            clipboard: tempRoot.appendingPathComponent("Clipboard", isDirectory: true),
+            vitals: tempRoot.appendingPathComponent("Vitals", isDirectory: true)
+        )
+        let measurement = try #require(PluginStorageScanner.measure(pluginId: "sample-pod", roots: roots))
+        #expect(measurement.dataBytes > 0)
+        #expect(measurement.cacheBytes == 0)
+    }
 }
+
 
 
 
