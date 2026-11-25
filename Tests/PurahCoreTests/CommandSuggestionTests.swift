@@ -553,6 +553,9 @@ struct CommandSuggestionContextTests {
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
         process.arguments = ["-n", url.path]
         process.standardError = Pipe()
+        // `-n` still parses a `zle`-loading rc; a live tty stdin can SIGTTIN-
+        // stop the shell before it exits, so keep it headless.
+        process.standardInput = FileHandle.nullDevice
         try process.run()
         process.waitUntilExit()
         #expect(process.terminationStatus == 0)
@@ -585,13 +588,21 @@ struct ZshSuggestionHistoryTests {
         environment["PURAH_BRIDGE_TOKEN"] = "test"
 
         let process = Process()
+        // Interactive shells attach to the process's *controlling* terminal,
+        // not fd 0, so under a release run whose stdin is a live pty the shell
+        // gets SIGTTIN-stopped and the output pipe never closes (this hung a
+        // real release for 13 minutes — fd nulling and pty wrappers are both
+        // insufficient). Sourcing the generated rc explicitly in a
+        // non-interactive shell needs no terminal at all; the `zle` wiring in
+        // the rc errors harmlessly to stderr, after the helpers are defined.
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-i", "-c", script]
+        process.arguments = ["-c", "source \"$ZDOTDIR/.zshrc\"; " + script]
         process.environment = environment
         process.currentDirectoryURL = workingDirectory
         let out = Pipe()
         process.standardOutput = out
         process.standardError = Pipe()
+        process.standardInput = FileHandle.nullDevice
         try process.run()
         let data = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
@@ -740,13 +751,17 @@ struct ZshEnvironmentCollectionTests {
         environment["PURAH_BRIDGE_TOKEN"] = "test"
 
         let process = Process()
+        // Same non-interactive source as the sibling helper: an interactive
+        // shell grabs the *controlling* terminal (not fd 0) and gets
+        // SIGTTIN-stopped under a live pty, hanging the pipe read forever.
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-i", "-c", script]
+        process.arguments = ["-c", "source \"$ZDOTDIR/.zshrc\"; " + script]
         process.environment = environment
         process.currentDirectoryURL = workingDirectory
         let out = Pipe()
         process.standardOutput = out
         process.standardError = Pipe()
+        process.standardInput = FileHandle.nullDevice
         try process.run()
         let data = out.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
