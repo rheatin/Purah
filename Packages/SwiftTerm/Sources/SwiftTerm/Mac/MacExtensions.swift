@@ -33,12 +33,17 @@ extension NSColor {
     /// blending 50 % toward `background`. The result is fully opaque so that
     /// adjacent box-drawing characters tile without visible seams.
     func dimmedColor (towards background: NSColor) -> NSColor {
-        guard let fg = self.usingColorSpace(.deviceRGB),
-              let bg = background.usingColorSpace(.deviceRGB) else {
+        guard let fg = self.usingColorSpace(.deviceRGB) else {
             return self
         }
         var fRed: CGFloat = 0.0, fGreen: CGFloat = 0.0, fBlue: CGFloat = 0.0, fAlpha: CGFloat = 1.0
         fg.getRed(&fRed, green: &fGreen, blue: &fBlue, alpha: &fAlpha)
+        if background.cgColor.alpha < 0.5 {
+            return NSColor(deviceRed: fRed, green: fGreen, blue: fBlue, alpha: fAlpha * 0.55)
+        }
+        guard let bg = background.usingColorSpace(.deviceRGB) else {
+            return self
+        }
         var bRed: CGFloat = 0.0, bGreen: CGFloat = 0.0, bBlue: CGFloat = 0.0, bAlpha: CGFloat = 1.0
         bg.getRed(&bRed, green: &bGreen, blue: &bBlue, alpha: &bAlpha)
         return NSColor (deviceRed: (fRed + bRed) * 0.5,

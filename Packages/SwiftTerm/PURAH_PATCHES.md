@@ -26,5 +26,17 @@ and open the Terminal drawer.
    The scroller is `PurahScroller`, which draws a 4pt bar and nothing else:
    overlay style still paints a translucent slot, and that slot is the frame
    people saw around the bar.
+5. **`Apple/AppleTerminalView.swift` & `Mac/MacTerminalView.swift`, column parity** —
+   `scrollerWidth` matches `PurahScroller.barSlotWidth` (9pt) and `setupOptions` /
+   `resetFont` use `getEffectiveWidth(size:)` just like `processSizeChange`, so
+   changing font or opening a tab never leaves the PTY `ws_col` wider than the
+   rendered grid (which caused `curl -#` progress bars to wrap onto new lines).
+6. **`Apple/AppleTerminalView.swift` & `Mac/MacExtensions.swift`, transparent reverse-video & dim** —
+   When `nativeBackgroundColor` is `.clear` over a glass drawer, `.defaultInvertedColor`
+   (SGR 7 standout, used by zsh bracketed paste and TUIs) now renders opaque
+   `nativeForegroundColor` as the highlight background and its opaque inverse as
+   foreground ink instead of black text on transparent alpha=0. `dimmedColor`
+   dims by alpha when the background is transparent so faint text stays faint
+   in Light mode too.
 
 Nothing else in the tree is modified.

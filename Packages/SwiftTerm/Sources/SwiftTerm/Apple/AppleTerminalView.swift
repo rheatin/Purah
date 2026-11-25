@@ -99,8 +99,9 @@ extension TerminalView {
     {
         resetCaches()
         self.cellDimension = computeFontDimensions ()
-        let newCols = Int(frame.width / cellDimension.width)
-        let newRows = Int(frame.height / cellDimension.height)
+        let effectiveWidth = getEffectiveWidth(size: frame.size)
+        let newCols = max(1, Int(effectiveWidth / cellDimension.width))
+        let newRows = max(1, Int(frame.height / cellDimension.height))
         resize(cols: newCols, rows: newRows)
         updateCaretView()
         
@@ -130,8 +131,9 @@ extension TerminalView {
         // Get the ascent + descent + leading from the font, already scaled for the font's size
         self.cellDimension = computeFontDimensions ()
         
-        let terminalOptions = TerminalOptions(cols: Int(width / cellDimension.width),
-                                              rows: Int(height / cellDimension.height))
+        let effectiveWidth = getEffectiveWidth(size: CGSize(width: width, height: height))
+        let terminalOptions = TerminalOptions(cols: max(1, Int(effectiveWidth / cellDimension.width)),
+                                              rows: max(1, Int(height / cellDimension.height)))
         
         if terminal == nil {
             terminal = Terminal(delegate: self, options: terminalOptions)
@@ -172,8 +174,8 @@ extension TerminalView {
     /// Returns true if this changed the number of columns/rows, false otherwise
     @discardableResult
     func processSizeChange (newSize: CGSize) -> Bool {
-        let newRows = Int (newSize.height / cellDimension.height)
-        let newCols = Int (getEffectiveWidth (size: newSize) / cellDimension.width)
+        let newRows = max(1, Int (newSize.height / cellDimension.height))
+        let newCols = max(1, Int (getEffectiveWidth (size: newSize) / cellDimension.width))
         
         if newCols != terminal.cols || newRows != terminal.rows {
             selection.active = false
@@ -233,10 +235,17 @@ extension TerminalView {
                 return nativeBackgroundColor
             }
         case .defaultInvertedColor:
+            let hasOpaqueBackground = nativeBackgroundColor.cgColor.alpha >= 0.5
             if isFg {
-                return nativeForegroundColor.inverseColor()
+                if hasOpaqueBackground {
+                    return nativeBackgroundColor
+                }
+                return nativeForegroundColor.inverseColor().withAlphaComponent(1.0)
             } else {
-                return nativeBackgroundColor.inverseColor()
+                if hasOpaqueBackground {
+                    return nativeBackgroundColor.inverseColor()
+                }
+                return nativeForegroundColor.withAlphaComponent(1.0)
             }
         case .ansi256(let ansi):
             var midx: Int

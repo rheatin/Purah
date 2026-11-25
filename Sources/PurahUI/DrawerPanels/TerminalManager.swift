@@ -10,6 +10,15 @@ import PurahCore
 /// when drawers collapse, glide, or close, preserving the scrollback buffer and active shell.
 public final class StableTerminalContainerView: NSView {
     public override func resizeSubviews(withOldSize oldSize: NSSize) {
+        syncChildTerminalFrames()
+    }
+
+    public override func layout() {
+        super.layout()
+        syncChildTerminalFrames()
+    }
+
+    func syncChildTerminalFrames() {
         let size = bounds.size
         // Block degenerate sizes (e.g. 0x0) that would collapse the terminal to 2x1
         guard size.width >= 10, size.height >= 10 else { return }
@@ -17,7 +26,12 @@ public final class StableTerminalContainerView: NSView {
         let inset: CGFloat = 4.0
         let terminalFrame = bounds.insetBy(dx: inset, dy: inset)
         for child in subviews {
-            if child is LocalProcessTerminalView {
+            if let term = child as? PurahTerminalView {
+                if term.frame != terminalFrame {
+                    term.frame = terminalFrame
+                }
+                term.syncProcessWindowSize()
+            } else if child is LocalProcessTerminalView {
                 child.frame = terminalFrame
             } else {
                 child.frame = bounds
@@ -28,6 +42,7 @@ public final class StableTerminalContainerView: NSView {
     public override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
+        syncChildTerminalFrames()
         // When reopened on rail expansion, force redraw so SwiftTerm refreshes the terminal screen
         for child in subviews {
             child.needsDisplay = true
@@ -67,11 +82,36 @@ open class PurahTerminalView: LocalProcessTerminalView {
         super.removeFromSuperview()
     }
 
+    private var lastSyncedCols: Int = -1
+    private var lastSyncedRows: Int = -1
+
     open override func viewDidMoveToWindow() {
         guard !PurahWorkspaceStore.isTestingEnvironment else { return }
         super.viewDidMoveToWindow()
         guard window != nil else { return }
         setupMouseDragMonitorIfNeeded()
+        TerminalManager.shared.refreshAppearanceForEffectiveAppearance(of: self)
+        syncProcessWindowSize(force: true)
+    }
+
+    open override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        guard !PurahWorkspaceStore.isTestingEnvironment else { return }
+        TerminalManager.shared.refreshAppearanceForEffectiveAppearance(of: self)
+    }
+
+    /// Ensures the child PTY `TIOCSWINSZ` matches SwiftTerm's current grid dimensions.
+    /// Prevents initial-layout or font-change mismatches where tools like `curl -#`
+    /// read a stale `ws_col` wider than the terminal buffer and wrap every tick.
+    public func syncProcessWindowSize(force: Bool = false) {
+        let cols = terminal.cols
+        let rows = terminal.rows
+        guard cols > 0, rows > 0 else { return }
+        guard force || cols != lastSyncedCols || rows != lastSyncedRows else { return }
+        lastSyncedCols = cols
+        lastSyncedRows = rows
+        guard process.running else { return }
+        sizeChanged(source: self, newCols: cols, newRows: rows)
     }
 
     private func setupMouseDragMonitorIfNeeded() {
@@ -219,6 +259,82 @@ open class PurahTerminalView: LocalProcessTerminalView {
     }
 }
 
+// MARK: - Curated Dark & Light Terminal Color Schemes
+public enum TerminalColorSchemePalette {
+    public struct Spec {
+        public let foreground: NSColor
+        public let caret: NSColor
+        public let selectionBackground: NSColor
+        public let ansi16: [SwiftTerm.Color]
+    }
+
+    private static func termColor(_ hex: UInt32) -> SwiftTerm.Color {
+        let r = UInt16(((hex >> 16) & 0xFF) * 257)
+        let g = UInt16(((hex >> 8) & 0xFF) * 257)
+        let b = UInt16((hex & 0xFF) * 257)
+        return SwiftTerm.Color(red: r, green: g, blue: b)
+    }
+
+    /// Vibrant, crisp dark-glass palette (Tokyo Night / macOS inspired).
+    public static var dark: Spec {
+        Spec(
+            foreground: NSColor(srgbRed: 0.92, green: 0.94, blue: 0.98, alpha: 1.0),
+            caret: NSColor(srgbRed: 0.00, green: 0.92, blue: 0.80, alpha: 1.0),
+            selectionBackground: NSColor(srgbRed: 0.24, green: 0.42, blue: 0.72, alpha: 0.55),
+            ansi16: [
+                termColor(0x1E222A), // 0 Black
+                termColor(0xF7768E), // 1 Red
+                termColor(0x73DACA), // 2 Green
+                termColor(0xE0AF68), // 3 Yellow
+                termColor(0x7AA2F7), // 4 Blue
+                termColor(0xBB9AF7), // 5 Magenta
+                termColor(0x7DCFFF), // 6 Cyan
+                termColor(0xC0CAF5), // 7 White
+                termColor(0x6B7280), // 8 Bright Black (subtle comments / autosuggestions)
+                termColor(0xFF899D), // 9 Bright Red
+                termColor(0x9ECE6A), // 10 Bright Green
+                termColor(0xF6C177), // 11 Bright Yellow
+                termColor(0x89B4FA), // 12 Bright Blue
+                termColor(0xD2A8FF), // 13 Bright Magenta
+                termColor(0x89DDFF), // 14 Bright Cyan
+                termColor(0xF8FAFC)  // 15 Bright White
+            ]
+        )
+    }
+
+    /// High-contrast Apple-crafted Light-glass palette: deep ink & darkened chroma
+    /// so yellow/cyan/green/autosuggestions stay crisp on frosted light surfaces.
+    public static var light: Spec {
+        Spec(
+            foreground: NSColor(srgbRed: 0.11, green: 0.13, blue: 0.18, alpha: 1.0),
+            caret: NSColor(srgbRed: 0.00, green: 0.48, blue: 0.52, alpha: 1.0),
+            selectionBackground: NSColor(srgbRed: 0.22, green: 0.52, blue: 0.96, alpha: 0.28),
+            ansi16: [
+                termColor(0x1E293B), // 0 Black
+                termColor(0xC81E3B), // 1 Red
+                termColor(0x047857), // 2 Green
+                termColor(0xA16207), // 3 Yellow (deep amber-ochre, readable on light glass)
+                termColor(0x1D4ED8), // 4 Blue
+                termColor(0x7C3AED), // 5 Magenta
+                termColor(0x0E7490), // 6 Cyan (deep teal)
+                termColor(0x475569), // 7 White (slate ink for light surfaces)
+                termColor(0x64748B), // 8 Bright Black (comments / autosuggestions)
+                termColor(0xDC2626), // 9 Bright Red
+                termColor(0x059669), // 10 Bright Green
+                termColor(0xB45309), // 11 Bright Yellow
+                termColor(0x2563EB), // 12 Bright Blue
+                termColor(0x9333EA), // 13 Bright Magenta
+                termColor(0x0284C7), // 14 Bright Cyan
+                termColor(0x0F172A)  // 15 Bright White (high-contrast emphasis ink)
+            ]
+        )
+    }
+
+    public static func spec(isDark: Bool) -> Spec {
+        isDark ? dark : light
+    }
+}
+
 // MARK: - Terminal Tab Session Model
 public struct TerminalTabSession: Identifiable {
     public let id: String
@@ -267,6 +383,7 @@ public final class TerminalManager: ObservableObject {
     private var lastAppliedFontSize: CGFloat = 0
     private var cachedResolvedFont: NSFont?
     private var lastAppliedPalette: ThemePalette = ThemePalette.palette(for: .native)
+    private var lastAppliedIsDarkByView: [ObjectIdentifier: Bool] = [:]
     private var recycledViews: [PurahTerminalView] = []
 
     private init() {
@@ -408,7 +525,8 @@ public final class TerminalManager: ObservableObject {
         delegate: LocalProcessTerminalViewDelegate,
         fontFamily: String,
         fontSize: CGFloat,
-        palette: ThemePalette
+        palette: ThemePalette,
+        isDark: Bool? = nil
     ) {
         self.currentDelegate = delegate
         self.lastAppliedPalette = palette
@@ -423,10 +541,12 @@ public final class TerminalManager: ObservableObject {
                 to: active,
                 fontFamily: fontFamily,
                 fontSize: fontSize,
-                palette: palette
+                palette: palette,
+                isDark: isDark
             )
             if active.superview !== containerView {
                 containerView.addSubview(active)
+                containerView.syncChildTerminalFrames()
             }
         }
     }
@@ -442,6 +562,14 @@ public final class TerminalManager: ObservableObject {
         }
 
         let view = tabs[idx].terminalView
+        // Sync the view frame with container bounds BEFORE forkpty so the shell
+        // receives the real drawer column width rather than the 500x360 fallback.
+        if containerView.bounds.size.width >= 10, containerView.bounds.size.height >= 10 {
+            let targetFrame = containerView.bounds.insetBy(dx: 4.0, dy: 4.0)
+            if view.frame != targetFrame {
+                view.frame = targetFrame
+            }
+        }
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         self.shellName = URL(fileURLWithPath: shell).lastPathComponent
         let execName = "-" + (shell as NSString).lastPathComponent // Login shell convention
@@ -478,6 +606,11 @@ public final class TerminalManager: ObservableObject {
         tabs[idx].isRunning = true
         if targetId == activeTabId {
             isProcessRunning = true
+        }
+        // Push one deferred TIOCSWINSZ after SwiftUI/AppKit settles the drawer layout.
+        DispatchQueue.main.async { [weak view, weak containerView] in
+            containerView?.syncChildTerminalFrames()
+            view?.syncProcessWindowSize(force: true)
         }
     }
 
@@ -519,12 +652,31 @@ public final class TerminalManager: ObservableObject {
         }
     }
 
+    public func refreshAppearanceForEffectiveAppearance(of view: LocalProcessTerminalView) {
+        let resolvedDark = Self.resolveIsDark(for: view)
+        applyAppearanceSettings(
+            to: view,
+            fontFamily: lastAppliedFontFamily.isEmpty ? "Auto (Nerd Font)" : lastAppliedFontFamily,
+            fontSize: lastAppliedFontSize > 0 ? lastAppliedFontSize : 11.5,
+            palette: lastAppliedPalette,
+            isDark: resolvedDark
+        )
+    }
+
+    public static func resolveIsDark(for view: NSView? = nil) -> Bool {
+        let appearance = view?.effectiveAppearance
+            ?? NSApp?.effectiveAppearance
+            ?? NSAppearance.currentDrawing()
+        return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
     public func applyAppearanceSettings(
         to view: LocalProcessTerminalView,
         fontFamily: String,
         fontSize: CGFloat,
         palette: ThemePalette,
-        forceFontUpdate: Bool = false
+        forceFontUpdate: Bool = false,
+        isDark: Bool? = nil
     ) {
         // 1. Resolve Font with Starship / Nerd Font cascade list
         if forceFontUpdate || lastAppliedFontFamily != fontFamily || lastAppliedFontSize != fontSize || cachedResolvedFont == nil {
@@ -535,20 +687,30 @@ public final class TerminalManager: ObservableObject {
         }
         if let font = cachedResolvedFont, view.font != font {
             view.font = font
+            if let purahView = view as? PurahTerminalView {
+                purahView.syncProcessWindowSize(force: true)
+            }
         }
         lastAppliedPalette = palette
 
         // 2. Terminal Colors & Translucency
-        // A terminal is a panel inside the drawer, not a terminal window: it
-        // used to paint its own near-black rectangle, which read as a black
-        // box bolted into the card. Clear lets the card's surface through, so
-        // the only thing the terminal contributes is text.
-        let isDark = palette.style != .native
+        // A terminal is a panel inside the drawer, not a terminal window: clear
+        // background lets the card surface through, while foreground, caret,
+        // selection and the 16-color ANSI table adapt cleanly to Dark vs Light.
+        let resolvedIsDark = isDark ?? Self.resolveIsDark(for: view)
+        let colorSpec = TerminalColorSchemePalette.spec(isDark: resolvedIsDark)
         view.nativeBackgroundColor = .clear
-        view.nativeForegroundColor = isDark ? NSColor(white: 0.94, alpha: 1.0) : NSColor.labelColor
-        view.caretColor = isDark ? NSColor(red: 0.0, green: 0.96, blue: 0.83, alpha: 1.0) : NSColor.controlAccentColor
+        view.nativeForegroundColor = colorSpec.foreground
+        view.caretColor = colorSpec.caret
+        view.selectedTextBackgroundColor = colorSpec.selectionBackground
         view.layer?.backgroundColor = NSColor.clear.cgColor
         view.layer?.isOpaque = false
+
+        let viewKey = ObjectIdentifier(view)
+        if lastAppliedIsDarkByView[viewKey] != resolvedIsDark {
+            lastAppliedIsDarkByView[viewKey] = resolvedIsDark
+            view.installColors(colorSpec.ansi16)
+        }
 
         // 3. Terminal Behavior Flags
         view.getTerminal().setCursorStyle(.blinkBlock)
@@ -649,11 +811,13 @@ public struct SwiftTermRepresentable: NSViewRepresentable {
     public let fontFamily: String
     public let fontSize: Double
     public let palette: ThemePalette
+    public let isDark: Bool?
 
-    public init(fontFamily: String, fontSize: Double, palette: ThemePalette) {
+    public init(fontFamily: String, fontSize: Double, palette: ThemePalette, isDark: Bool? = nil) {
         self.fontFamily = fontFamily
         self.fontSize = fontSize
         self.palette = palette
+        self.isDark = isDark
     }
 
     public func makeCoordinator() -> TerminalManagerCoordinator {
@@ -666,7 +830,8 @@ public struct SwiftTermRepresentable: NSViewRepresentable {
             delegate: context.coordinator,
             fontFamily: fontFamily,
             fontSize: CGFloat(fontSize),
-            palette: palette
+            palette: palette,
+            isDark: isDark
         )
         if !manager.isProcessRunning {
             manager.startShellProcess()
@@ -680,7 +845,8 @@ public struct SwiftTermRepresentable: NSViewRepresentable {
             delegate: context.coordinator,
             fontFamily: fontFamily,
             fontSize: CGFloat(fontSize),
-            palette: palette
+            palette: palette,
+            isDark: isDark
         )
     }
 }

@@ -8,6 +8,7 @@ public struct PersistentTerminalDrawerView: View {
     public let store: PurahWorkspaceStore
 
     @ObservedObject private var manager = TerminalManager.shared
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Resolved when the drawer opens, not per render: it reads the AI plugin's
     /// settings and, for an HTTP provider, the secrets file.
@@ -18,7 +19,7 @@ public struct PersistentTerminalDrawerView: View {
     }
 
     private var terminalColor: Color {
-        palette.podColor(for: "terminal", store: store)
+        palette.podInkColor(for: "terminal", store: store, colorScheme: colorScheme)
     }
 
     public init(state: TerminalPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
@@ -37,7 +38,8 @@ public struct PersistentTerminalDrawerView: View {
             SwiftTermRepresentable(
                 fontFamily: state.fontFamily,
                 fontSize: state.fontSize,
-                palette: palette
+                palette: palette,
+                isDark: colorScheme == .dark
             )
             .clipShape(RoundedRectangle(cornerRadius: PurahItemRhythm.rowCornerRadius, style: .continuous))
             .overlay(

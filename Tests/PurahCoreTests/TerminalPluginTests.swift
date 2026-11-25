@@ -553,4 +553,80 @@ struct TerminalPluginTests {
         let rawLrc = "[00:05.00] First line\n[00:12.00] Second active line\n[00:20.00] Third line"
         #expect(LyricsDisplayView.activeLyricLine(in: rawLrc, at: 14.0) == "Second active line")
     }
+
+    @Test("Font change and frame resize compute identical terminal column counts (inline progress parity)")
+    @MainActor
+    func testFontChangeAndResizeComputeIdenticalColumns() {
+        let frame = CGRect(x: 0, y: 0, width: 486, height: 340)
+        let termView = PurahTerminalView(frame: frame)
+        let palette = ThemePalette.palette(for: .native)
+
+        TerminalManager.shared.applyAppearanceSettings(
+            to: termView,
+            fontFamily: "Menlo",
+            fontSize: 11.5,
+            palette: palette,
+            forceFontUpdate: true,
+            isDark: true
+        )
+        let colsAfterFont = termView.getTerminal().cols
+        let rowsAfterFont = termView.getTerminal().rows
+        #expect(colsAfterFont > 20)
+        #expect(rowsAfterFont > 10)
+
+        // Triggering AppKit setFrameSize with the exact same bounds must agree
+        // with setupOptions / resetFont so PTY ws_col never exceeds rendered cols.
+        termView.setFrameSize(frame.size)
+        #expect(termView.getTerminal().cols == colsAfterFont)
+        #expect(termView.getTerminal().rows == rowsAfterFont)
+
+        // Changing font size must also stay identical across resetFont and setFrameSize.
+        TerminalManager.shared.applyAppearanceSettings(
+            to: termView,
+            fontFamily: "Menlo",
+            fontSize: 13.0,
+            palette: palette,
+            forceFontUpdate: true,
+            isDark: true
+        )
+        let colsAfterLargerFont = termView.getTerminal().cols
+        #expect(colsAfterLargerFont < colsAfterFont)
+        termView.setFrameSize(frame.size)
+        #expect(termView.getTerminal().cols == colsAfterLargerFont)
+    }
+
+    @Test("Dark and Light terminal color schemes keep 16 ANSI colors and distinct foreground polarity")
+    @MainActor
+    func testTerminalColorSchemePalettesAndContrast() throws {
+        let dark = TerminalColorSchemePalette.spec(isDark: true)
+        let light = TerminalColorSchemePalette.spec(isDark: false)
+
+        #expect(dark.ansi16.count == 16)
+        #expect(light.ansi16.count == 16)
+
+        let darkFg = try #require(dark.foreground.usingColorSpace(.sRGB))
+        let lightFg = try #require(light.foreground.usingColorSpace(.sRGB))
+        let darkLum = TagTintContrast.relativeLuminance(.init(red: Double(darkFg.redComponent), green: Double(darkFg.greenComponent), blue: Double(darkFg.blueComponent), alpha: 1))
+        let lightLum = TagTintContrast.relativeLuminance(.init(red: Double(lightFg.redComponent), green: Double(lightFg.greenComponent), blue: Double(lightFg.blueComponent), alpha: 1))
+
+        #expect(darkLum > 0.70, "Dark mode terminal ink should be bright and crisp")
+        #expect(lightLum < 0.05, "Light mode terminal ink should be deep charcoal")
+
+        // Verify applying Light vs Dark updates nativeForegroundColor and keeps nativeBackgroundColor clear
+        let termView = PurahTerminalView(frame: CGRect(x: 0, y: 0, width: 400, height: 240))
+        let palette = ThemePalette.palette(for: .native)
+
+        TerminalManager.shared.applyAppearanceSettings(to: termView, fontFamily: "Menlo", fontSize: 12, palette: palette, isDark: true)
+        #expect(termView.nativeBackgroundColor.cgColor.alpha == 0)
+        #expect(termView.nativeForegroundColor == dark.foreground)
+
+        // SGR 7 reverse-video (used by zsh bracketed paste) must feed cleanly without crashing
+        termView.feed(text: "\u{1B}[7mpasted-cmd\u{1B}[0m")
+        let bufferText = String(data: termView.getTerminal().getBufferAsData(), encoding: .utf8) ?? ""
+        #expect(bufferText.contains("pasted-cmd"))
+
+        TerminalManager.shared.applyAppearanceSettings(to: termView, fontFamily: "Menlo", fontSize: 12, palette: palette, isDark: false)
+        #expect(termView.nativeBackgroundColor.cgColor.alpha == 0)
+        #expect(termView.nativeForegroundColor == light.foreground)
+    }
 }

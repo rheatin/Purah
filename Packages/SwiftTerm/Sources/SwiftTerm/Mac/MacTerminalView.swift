@@ -557,7 +557,6 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
     }
 
     func getScrollerFrame() -> CGRect {
-        let scrollerWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: scrollerStyle)
         return NSRect(x: bounds.maxX - scrollerWidth, y: 0, width: scrollerWidth, height: bounds.height)
     }
 
@@ -609,7 +608,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
     }
         
     private var scrollerWidth: CGFloat {
-        NSScroller.scrollerWidth(for: .regular, scrollerStyle: scrollerStyle)
+        PurahScroller.barSlotWidth
     }
 
     /**
@@ -622,7 +621,7 @@ open class TerminalView: NSView, @MainActor NSTextInputClient, NSUserInterfaceVa
 
     func getEffectiveWidth (size: CGSize) -> CGFloat
     {
-        return (size.width - scrollerWidth)
+        return max(0, size.width - scrollerWidth)
     }
     
     open func scrolled(source terminal: Terminal, yDisp: Int) {
