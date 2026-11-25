@@ -1,4 +1,9 @@
 // Sources/PurahCore/Plugins/DefaultPodCapabilityProviders.swift
+//
+// Pre-`bindStore` and headless `PurahCore` fallback capability bridges.
+// In live app sessions, `PluginRegistry.bindStore` overwrites each entry with
+// the real `PurahPodPlugin` instance; `setDecomposed(_:store:)` here mutates
+// only store-level fallback flags and self-heals on plugin mount.
 import Foundation
 import AppKit
 
@@ -11,6 +16,10 @@ struct DefaultCalendarCapabilityProvider: PurahPodCapabilityProvider {
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         if store.isInSharedMajorPod(podId: podId) { return false }
         return store.calendarOverflowStrategy != .continuousStream
+    }
+
+    func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        store.calendarOverflowStrategy = decomposed ? .smartFold : .continuousStream
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
@@ -129,6 +138,10 @@ struct DefaultVitalsCapabilityProvider: PurahPodCapabilityProvider {
         return store._isVitalsDecomposed
     }
 
+    func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        store._isVitalsDecomposed = decomposed
+    }
+
     func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat {
         if !isDecomposed(store: store) {
             // Match HardwareVitalsPlugin's composite floor. The fallback used
@@ -184,6 +197,10 @@ struct DefaultScriptsCapabilityProvider: PurahPodCapabilityProvider {
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         if store.isInSharedMajorPod(podId: podId) { return false }
         return store._isScriptsDecomposed
+    }
+
+    func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        store._isScriptsDecomposed = decomposed
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
@@ -258,6 +275,10 @@ struct DefaultAICapabilityProvider: PurahPodCapabilityProvider {
     func isDecomposed(store: PurahWorkspaceStore) -> Bool {
         if store.isInSharedMajorPod(podId: podId) { return false }
         return store._isAIDecomposed
+    }
+
+    func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        store._isAIDecomposed = decomposed
     }
 
     func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? {
@@ -352,4 +373,27 @@ struct DefaultCompositeCapabilityProvider: PurahPodCapabilityProvider {
         }
         return max(minHeight * 1.5, 240.0)
     }
+}
+
+@MainActor
+struct DefaultClipboardCapabilityProvider: PurahPodCapabilityProvider {
+    let podId: String = "clipboard"
+    var decomposedPolicy: PurahDecomposedPolicy {
+        PurahDecomposedPolicy(maxRailItems: 4, minChipHeight: 42.0, maxChipHeight: 185.0, spacing: 2.5, overflowStrategy: .smartFold)
+    }
+
+    func isDecomposed(store: PurahWorkspaceStore) -> Bool {
+        if store.isInSharedMajorPod(podId: podId) { return false }
+        let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: store.userDefaults)
+        return storage.bool(forKey: "isDecomposed")
+    }
+
+    func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
+        let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: store.userDefaults)
+        storage.set(decomposed, forKey: "isDecomposed")
+    }
+
+    func minimumDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 150.0 }
+    func adaptiveDrawerWidth(store: PurahWorkspaceStore) -> CGFloat? { 380.0 }
+    func preferredDrawerHeight(store: PurahWorkspaceStore) -> CGFloat { 280.0 }
 }

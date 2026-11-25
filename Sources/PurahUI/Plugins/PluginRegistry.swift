@@ -59,13 +59,6 @@ public final class PluginRegistry: PluginMarketLifecycleDelegate, Sendable {
         market.lifecycleDelegate = self
         PluginMarketManager.globalLifecycleDelegate = self
 
-        // Capability-driven: every plugin that owns a decomposed mode
-        // implements `setDecomposed`, so the host never needs to know which
-        // pod ids happen to be stepped today (this used to special-case
-        // "scripts" and "vitals" only).
-        store.onDecomposedStateSync = { [weak self] podId, isDecomp in
-            self?.plugin(for: podId)?.setDecomposed(isDecomp, store: store)
-        }
         for plugin in catalogPlugins.values {
             let id = plugin.manifest.id
             if market.isInstalled(id: id) {

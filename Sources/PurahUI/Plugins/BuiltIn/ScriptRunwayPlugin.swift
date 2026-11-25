@@ -98,6 +98,8 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
 
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
+        state.save()
+        store._isScriptsDecomposed = decomposed
         if decomposed { store.ensurePodFitsDecomposedChips(podId: manifest.id) }
     }
 
@@ -121,16 +123,14 @@ public struct ScriptRunwayPlugin: PurahPodPlugin {
     }
 
     public func subItemId(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
-        guard isDecomp else { return nil }
+        guard isDecomposed(store: store) else { return nil }
         let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
         guard actions.indices.contains(index) else { return nil }
         return "scripts-\(actions[index].id)"
     }
 
     public func subItemTitle(at index: Int, store: PurahWorkspaceStore) -> String? {
-        let isDecomp = state.isDecomposed || store._isScriptsDecomposed
-        guard isDecomp else { return nil }
+        guard isDecomposed(store: store) else { return nil }
         let actions = !store._scriptsEnabledActionIds.isEmpty ? store.scriptsEnabledActions : state.enabledActions
         guard actions.indices.contains(index) else { return nil }
         return actions[index].name
@@ -456,45 +456,7 @@ public struct ScriptsPluginSettingsView: View {
                 iconColor: Color(hex: "#FF9F0A")
             ) {
                 VStack(alignment: .leading, spacing: 12) {
-                    PurahStackedDecomposeNoticeView(podId: "scripts", store: store)
-
                     let isStacked = store.isInSharedMajorPod(podId: "scripts")
-
-                    // Switch sub-card for decomposition
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("runway.decompose.title".localized)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("runway.decompose.desc".localized)
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { !isStacked && state.isDecomposed },
-                            set: {
-                                state.isDecomposed = $0
-                                state.save()
-                                store._isScriptsDecomposed = $0
-                                store.savePersistentState()
-                            }
-                        ))
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                        .disabled(isStacked)
-                        .purahRowAccessibility("runway.decompose.title".localized, detail: "runway.decompose.desc".localized)
-                    }
-                    .padding(9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.03))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-                    )
 
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {

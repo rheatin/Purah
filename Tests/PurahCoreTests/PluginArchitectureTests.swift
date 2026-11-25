@@ -1672,4 +1672,61 @@ struct PluginArchitectureTests {
         }
     }
 
+    @Test("bindStore replaces Default capability fallbacks with real plugins and preserves decomposed state across stack/unstack")
+    @MainActor
+    func testBindStoreOverridesDefaultProvidersAndPreservesDecomposedAcrossStacking() {
+        let suiteName = "purah.test.batch2.bindstore.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = PurahWorkspaceStore(userDefaults: defaults)
+        let registry = PluginRegistry()
+        registry.bindStore(store)
+
+        #expect(store.capabilityProvider(for: "vitals") is HardwareVitalsPlugin)
+        #expect(store.capabilityProvider(for: "scripts") is ScriptRunwayPlugin)
+        #expect(store.capabilityProvider(for: "clipboard") is ClipboardPlugin)
+
+        // Ensure scripts starts unstacked (fresh installs group some pods by default)
+        store.splitPodFromMajorGroup(id: "scripts")
+        #expect(store.isInSharedMajorPod(podId: "scripts") == false)
+
+        // Toggle scripts decomposed via the single polymorphic seam
+        store.togglePodDecomposedIfNeeded(podId: "scripts", decomposed: true)
+        #expect(store.isPodDecomposed("scripts") == true)
+        #expect((registry.plugin(for: "scripts") as? ScriptRunwayPlugin)?.state.isDecomposed == true)
+
+        // Stacking with a same-edge sibling temporarily disables decomposed presentation without erasing user preference
+        let scriptsEdge = store.pods.first(where: { $0.id == "scripts" })?.edge ?? .right
+        let siblingId = store.pods.first(where: { $0.id != "scripts" && $0.isEnabled && $0.edge == scriptsEdge })!.id
+        store.addPodToMajorGroup(podId: "scripts", targetPodId: siblingId)
+        #expect(store.isInSharedMajorPod(podId: "scripts") == true)
+        #expect(store.isPodDecomposed("scripts") == false)
+
+        // Unstacking restores decomposed mode
+        store.splitPodFromMajorGroup(id: "scripts")
+        #expect(store.isInSharedMajorPod(podId: "scripts") == false)
+        #expect(store.isPodDecomposed("scripts") == true)
+    }
+
+    @Test("ClipboardPluginState operates cleanly against an injected isolated SystemClipboardSyncService")
+    @MainActor
+    func testClipboardPluginStateServiceInjection() {
+        let suiteName = "purah.test.clipboard.inject.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let (isolatedService, cleanup) = SystemClipboardSyncService.createIsolatedTestService()
+        defer { cleanup() }
+        let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: defaults)
+        let state = ClipboardPluginState(storage: storage, service: isolatedService)
+
+        state.updateRetention(.thirtyDays)
+        #expect(isolatedService.retentionPeriod == .thirtyDays)
+        state.updateDiskQuota(.gb1)
+        #expect(isolatedService.diskQuota == .gb1)
+        state.updateAutoPrune(false)
+        #expect(isolatedService.autoPruneOnQuota == false)
+    }
+
 }

@@ -50,12 +50,12 @@ public struct ClipboardPlugin: PurahPodPlugin {
 
     public func onMount(store: PurahWorkspaceStore) {
         state.mount(store: store)
-        SystemClipboardSyncService.shared.startListening()
+        state.startListening()
     }
 
     public func onUnmount(store: PurahWorkspaceStore) {
         state.unmount(store: store)
-        SystemClipboardSyncService.shared.stopListening()
+        state.stopListening()
     }
 
     public func dynamicBarColor(context: PurahPluginContext) -> Color? {
@@ -967,84 +967,48 @@ public struct ClipboardPluginSettingsView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Card 1: Clipboard Sidecar & Rail Chips
-            PurahPluginSettingsCard(
-                title: "Clipboard Sidecar & Rail Chips",
-                subtitle: "Manage physical rail chip decomposition and capacity",
-                icon: "doc.on.clipboard.fill",
-                iconColor: palette.primaryAccent
-            ) {
-                VStack(alignment: .leading, spacing: 10) {
-                    PurahStackedDecomposeNoticeView(podId: "clipboard", store: store)
+            let isStacked = store.isInSharedMajorPod(podId: "clipboard")
 
-                    let isStacked = store.isInSharedMajorPod(podId: "clipboard")
-
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("clipboard.decomposedChips".localized)
+            // Card 1: Rail Chip Capacity (shown when stepped mode is active)
+            if !isStacked && state.isDecomposed {
+                PurahPluginSettingsCard(
+                    title: "Clipboard Sidecar & Rail Chips",
+                    subtitle: "Manage physical rail chip decomposition and capacity",
+                    icon: "doc.on.clipboard.fill",
+                    iconColor: palette.primaryAccent
+                ) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("clipboard.maxInRailItems".localized)
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("clipboard.decompose.desc".localized)
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(String(format: "clipboard.chipCount".localized, store.clipboardMaxRailItems))
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(hex: "#FF9F0A"))
                         }
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { !isStacked && state.isDecomposed },
+
+                        Slider(value: Binding(
+                            get: { Double(store.clipboardMaxRailItems) },
                             set: {
-                                state.isDecomposed = $0
+                                store.clipboardMaxRailItems = Int($0)
+                                state.maxRailItems = Int($0)
                                 state.save()
-                                if $0 { store.ensurePodFitsDecomposedChips(podId: "clipboard") }
+                                store.savePersistentState()
                             }
-                        ))
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                        .disabled(isStacked)
-                        .purahRowAccessibility("clipboard.decomposedChips".localized, detail: "clipboard.decompose.desc".localized)
+                        ), in: 2...8, step: 1)
+                        .accessibilityLabel("clipboard.maxInRailItems".localized)
+
+                        Text("clipboard.maxInRailItems.desc".localized)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.secondary)
                     }
                     .padding(9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.03))
-                    )
+                    .background(Color.primary.opacity(0.025))
+                    .cornerRadius(7)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
+                        RoundedRectangle(cornerRadius: 7)
+                            .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
                     )
-
-                    if !isStacked && state.isDecomposed {
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack {
-                                Text("clipboard.maxInRailItems".localized)
-                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                Spacer()
-                                Text(String(format: "clipboard.chipCount".localized, store.clipboardMaxRailItems))
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundColor(Color(hex: "#FF9F0A"))
-                            }
-
-                            Slider(value: Binding(
-                                get: { Double(store.clipboardMaxRailItems) },
-                                set: {
-                                    store.clipboardMaxRailItems = Int($0)
-                                    store.savePersistentState()
-                                }
-                            ), in: 2...8, step: 1)
-                            .accessibilityLabel("clipboard.maxInRailItems".localized)
-
-                            Text("clipboard.maxInRailItems.desc".localized)
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(9)
-                        .background(Color.primary.opacity(0.025))
-                        .cornerRadius(7)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7)
-                                .stroke(palette.borderColor.opacity(0.15), lineWidth: 0.8)
-                        )
-                    }
                 }
             }
 
@@ -1052,32 +1016,15 @@ public struct ClipboardPluginSettingsView: View {
             PurahStoragePolicySection(
                 retention: Binding(
                     get: { state.retentionPeriod },
-                    set: {
-                        state.retentionPeriod = $0
-                        state.save()
-                        _ = SystemClipboardSyncService.shared.cleanExpiredItems(retention: $0)
-                        state.items = SystemClipboardSyncService.shared.history
-                    }
+                    set: { state.updateRetention($0) }
                 ),
                 quota: Binding(
                     get: { state.diskQuota },
-                    set: {
-                        state.diskQuota = $0
-                        state.save()
-                        _ = SystemClipboardSyncService.shared.enforceDiskQuota(quota: $0)
-                        state.items = SystemClipboardSyncService.shared.history
-                    }
+                    set: { state.updateDiskQuota($0) }
                 ),
                 autoPrune: Binding(
                     get: { state.autoPruneOnQuota },
-                    set: {
-                        state.autoPruneOnQuota = $0
-                        state.save()
-                        if $0 {
-                            _ = SystemClipboardSyncService.shared.enforceDiskQuota(autoPrune: true)
-                            state.items = SystemClipboardSyncService.shared.history
-                        }
-                    }
+                    set: { state.updateAutoPrune($0) }
                 ),
                 fileStorage: PurahPluginFileStorage(pluginId: "clipboard"),
                 onClearAll: {

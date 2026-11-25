@@ -187,8 +187,6 @@ public final class PurahWorkspaceStore {
     public var onboardingTarget: OnboardingTarget { .none }
     public var onboardingCalloutTarget: OnboardingCalloutTarget? = nil
     public func publishOnboardingCalloutTarget(_ target: OnboardingCalloutTarget?, owner: String, step: OnboardingGuideStep) {}
-    @ObservationIgnored
-    public var onDecomposedStateSync: (@MainActor (String, Bool) -> Void)? = nil
 
     public var onboardingDidToggleDecompose: Bool = false
     public var onboardingDidCreateStack: Bool = false
@@ -3614,7 +3612,7 @@ public final class PurahWorkspaceStore {
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "shelf", minHeight: 130.0, adaptiveWidth: 360.0, preferredHeight: 250.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "notes", minHeight: 130.0, adaptiveWidth: 320.0, preferredHeight: 280.0))
         registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "terminal", minHeight: 120.0, adaptiveWidth: 520.0, preferredHeight: 280.0))
-        registerCapabilityProvider(DefaultCompositeCapabilityProvider(podId: "clipboard", minHeight: 150.0, adaptiveWidth: 380.0, preferredHeight: 280.0))
+        registerCapabilityProvider(DefaultClipboardCapabilityProvider())
     }
 
 
@@ -4450,28 +4448,10 @@ public final class PurahWorkspaceStore {
     public func togglePodDecomposedInSculptor(podId: String) {
         let current = isPodDecomposed(podId)
         let next = !current
-        switch podId {
-        case "vitals":
-            _isVitalsDecomposed = next
-            capabilityProvider(for: "vitals")?.setDecomposed(next, store: self)
-        case "scripts":
-            _isScriptsDecomposed = next
-            capabilityProvider(for: "scripts")?.setDecomposed(next, store: self)
-        case "ai":
-            _isAIDecomposed = next
-            capabilityProvider(for: "ai")?.setDecomposed(next, store: self)
-        case "clipboard":
-            let storage = ScopedPluginStorage(pluginId: "clipboard", defaults: userDefaults)
-            storage.set(next, forKey: "isDecomposed")
-            capabilityProvider(for: "clipboard")?.setDecomposed(next, store: self)
-        case "calendar":
-            let nextStrategy: CalendarOverflowStrategy = (calendarOverflowStrategy == .smartFold) ? .continuousStream : .smartFold
-            calendarOverflowStrategy = nextStrategy
-            capabilityProvider(for: "calendar")?.setDecomposed(nextStrategy == .smartFold, store: self)
-        default:
-            capabilityProvider(for: podId)?.setDecomposed(next, store: self)
-        }
-        onDecomposedStateSync?(podId, next)
+        // Single polymorphic decomposition seam: every built-in and external
+        // capability provider owns its own state mutation, persistence, and
+        // chip auto-fitting without hardcoded podId switches in the store.
+        capabilityProvider(for: podId)?.setDecomposed(next, store: self)
         onboardingDidToggleDecompose = true
         _ = triggerControlHaptic(.alignment)
         invalidateLayoutCache()

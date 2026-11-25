@@ -365,8 +365,6 @@ public struct TodoPluginSettingsView: View {
                         }
                     }
 
-                    PurahStackedDecomposeNoticeView(podId: "todo", store: store)
-
                     let isStacked = store.isInSharedMajorPod(podId: "todo")
 
                     // Max Visible Tasks Slider

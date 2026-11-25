@@ -116,8 +116,7 @@ public struct PodSettingsPage: View {
     private func pluginDetail(_ activePlugin: any PurahPodPlugin) -> some View {
         let podId = activePlugin.manifest.id
         let podColor = palette.podColor(for: podId, store: store)
-        let isAdaptiveTelemetry =
-            activePlugin.usesAdaptiveTelemetryColor || podId == "vitals"
+        let isAdaptiveTelemetry = activePlugin.usesAdaptiveTelemetryColor
         let isEnabledBinding = Binding(
             get: { store.pods.first(where: { $0.id == podId })?.isEnabled ?? true },
             set: { _ in store.togglePodEnabled(id: podId) }
@@ -288,36 +287,40 @@ public struct PodSettingsPage: View {
                 .foregroundColor(.secondary)
             }
 
-            if activePlugin is DynamicABIPodPlugin, activePlugin.supportedDrawerModes.contains(.stepped) {
+            let supportsStepped = activePlugin.supportedDrawerModes.contains(.stepped)
+            let showsDisplayModePicker = supportsStepped && activePlugin.supportedDrawerModes.contains(.composite)
+            let showsStackedNotice = supportsStepped && store.isInSharedMajorPod(podId: podId)
+
+            if showsDisplayModePicker || showsStackedNotice {
                 Divider()
                     .background(palette.borderColor.opacity(0.25))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    PurahStackedDecomposeNoticeView(podId: podId, store: store)
+                    if showsStackedNotice {
+                        PurahStackedDecomposeNoticeView(podId: podId, store: store)
+                    }
 
-                    HStack {
-                        Text("Rail Display Mode")
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    if showsDisplayModePicker {
+                        HStack {
+                            Text("Rail Display Mode")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundColor(palette.style == .native ? Color.primary : .white)
 
-                        Spacer()
+                            Spacer()
 
-                        PurahThemedSegmentedPicker(
-                            options: [false, true],
-                            selection: Binding<Bool>(
-                                get: { activePlugin.isDecomposed(store: store) },
-                                set: { newValue in
-                                    activePlugin.setDecomposed(newValue, store: store)
-                                    if newValue { store.ensurePodFitsDecomposedChips(podId: podId) }
-                                    store.invalidateLayoutCache()
-                                    store.savePersistentState()
-                                    store.onWindowsRebuildNeeded?()
-                                }
-                            ),
-                            titleForOption: { $0 ? "Stepped Chips" : "Composite Bar" }
-                        )
-                        .frame(width: 190)
-                        .disabled(store.isInSharedMajorPod(podId: podId))
+                            PurahThemedSegmentedPicker(
+                                options: [false, true],
+                                selection: Binding<Bool>(
+                                    get: { activePlugin.isDecomposed(store: store) },
+                                    set: { newValue in
+                                        store.togglePodDecomposedIfNeeded(podId: podId, decomposed: newValue)
+                                    }
+                                ),
+                                titleForOption: { $0 ? "Stepped Chips" : "Composite Bar" }
+                            )
+                            .frame(width: 190)
+                            .disabled(store.isInSharedMajorPod(podId: podId))
+                        }
                     }
                 }
             }

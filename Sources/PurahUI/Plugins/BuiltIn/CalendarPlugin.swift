@@ -222,6 +222,8 @@ public struct CalendarPlugin: PurahPodPlugin {
 
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
+        state.save()
+        store.calendarOverflowStrategy = decomposed ? .smartFold : .continuousStream
         if decomposed { store.ensurePodFitsDecomposedChips(podId: manifest.id) }
     }
 
@@ -617,44 +619,7 @@ public struct CalendarPluginSettingsView: View {
                         }
                     }
 
-                    PurahStackedDecomposeNoticeView(podId: "calendar", store: store)
-
                     let isStacked = store.isInSharedMajorPod(podId: "calendar")
-
-                    // Unified Decompose toggle (Base semantics — same as all
-                    // other decomposed plugins; +N folding is always on).
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("ai.settings.decomposition".localized)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            Text("calendar.decompose.desc".localized)
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { !isStacked && state.isDecomposed },
-                            set: {
-                                state.isDecomposed = $0
-                                state.save()
-                                store.savePersistentState()
-                                store.invalidateLayoutCache()
-                                store.onWindowsRebuildNeeded?()
-                                if $0 { store.ensurePodFitsDecomposedChips(podId: "calendar") }
-                            }
-                        ))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .disabled(isStacked)
-                        .purahRowAccessibility("ai.settings.decomposition".localized, detail: "calendar.decompose.desc".localized)
-                    }
-                    .padding(10)
-                    .background(Color.primary.opacity(0.025))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-                    )
 
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {

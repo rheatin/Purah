@@ -205,6 +205,8 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
 
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
+        state.save()
+        store._isVitalsDecomposed = decomposed
         if decomposed { store.ensurePodFitsDecomposedChips(podId: manifest.id) }
         state.refreshRailPowerVisibility()
     }
@@ -448,48 +450,7 @@ public struct VitalsPluginSettingsView: View {
                 iconColor: Color(hex: "#34C759")
             ) {
                 VStack(alignment: .leading, spacing: 12) {
-                    PurahStackedDecomposeNoticeView(podId: "vitals", store: store)
-
                     let isStacked = store.isInSharedMajorPod(podId: "vitals")
-
-                    // Switch sub-card for decomposition
-                    HStack(spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("vitals.decompose.title".localized)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("vitals.decompose.desc".localized)
-                                .font(.system(size: 9.5))
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: { !isStacked && state.isDecomposed },
-                            set: {
-                                state.isDecomposed = $0
-                                state.save()
-                                store._isVitalsDecomposed = $0
-                                state.refreshRailPowerVisibility()
-                                store.invalidateLayoutCache()
-                                store.savePersistentState()
-                                store.onWindowsRebuildNeeded?()
-                            }
-                        ))
-                        .toggleStyle(.switch)
-                        .controlSize(.small)
-                        .labelsHidden()
-                        .disabled(isStacked)
-                        .purahRowAccessibility("vitals.decompose.title".localized, detail: "vitals.decompose.desc".localized)
-                    }
-                    .padding(9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color.primary.opacity(0.03))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-                    )
 
                     if !isStacked && state.isDecomposed {
                         VStack(alignment: .leading, spacing: 5) {

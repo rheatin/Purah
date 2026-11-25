@@ -632,6 +632,7 @@ public struct PurahExternalSettingToggleRow: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
+                .accessibilityLabel(title)
         }
     }
 }
@@ -767,6 +768,7 @@ public struct PurahExternalSettingSliderRow: View {
             }
 
             Slider(value: $value, in: range, step: step)
+                .accessibilityLabel(title)
         }
     }
 }

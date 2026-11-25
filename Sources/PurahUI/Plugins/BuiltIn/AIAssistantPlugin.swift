@@ -296,6 +296,7 @@ public struct AIAssistantPlugin: PurahPodPlugin {
     public func setDecomposed(_ decomposed: Bool, store: PurahWorkspaceStore) {
         state.isDecomposed = decomposed
         state.save()
+        store._isAIDecomposed = decomposed
         // Five roles need five chips. Switching the mode on resizes the pod
         // once so the chips are actually on the rail; after that the sculpted
         // length is the truth again.
@@ -1292,46 +1293,7 @@ public struct AIAssistantPluginSettingsView: View {
             iconColor: palette.primaryAccent
         ) {
             VStack(alignment: .leading, spacing: 12) {
-                PurahStackedDecomposeNoticeView(podId: "ai", store: store)
-
                 let isStacked = store.isInSharedMajorPod(podId: "ai")
-
-                // Decomposed Toggle Sub-Card
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("ai.settings.decomposition".localized)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        Text("ai.settings.decomposeHint".localized)
-                            .font(.system(size: 9.5))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: Binding(
-                        get: { !isStacked && state.isDecomposed },
-                        set: {
-                            state.isDecomposed = $0
-                            state.save()
-                            store._isAIDecomposed = $0
-                            store.savePersistentState()
-                            store.invalidateLayoutCache()
-                            store.onWindowsRebuildNeeded?()
-                            if $0 { store.ensurePodFitsDecomposedChips(podId: "ai") }
-                        }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .disabled(isStacked)
-                    .purahRowAccessibility("ai.settings.decomposition".localized, detail: "ai.settings.decomposeHint".localized)
-                }
-                .padding(10)
-                .background(Color.primary.opacity(0.025))
-                .cornerRadius(8)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(palette.borderColor.opacity(0.2), lineWidth: 0.8)
-                )
 
                 if !isStacked && state.isDecomposed {
                     // Max Visible Roles Slider
