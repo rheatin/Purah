@@ -27,20 +27,21 @@ public final class VitalsPluginState: Sendable {
     /// default one-hour view; the Overview always reads 30 s directly.
     public private(set) var metricScopes: [VitalsMetricType: VitalsTimeScope]
     public let storage: any PurahPluginStorage
+    public let vitalsService: HardwareVitalsService
 
     @ObservationIgnored private weak var boundStore: PurahWorkspaceStore?
 
     public var metrics: HardwareVitalsInfo {
-        HardwareVitalsService.shared.metrics
+        vitalsService.metrics
     }
 
-    public var cpuHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.cpuHistory }
-    public var gpuHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.gpuHistory }
-    public var ramHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.ramHistory }
-    public var powerHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.powerHistory }
-    public var networkDownHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.networkDownHistory }
-    public var networkUpHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.networkUpHistory }
-    public var diskHistory: [VitalsHistoryPoint] { HardwareVitalsService.shared.diskHistory }
+    public var cpuHistory: [VitalsHistoryPoint] { vitalsService.cpuHistory }
+    public var gpuHistory: [VitalsHistoryPoint] { vitalsService.gpuHistory }
+    public var ramHistory: [VitalsHistoryPoint] { vitalsService.ramHistory }
+    public var powerHistory: [VitalsHistoryPoint] { vitalsService.powerHistory }
+    public var networkDownHistory: [VitalsHistoryPoint] { vitalsService.networkDownHistory }
+    public var networkUpHistory: [VitalsHistoryPoint] { vitalsService.networkUpHistory }
+    public var diskHistory: [VitalsHistoryPoint] { vitalsService.diskHistory }
 
     /// The on-rail chip count is bounded to 2…4.
     ///
@@ -98,7 +99,11 @@ public final class VitalsPluginState: Sendable {
         storage.setCodable(encoded, forKey: "metricScopes")
     }
 
-    public init(storage: (any PurahPluginStorage)? = nil) {
+    public init(
+        storage: (any PurahPluginStorage)? = nil,
+        vitalsService: HardwareVitalsService = .shared
+    ) {
+        self.vitalsService = vitalsService
         let resolvedStorage: any PurahPluginStorage
         if let storage = storage {
             resolvedStorage = storage
@@ -161,7 +166,7 @@ public final class VitalsPluginState: Sendable {
     }
 
     public func history(for metric: VitalsMetricType) -> [VitalsHistoryPoint] {
-        HardwareVitalsService.shared.history(for: metric)
+        vitalsService.history(for: metric)
     }
 
     /// The 0…1 fill a rail gauge shows for this metric.
@@ -247,11 +252,15 @@ public final class VitalsPluginState: Sendable {
     }
 
     public func stopPolling() {
-        HardwareVitalsService.shared.stopMonitoring()
+        vitalsService.stopMonitoring()
+    }
+
+    public func restartMonitoring(interval: TimeInterval) {
+        vitalsService.restartMonitoring(interval: interval)
     }
 
     public func refreshMetrics(includeProcesses: Bool = false) {
-        HardwareVitalsService.shared.refreshMetrics(includeProcesses: includeProcesses)
+        vitalsService.refreshMetrics(includeProcesses: includeProcesses)
     }
 
     public func resetThresholds() {
@@ -267,14 +276,14 @@ public final class VitalsPluginState: Sendable {
         self.enabledMetrics = store._vitalsEnabledMetrics
         reconcileHeaderMetric()
         refreshRailPowerVisibility()
-        HardwareVitalsService.shared.startMonitoring(
+        vitalsService.startMonitoring(
             interval: TimeInterval(samplingIntervalSeconds)
         )
     }
 
     public func unmount(store: PurahWorkspaceStore) {
         stopPolling()
-        HardwareVitalsService.shared.stopMonitoring()
+        vitalsService.stopMonitoring()
         save()
         if boundStore === store {
             boundStore = nil

@@ -613,19 +613,11 @@ struct VitalsFocusedBandCopy: Equatable, Sendable {
     }
 
     private static func systemWatts(_ metrics: HardwareVitalsInfo) -> Double {
-        if metrics.powerSystemWatts > 0 { return metrics.powerSystemWatts }
-        if metrics.powerSource == "AC Power" { return 0 }
-        return max(-metrics.batteryChargeWatts, 0)
+        VitalsTelemetryFormatter.systemWatts(metrics)
     }
 
     private static func formatRate(_ bytesPerSecond: Double) -> String {
-        if bytesPerSecond >= 1_048_576.0 {
-            return String(format: "%.1fM/s", bytesPerSecond / 1_048_576.0)
-        }
-        if bytesPerSecond >= 1024.0 {
-            return String(format: "%.0fK/s", bytesPerSecond / 1024.0)
-        }
-        return String(format: "%.0fB/s", bytesPerSecond)
+        VitalsTelemetryFormatter.formatRate(bytesPerSecond, style: .compact)
     }
 }
 
@@ -643,7 +635,7 @@ public struct VitalsFocusedColumnBand: View {
         self.state = state
     }
 
-    private var vitals: HardwareVitalsService { HardwareVitalsService.shared }
+    private var vitals: HardwareVitalsService { state.vitalsService }
     private var metrics: HardwareVitalsInfo { vitals.metrics }
     private var thresholds: VitalsColorThresholds { state.thresholds }
     private var scope: VitalsTimeScope { state.scope(for: metric) }
@@ -752,20 +744,11 @@ public struct VitalsFocusedColumnBand: View {
     }
 
     private func compactGB(_ value: Double) -> String {
-        let tenths = (value * 10).rounded() / 10
-        return tenths == tenths.rounded()
-            ? String(format: "%.0f", tenths)
-            : String(format: "%.1f", tenths)
+        VitalsTelemetryFormatter.compactGB(value)
     }
 
     private func rate(_ bytesPerSecond: Double) -> String {
-        if bytesPerSecond >= 1_048_576.0 {
-            return String(format: "%.1fM/s", bytesPerSecond / 1_048_576.0)
-        }
-        if bytesPerSecond >= 1024.0 {
-            return String(format: "%.0fK/s", bytesPerSecond / 1024.0)
-        }
-        return String(format: "%.0fB/s", bytesPerSecond)
+        VitalsTelemetryFormatter.formatRate(bytesPerSecond, style: .compact)
     }
 
     private func cycleScope() {

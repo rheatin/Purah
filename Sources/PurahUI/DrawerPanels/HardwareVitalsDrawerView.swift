@@ -430,13 +430,7 @@ public struct HardwareVitalsDrawerView: View {
     }
 
     private func formatSpeed(_ bytesPerSec: Double) -> String {
-        if bytesPerSec >= 1_048_576.0 {
-            return String(format: "%.1f MB/s", bytesPerSec / 1_048_576.0)
-        } else if bytesPerSec >= 1024.0 {
-            return String(format: "%.0f KB/s", bytesPerSec / 1024.0)
-        } else {
-            return String(format: "%.0f B/s", bytesPerSec)
-        }
+        VitalsTelemetryFormatter.formatRate(bytesPerSec, style: .spaced)
     }
 
     private func batteryIcon(level: Int, isCharging: Bool) -> String {
@@ -1032,20 +1026,11 @@ public struct HardwareVitalsDrawerView: View {
     /// total already carries the unit, so the fractions only earn their space
     /// when they are real.
     private func compactGB(_ value: Double) -> String {
-        let tenths = (value * 10).rounded() / 10
-        return tenths == tenths.rounded()
-            ? String(format: "%.0f", tenths)
-            : String(format: "%.1f", tenths)
+        VitalsTelemetryFormatter.compactGB(value)
     }
 
     private func compactSwap(_ megabytes: Double) -> String {
-        if megabytes >= 1024 {
-            return compactGB(megabytes / 1024) + "G"
-        }
-        if megabytes < 1 {
-            return "0"
-        }
-        return "\(Int(megabytes))M"
+        VitalsTelemetryFormatter.compactSwap(megabytes)
     }
 
     /// A machine without swap has no total worth showing, so the footer drops

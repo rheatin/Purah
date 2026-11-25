@@ -138,7 +138,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     public func dynamicAccentColor(store: PurahWorkspaceStore?) -> Color? {
         let thresholds = store?._vitalsThresholds ?? state.thresholds
         return VitalsColorResolver.overallVitalsColor(
-            vitals: HardwareVitalsService.shared.metrics,
+            vitals: state.metrics,
             thresholds: thresholds,
             palette: ThemeManager.shared.palette
         )
@@ -350,13 +350,7 @@ public struct HardwareVitalsPlugin: PurahPodPlugin {
     }
 
     static func rateText(_ bytesPerSecond: Double) -> String {
-        if bytesPerSecond >= 1_048_576.0 {
-            return String(format: "%.1fM/s", bytesPerSecond / 1_048_576.0)
-        }
-        if bytesPerSecond >= 1024.0 {
-            return String(format: "%.0fK/s", bytesPerSecond / 1024.0)
-        }
-        return String(format: "%.0fB/s", bytesPerSecond)
+        VitalsTelemetryFormatter.formatRate(bytesPerSecond, style: .compact)
     }
 
     /// The focused column band needs its header, plot and footer; below that
@@ -584,7 +578,7 @@ public struct VitalsPluginSettingsView: View {
                         Button {
                             withAnimation(PurahMotionPolicy.confirm) {
                                 state.setSamplingInterval(seconds)
-                                HardwareVitalsService.shared.restartMonitoring(
+                                state.restartMonitoring(
                                     interval: TimeInterval(seconds)
                                 )
                             }
