@@ -61,6 +61,7 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
+        let isDark = colorScheme == .dark
         content
             .background(
                 auroraBackground
@@ -68,35 +69,58 @@ public struct LiquidDrawerBackgroundModifier: ViewModifier {
             .clipShape(shape)
             .contentShape(shape)
             .overlay(
-                // Subtle refractive border (0.8pt, clean and natural)
-                shape
-                    .strokeBorder(
-                        Color.white.opacity(colorScheme == .dark ? 0.16 : 0.28),
-                        lineWidth: 0.8
-                    )
+                ZStack {
+                    if !isDark {
+                        // Crisp inner specular rim for authentic Light-mode frosted glass
+                        shape
+                            .strokeBorder(Color.white.opacity(0.78), lineWidth: 1.0)
+                            .padding(0.75)
+                    }
+                    // Outer refractive hairline: soft white on dark glass, crisp graphite hairline on light glass
+                    shape
+                        .strokeBorder(
+                            isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.11),
+                            lineWidth: 0.8
+                        )
+                }
             )
             .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12),
-                radius: 16,
+                color: Color.black.opacity(isDark ? 0.35 : 0.09),
+                radius: isDark ? 16 : 18,
                 x: 0,
-                y: 5
+                y: isDark ? 5 : 6
+            )
+            .shadow(
+                color: isDark ? .clear : Color.black.opacity(0.05),
+                radius: 3,
+                x: 0,
+                y: 1
             )
     }
 
     @ViewBuilder
     private var auroraBackground: some View {
+        let isDark = colorScheme == .dark
         let secondary = accentColor.harmonicSecondary()
 
         ZStack {
-            // 1. Native SwiftUI system blur material without WindowServer offscreen framebuffer bloat (saves ~80MB)
-            Rectangle()
-                .fill(.ultraThinMaterial)
+            // 1. Native SwiftUI system blur material: denser regularMaterial + porcelain
+            // veil in Light mode keeps text crisp over busy light desktop windows.
+            if isDark {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+            } else {
+                Rectangle()
+                    .fill(.regularMaterial)
+                Rectangle()
+                    .fill(Color.white.opacity(0.54))
+            }
 
-            // 2. Translucent aurora ambient gradient (8% to 14% concentration without occluding content)
+            // 2. Translucent aurora ambient gradient (whisper-soft in Light mode so it never looks muddy)
             LinearGradient(
                 stops: [
-                    .init(color: accentColor.opacity(colorScheme == .dark ? 0.14 : 0.08), location: 0.0),
-                    .init(color: secondary.opacity(colorScheme == .dark ? 0.09 : 0.05), location: 0.65),
+                    .init(color: accentColor.opacity(isDark ? 0.14 : 0.065), location: 0.0),
+                    .init(color: secondary.opacity(isDark ? 0.09 : 0.032), location: 0.65),
                     .init(color: Color.clear, location: 1.0)
                 ],
                 startPoint: .topLeading,
@@ -118,6 +142,7 @@ public struct LiquidCardBackgroundModifier: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
+        let isDark = colorScheme == .dark
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         let accent = strokeColor ?? Color.accentColor
 
@@ -129,24 +154,35 @@ public struct LiquidCardBackgroundModifier: ViewModifier {
             .overlay(
                 shape
                     .strokeBorder(
-                        Color.white.opacity(colorScheme == .dark ? 0.16 : 0.28),
+                        isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.085),
                         lineWidth: 0.8
                     )
+            )
+            .shadow(
+                color: isDark ? .clear : Color.black.opacity(0.035),
+                radius: 2,
+                x: 0,
+                y: 1
             )
     }
 
     @ViewBuilder
     private func auroraCardBackground(accent: Color) -> some View {
+        let isDark = colorScheme == .dark
         let secondary = accent.harmonicSecondary()
 
         ZStack {
             // Pure SwiftUI translucent fill for inner rows to eliminate redundant nested 4MB WindowServer blur buffers
-            Color(NSColor.controlBackgroundColor).opacity(colorScheme == .dark ? 0.45 : 0.65)
+            if isDark {
+                Color(NSColor.controlBackgroundColor).opacity(0.45)
+            } else {
+                Color.white.opacity(0.76)
+            }
 
             LinearGradient(
                 stops: [
-                    .init(color: accent.opacity(colorScheme == .dark ? 0.12 : 0.06), location: 0.0),
-                    .init(color: secondary.opacity(colorScheme == .dark ? 0.08 : 0.04), location: 0.70),
+                    .init(color: accent.opacity(isDark ? 0.12 : 0.045), location: 0.0),
+                    .init(color: secondary.opacity(isDark ? 0.08 : 0.025), location: 0.70),
                     .init(color: Color.clear, location: 1.0)
                 ],
                 startPoint: .topLeading,

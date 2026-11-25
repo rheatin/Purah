@@ -13,9 +13,10 @@ public struct ScriptItemDrawerView: View {
     public let onTogglePin: () -> Void
 
     @State private var isHovered = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
-    private var podColor: Color { palette.podColor(for: "scripts", store: store) }
+    private var podColor: Color { palette.podInkColor(for: "scripts", store: store, colorScheme: colorScheme) }
     private var runway: ScriptRunwayService { ScriptRunwayService.shared }
 
     public init(

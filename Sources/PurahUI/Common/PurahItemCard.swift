@@ -21,36 +21,65 @@ public struct PurahItemCardModifier: ViewModifier {
     public var isSelected: Bool
     public var cornerRadius: CGFloat
 
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var effectiveAccent: Color { accent.adaptiveInk(for: colorScheme) }
+
     public func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
         content
-            // The glow is a blurred ring behind the row rather than a shadow on
-            // it: `.shadow` would also halo the labels inside.
+            // Dark mode keeps the luminous blurred ring behind hovered/active rows;
+            // Light mode trades neon bleed for a clean tactile white tile elevation.
             .background(
-                shape
-                    .stroke(accent.opacity(isActive ? 0.45 : 0.32), lineWidth: 3)
-                    .blur(radius: 3)
-                    .opacity(isHovered || isActive ? 1 : 0)
+                Group {
+                    if isDark {
+                        shape
+                            .stroke(accent.opacity(isActive ? 0.45 : 0.32), lineWidth: 3)
+                            .blur(radius: 3)
+                            .opacity(isHovered || isActive ? 1 : 0)
+                    }
+                }
             )
             .background(shape.fill(fill))
-            .overlay(shape.strokeBorder(border, lineWidth: isSelected ? 1.5 : 0.9))
+            .overlay(shape.strokeBorder(border, lineWidth: isSelected ? 1.4 : 0.85))
+            .shadow(
+                color: isDark ? .clear : Color.black.opacity(isHovered || isActive ? 0.07 : 0.025),
+                radius: isHovered || isActive ? 4 : 1.5,
+                x: 0,
+                y: isHovered || isActive ? 1.5 : 0.5
+            )
             .animation(PurahMotionPolicy.hover, value: isHovered)
             .animation(PurahMotionPolicy.hover, value: isActive)
     }
 
     private var fill: Color {
-        if isSelected { return accent.opacity(0.18) }
-        if isActive { return accent.opacity(0.12) }
-        if isHovered { return accent.opacity(0.07) }
-        return Color.primary.opacity(0.03)
+        if isDark {
+            if isSelected { return accent.opacity(0.18) }
+            if isActive { return accent.opacity(0.12) }
+            if isHovered { return accent.opacity(0.07) }
+            return Color.primary.opacity(0.03)
+        } else {
+            if isSelected { return effectiveAccent.opacity(0.13) }
+            if isActive { return effectiveAccent.opacity(0.09) }
+            if isHovered { return Color.white.opacity(0.92) }
+            return Color.white.opacity(0.60)
+        }
     }
 
     private var border: Color {
-        if isSelected { return accent }
-        if isActive { return accent.opacity(0.40) }
-        if isHovered { return accent.opacity(0.55) }
-        return ThemeManager.shared.palette.borderColor.opacity(0.32)
+        if isDark {
+            if isSelected { return accent }
+            if isActive { return accent.opacity(0.40) }
+            if isHovered { return accent.opacity(0.55) }
+            return ThemeManager.shared.palette.borderColor.opacity(0.32)
+        } else {
+            if isSelected { return effectiveAccent.opacity(0.75) }
+            if isActive { return effectiveAccent.opacity(0.42) }
+            if isHovered { return effectiveAccent.opacity(0.48) }
+            return Color.black.opacity(0.085)
+        }
     }
 }
 

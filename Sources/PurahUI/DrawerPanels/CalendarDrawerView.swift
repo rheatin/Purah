@@ -9,13 +9,14 @@ public struct CalendarDrawerView: View {
     @State private var activeIndex: Int = 0
     @State private var agendaAnchorID: String?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
     private var podColor: Color {
-        palette.podColor(for: "calendar") // Coral red-orange for calendar
+        palette.podInkColor(for: "calendar", colorScheme: colorScheme) // Coral red-orange for calendar
     }
 
     public init(state: CalendarPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {

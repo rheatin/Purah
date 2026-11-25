@@ -14,6 +14,7 @@ public struct WaveMeterAmbientView: View {
     public var barWidth: CGFloat = 8.0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     // Pre-allocated static colors for 60/120 FPS Canvas rendering performance
     private static let greenSegmentColor = Color(hex: "#00F5D4")
@@ -167,8 +168,11 @@ public struct WaveMeterAmbientView: View {
                 let continuousProgress = currentContinuousProgress(at: timeline.date)
                 let playheadY = CGFloat(continuousProgress) * h
 
-                // Dark glass track
-                context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2), with: .color(Color.white.opacity(0.06)))
+                // Track background adapts to Light/Dark rail backdrop
+                context.fill(
+                    Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: w / 2),
+                    with: .color(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.09))
+                )
 
                 // Live CoreAudio soundcard stream telemetry
                 let livePeak = Double(SystemAudioLiveMonitor.shared.currentLevel)

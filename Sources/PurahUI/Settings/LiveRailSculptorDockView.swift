@@ -5,10 +5,15 @@ import PurahCore
 
 public struct LiveRailSculptorDockView: View {
     public let store: PurahWorkspaceStore
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var tokens: PurahSurfaceTokens { PurahSurfaceTokens(colorScheme: colorScheme) }
+    private var accentInk: Color { palette.primaryAccent.adaptiveInk(for: colorScheme) }
 
     public init(
         store: PurahWorkspaceStore,
@@ -18,14 +23,18 @@ public struct LiveRailSculptorDockView: View {
     }
 
     public var body: some View {
+        let isOnboarding = store.isOnboardingGuideActive
+        let dockShape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+
         VStack(alignment: .leading, spacing: 10) {
-            if store.isOnboardingGuideActive {
+            if isOnboarding {
                 OnboardingWorkbenchView(store: store)
+                    .environment(\.colorScheme, .dark)
             } else {
                 dockHeader
 
                 Divider()
-                    .background(Color.white.opacity(0.15))
+                    .background(isDark ? Color.white.opacity(0.15) : Color.black.opacity(0.10))
 
                 // Row 2: Plugin Add / Unmounted Dock
                 unmountedDock
@@ -33,18 +42,48 @@ public struct LiveRailSculptorDockView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-        .frame(width: store.isOnboardingGuideActive ? 760 : 720)
+        .frame(width: isOnboarding ? 760 : 720)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.black.opacity(0.72))
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            ZStack {
+                if isOnboarding || isDark {
+                    dockShape
+                        .fill(Color.black.opacity(isOnboarding ? 0.84 : 0.72))
+                        .background(.ultraThinMaterial)
+                        .clipShape(dockShape)
+                } else {
+                    dockShape
+                        .fill(.regularMaterial)
+                    dockShape
+                        .fill(Color.white.opacity(0.72))
+                }
+            }
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(palette.primaryAccent.opacity(0.65), lineWidth: 1.4)
+            ZStack {
+                if !isOnboarding && !isDark {
+                    dockShape
+                        .strokeBorder(Color.white.opacity(0.80), lineWidth: 1.0)
+                        .padding(0.75)
+                }
+                dockShape
+                    .strokeBorder(
+                        (isOnboarding || isDark) ? palette.primaryAccent.opacity(0.65) : accentInk.opacity(0.35),
+                        lineWidth: 1.2
+                    )
+            }
         )
-        .shadow(color: Color.black.opacity(0.45), radius: 14, x: 0, y: 6)
+        .shadow(
+            color: Color.black.opacity((isOnboarding || isDark) ? 0.45 : 0.14),
+            radius: 16,
+            x: 0,
+            y: 6
+        )
+        .shadow(
+            color: (isOnboarding || isDark) ? .clear : Color.black.opacity(0.06),
+            radius: 3,
+            x: 0,
+            y: 1
+        )
     }
 
     // MARK: - Dock Header
@@ -54,11 +93,11 @@ public struct LiveRailSculptorDockView: View {
         HStack(spacing: 8) {
             Image(systemName: "scope")
                 .font(.system(size: 14, weight: .bold))
-                .foregroundColor(palette.primaryAccent)
+                .foregroundColor(accentInk)
 
             Text("sculptor.dock.title".localized)
                 .font(.system(size: 12.5, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(tokens.hudPrimaryInk)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
 
@@ -79,10 +118,10 @@ public struct LiveRailSculptorDockView: View {
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
-                .foregroundColor(store.isDynamicBreathingEnabled ? palette.primaryAccent : .secondary)
+                .foregroundColor(store.isDynamicBreathingEnabled ? accentInk : .secondary)
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
-                .background(store.isDynamicBreathingEnabled ? palette.primaryAccent.opacity(0.18) : Color.white.opacity(0.08))
+                .background(store.isDynamicBreathingEnabled ? accentInk.opacity(isDark ? 0.18 : 0.12) : tokens.controlFill)
                 .cornerRadius(6)
             }
             .buttonStyle(.tactile)
@@ -105,10 +144,10 @@ public struct LiveRailSculptorDockView: View {
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 .fixedSize(horizontal: true, vertical: false)
-                .foregroundColor(.white)
+                .foregroundColor(tokens.hudPrimaryInk)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(Color.white.opacity(0.14))
+                .background(tokens.controlElevatedFill)
                 .cornerRadius(6)
             }
             .buttonStyle(.tactile)
@@ -127,7 +166,7 @@ public struct LiveRailSculptorDockView: View {
                         .fixedSize(horizontal: true, vertical: false)
                 }
                 .fixedSize(horizontal: true, vertical: false)
-                .foregroundColor(.black)
+                .foregroundColor(palette.primaryAccent.highContrastInk)
                 .padding(.horizontal, 11)
                 .padding(.vertical, 5)
                 .background(palette.primaryAccent)
@@ -193,7 +232,7 @@ public struct LiveRailSculptorDockView: View {
                 } else {
                     Text(String(format: "sculptor.dragToRail".localized, draggedPod.name))
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.85))
+                        .foregroundColor(tokens.hudPrimaryInk.opacity(0.85))
                 }
             } else {
                 Text("sculptor.dragTip".localized)
@@ -206,7 +245,7 @@ public struct LiveRailSculptorDockView: View {
     /// One unmounted plugin chip: identity, mount buttons, and its drag-to-rail
     /// gesture.
     private func unmountedPodChip(_ pod: SlotPod) -> some View {
-        let podColor = palette.podColor(for: pod.id, store: store)
+        let podColor = palette.podInkColor(for: pod.id, store: store, colorScheme: colorScheme)
         let isBeingDragged = (store.externalDraggedPodId == pod.id)
 
         return HStack(spacing: 5) {
@@ -216,7 +255,7 @@ public struct LiveRailSculptorDockView: View {
 
             Text(pod.name)
                 .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(tokens.hudPrimaryInk)
                 .lineLimit(1)
 
             Button {
@@ -227,10 +266,10 @@ public struct LiveRailSculptorDockView: View {
             } label: {
                 Text("+L")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(palette.primaryAccent)
+                    .foregroundColor(accentInk)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background(palette.primaryAccent.opacity(0.18))
+                    .background(accentInk.opacity(isDark ? 0.18 : 0.12))
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
@@ -245,10 +284,10 @@ public struct LiveRailSculptorDockView: View {
             } label: {
                 Text("+R")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(palette.primaryAccent)
+                    .foregroundColor(accentInk)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background(palette.primaryAccent.opacity(0.18))
+                    .background(accentInk.opacity(isDark ? 0.18 : 0.12))
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
@@ -259,11 +298,11 @@ public struct LiveRailSculptorDockView: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(isBeingDragged ? podColor.opacity(0.26) : Color.white.opacity(0.08))
+                .fill(isBeingDragged ? podColor.opacity(isDark ? 0.26 : 0.16) : (isDark ? Color.white.opacity(0.08) : Color.white.opacity(0.75)))
                 .overlay(
                     RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .stroke(
-                            isBeingDragged ? Color.orange : podColor.opacity(0.45),
+                            isBeingDragged ? Color.orange : podColor.opacity(isDark ? 0.45 : 0.35),
                             lineWidth: isBeingDragged ? 1.6 : 1.0
                         )
                 )

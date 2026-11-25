@@ -47,10 +47,14 @@ public struct LiveRailSculptorStripView: View {
     @State private var dragInitialCenterY: Double? = nil
     @State private var hoverMergeTask: Task<Void, Never>? = nil
     @State private var didAutoMergeDuringDrag: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var tokens: PurahSurfaceTokens { PurahSurfaceTokens(colorScheme: colorScheme) }
 
     public init(edge: MountEdge, store: PurahWorkspaceStore, totalHeight: CGFloat) {
         self.edge = edge
@@ -258,15 +262,26 @@ public struct LiveRailSculptorStripView: View {
 
         ZStack(alignment: .top) {
             // Frosted glass sculpting strip background
-            PurahDrawerShape.edgeFlush(edge: edge, radius: 12)
-            .fill(Color.black.opacity(0.42))
-            .background(.ultraThinMaterial)
+            let stripShape = PurahDrawerShape.edgeFlush(edge: edge, radius: 12)
+            ZStack {
+                if isDark {
+                    stripShape
+                        .fill(Color.black.opacity(0.42))
+                        .background(.ultraThinMaterial)
+                        .clipShape(stripShape)
+                } else {
+                    stripShape
+                        .fill(.regularMaterial)
+                    stripShape
+                        .fill(Color.white.opacity(0.62))
+                }
+            }
             .overlay(
-                PurahDrawerShape.edgeFlush(edge: edge, radius: 12)
-                .stroke(
-                    isExternalDropEdge ? Color.orange : palette.primaryAccent.opacity(0.45),
-                    lineWidth: isExternalDropEdge ? 2.2 : 1.2
-                )
+                stripShape
+                    .strokeBorder(
+                        isExternalDropEdge ? Color.orange : (isDark ? palette.primaryAccent.opacity(0.45) : tokens.hairlineBorder),
+                        lineWidth: isExternalDropEdge ? 2.2 : 1.0
+                    )
             )
             .frame(width: 210, height: totalHeight)
 
@@ -405,12 +420,12 @@ public struct LiveRailSculptorStripView: View {
                             HStack(spacing: 3.5) {
                                 Text("P\(pIdx + 1) (\(pagePods.count))")
                                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundColor(isSelected ? .black : .white)
+                                    .foregroundColor(isSelected ? palette.primaryAccent.highContrastInk : tokens.hudPrimaryInk)
 
                                 HStack(spacing: 2) {
                                     ForEach(pagePods.prefix(4)) { p in
                                         Circle()
-                                            .fill(isSelected ? Color.black.opacity(0.75) : palette.podColor(for: p.id, store: store))
+                                            .fill(isSelected ? palette.primaryAccent.highContrastInk.opacity(0.75) : palette.podInkColor(for: p.id, store: store, colorScheme: colorScheme))
                                             .frame(width: 4, height: 4)
                                     }
                                 }
@@ -419,12 +434,12 @@ public struct LiveRailSculptorStripView: View {
                             .padding(.vertical, 3.5)
                             .background(
                                 Capsule()
-                                    .fill(isSelected ? palette.primaryAccent : (isPagePillHighlighted ? Color.orange.opacity(0.3) : Color.white.opacity(0.12)))
+                                    .fill(isSelected ? palette.primaryAccent : (isPagePillHighlighted ? Color.orange.opacity(0.3) : tokens.controlFill))
                             )
                             .overlay(
                                 Capsule()
                                     .stroke(
-                                        isPagePillHighlighted ? Color.orange : palette.primaryAccent.opacity(isSelected ? 1.0 : 0.4),
+                                        isPagePillHighlighted ? Color.orange : palette.primaryAccent.opacity(isSelected ? 1.0 : 0.35),
                                         lineWidth: isPagePillHighlighted ? 1.8 : 0.8
                                     )
                             )
@@ -485,10 +500,10 @@ public struct LiveRailSculptorStripView: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color.black.opacity(0.65))
+                .fill(isDark ? Color.black.opacity(0.65) : Color.white.opacity(0.84))
                 .overlay(
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .stroke(palette.primaryAccent.opacity(0.65), lineWidth: 1.0)
+                        .stroke(isDark ? palette.primaryAccent.opacity(0.65) : tokens.cardBorder, lineWidth: 1.0)
                 )
         )
     }
@@ -520,7 +535,7 @@ public struct LiveRailSculptorStripView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isOnboardingMount ? palette.primaryAccent.opacity(0.12) : Color.white.opacity(0.05))
+                .fill(isOnboardingMount ? palette.primaryAccent.opacity(0.12) : tokens.cardFill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(style: StrokeStyle(lineWidth: isOnboardingMount ? 2.0 : 1.2, dash: isOnboardingMount ? [6, 3] : [5, 4]))
@@ -558,10 +573,14 @@ public struct LiveSculptMajorClusterBoxView: View {
     @State private var hoveredSubResizeId: String? = nil
     @State private var isPulseOn: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var tokens: PurahSurfaceTokens { PurahSurfaceTokens(colorScheme: colorScheme) }
 
     public init(
         cluster: SculptRailCluster,
@@ -702,10 +721,17 @@ public struct LiveSculptMajorClusterBoxView: View {
         }
         .frame(width: 202, height: m.boxH, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .fill(Color.black.opacity(0.55))
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            ZStack {
+                if isDark {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Color.black.opacity(0.55))
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                } else {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Color.white.opacity(0.84))
+                }
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
@@ -789,7 +815,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
     private func subPodSlice(_ subItem: ResolvedPodLayoutItem, m: ClusterMetrics) -> some View {
         let pod = subItem.pod
-        let podColor = palette.podColor(for: pod.id, store: store)
+        let podColor = palette.podInkColor(for: pod.id, store: store, colorScheme: colorScheme)
         let sliceRatio = CGFloat(max(subItem.spanH, 18.0) / m.totalSubSpan)
         let sliceH = max(m.netSliceBudget * sliceRatio, 20.0)
         let isDraggingSub = (activeDraggingSubId == pod.id)
@@ -972,7 +998,7 @@ public struct LiveSculptMajorClusterBoxView: View {
 
             Text(pod.name)
                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(tokens.hudPrimaryInk)
                 .lineLimit(1)
 
             Spacer(minLength: 2)
@@ -1014,9 +1040,9 @@ public struct LiveSculptMajorClusterBoxView: View {
             } label: {
                 Text("↑")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(tokens.hudPrimaryInk)
                     .frame(width: 18, height: 17)
-                    .background(Color.white.opacity(0.14))
+                    .background(tokens.controlElevatedFill)
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
@@ -1033,9 +1059,9 @@ public struct LiveSculptMajorClusterBoxView: View {
             } label: {
                 Text("↓")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(tokens.hudPrimaryInk)
                     .frame(width: 18, height: 17)
-                    .background(Color.white.opacity(0.14))
+                    .background(tokens.controlElevatedFill)
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
@@ -1218,6 +1244,7 @@ public struct LiveSculptPodCapsuleView: View {
     @State private var isPulseOn: Bool = false
     @State private var arrowBounce: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     private var pod: SlotPod {
         item.pod
@@ -1227,8 +1254,11 @@ public struct LiveSculptPodCapsuleView: View {
         ThemeManager.shared.palette
     }
 
+    private var isDark: Bool { colorScheme == .dark }
+    private var tokens: PurahSurfaceTokens { PurahSurfaceTokens(colorScheme: colorScheme) }
+
     private var podColor: Color {
-        palette.podColor(for: pod.id, store: store)
+        palette.podInkColor(for: pod.id, store: store, colorScheme: colorScheme)
     }
 
     public init(
@@ -1332,10 +1362,19 @@ public struct LiveSculptPodCapsuleView: View {
         }
         .frame(width: 198, height: spanH, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(podColor.opacity(0.22))
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            ZStack {
+                if isDark {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(podColor.opacity(0.22))
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                } else {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.white.opacity(0.86))
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(podColor.opacity(0.10))
+                }
+            }
         )
         .overlay(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -1362,7 +1401,7 @@ public struct LiveSculptPodCapsuleView: View {
 
             Text(pod.name)
                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundColor(tokens.hudPrimaryInk)
                 .lineLimit(1)
 
             Spacer(minLength: 2)
@@ -1409,9 +1448,9 @@ public struct LiveSculptPodCapsuleView: View {
             } label: {
                 Text("↑")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(tokens.hudPrimaryInk)
                     .frame(width: 18, height: 17)
-                    .background(Color.white.opacity(0.14))
+                    .background(tokens.controlElevatedFill)
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
@@ -1428,9 +1467,9 @@ public struct LiveSculptPodCapsuleView: View {
             } label: {
                 Text("↓")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .foregroundColor(.white)
+                    .foregroundColor(tokens.hudPrimaryInk)
                     .frame(width: 18, height: 17)
-                    .background(Color.white.opacity(0.14))
+                    .background(tokens.controlElevatedFill)
                     .cornerRadius(4)
             }
             .buttonStyle(.tactile)
@@ -1596,7 +1635,7 @@ public struct LiveSculptPodCapsuleView: View {
                         .foregroundColor(isDecomp ? palette.primaryAccent : .secondary)
                         .padding(.horizontal, 5)
                         .frame(height: 17)
-                        .background(isDecomp ? palette.primaryAccent.opacity(0.20) : Color.white.opacity(0.10))
+                        .background(isDecomp ? palette.primaryAccent.opacity(isDark ? 0.20 : 0.14) : tokens.controlFill)
                         .cornerRadius(4)
                 }
                 .buttonStyle(.tactile)
@@ -1806,7 +1845,7 @@ public struct LiveSculptPodCapsuleView: View {
                 .frame(height: 12)
 
             Capsule()
-                .fill(isResizeHovered ? Color.white : podColor.opacity(0.85))
+                .fill(isResizeHovered ? tokens.hudPrimaryInk : podColor.opacity(0.85))
                 .frame(width: isResizeHovered ? 44 : 32, height: 3.5)
         }
         .frame(maxWidth: .infinity)

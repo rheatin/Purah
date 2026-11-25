@@ -28,6 +28,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // Persistent menu bar accessory app without dock icon
+        ThemeManager.shared.applySystemAppearance()
         setupMainMenu()
 
         // External plugins must be re-registered BEFORE `bindStore`: bindStore

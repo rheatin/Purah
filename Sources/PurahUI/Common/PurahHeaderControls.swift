@@ -193,6 +193,15 @@ private struct HeaderChrome<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var effectiveTint: Color {
+        tint.adaptiveInk(for: colorScheme)
+    }
+
+    private var destructiveColor: Color {
+        Color(hex: colorScheme == .dark ? PurahHeaderMetrics.destructiveHex : "#DC2626")
+    }
 
     var body: some View {
         content()
@@ -207,20 +216,20 @@ private struct HeaderChrome<Content: View>: View {
 
     private var foreground: Color {
         guard isEnabled else { return .secondary.opacity(PurahHeaderMetrics.disabledOpacity) }
-        if isActive { return tint }
+        if isActive { return effectiveTint }
         if role == .destructive {
-            return Color(hex: PurahHeaderMetrics.destructiveHex).opacity(isHovered ? 1.0 : 0.9)
+            return destructiveColor.opacity(isHovered ? 1.0 : 0.9)
         }
-        if isEmphasized { return tint }
+        if isEmphasized { return effectiveTint }
         return .secondary
     }
 
     private var background: Color {
         guard isEnabled else { return .clear }
-        if isActive { return tint.opacity(PurahHeaderMetrics.activeFill) }
+        if isActive { return effectiveTint.opacity(colorScheme == .dark ? PurahHeaderMetrics.activeFill : 0.13) }
         guard isHovered else { return .clear }
         return role == .destructive
-            ? Color(hex: PurahHeaderMetrics.destructiveHex).opacity(0.14)
+            ? destructiveColor.opacity(0.13)
             : Color.primary.opacity(PurahHeaderMetrics.hoverFill)
     }
 }
@@ -233,6 +242,7 @@ public struct PurahHeaderChip<Content: View>: View {
     private let tint: Color
     private let isSelected: Bool
     private let content: Content
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(tint: Color, isSelected: Bool = false, @ViewBuilder content: () -> Content) {
         self.tint = tint
@@ -241,14 +251,15 @@ public struct PurahHeaderChip<Content: View>: View {
     }
 
     public var body: some View {
+        let effectiveTint = tint.adaptiveInk(for: colorScheme)
         content
             .padding(.horizontal, PurahHeaderMetrics.pillPaddingH)
             .padding(.vertical, PurahHeaderMetrics.pillPaddingV)
             .background(
                 RoundedRectangle(cornerRadius: PurahHeaderMetrics.pillCorner, style: .continuous)
-                    .fill(tint.opacity(isSelected ? PurahHeaderMetrics.selectedFill : PurahHeaderMetrics.pillFill))
+                    .fill(effectiveTint.opacity(isSelected ? (colorScheme == .dark ? PurahHeaderMetrics.selectedFill : 0.15) : (colorScheme == .dark ? PurahHeaderMetrics.pillFill : 0.10)))
             )
-            .foregroundColor(tint)
+            .foregroundColor(effectiveTint)
             .contentShape(Rectangle())
     }
 }
@@ -284,6 +295,7 @@ public struct PurahHeaderMenuLabel: View {
     private let isEmphasized: Bool
 
     @State private var isHovered = false
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(
         text: String,
@@ -300,6 +312,7 @@ public struct PurahHeaderMenuLabel: View {
     }
 
     public var body: some View {
+        let effectiveTint = tint.adaptiveInk(for: colorScheme)
         HStack(spacing: 3) {
             if let icon {
                 Image(systemName: icon)
@@ -321,11 +334,11 @@ public struct PurahHeaderMenuLabel: View {
             Group {
                 if isHovered {
                     RoundedRectangle(cornerRadius: PurahHeaderMetrics.pillCorner, style: .continuous)
-                        .fill(tint.opacity(PurahHeaderMetrics.menuFill))
+                        .fill(effectiveTint.opacity(PurahHeaderMetrics.menuFill))
                 }
             }
         )
-        .foregroundColor(tint)
+        .foregroundColor(effectiveTint)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
@@ -360,6 +373,7 @@ public extension View {
 public struct PurahHeaderGroup<Content: View>: View {
     private let showsSurface: Bool
     private let content: Content
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(showsSurface: Bool = false, @ViewBuilder content: () -> Content) {
         self.showsSurface = showsSurface
@@ -367,13 +381,22 @@ public struct PurahHeaderGroup<Content: View>: View {
     }
 
     public var body: some View {
+        let isDark = colorScheme == .dark
         HStack(spacing: PurahHeaderMetrics.groupSpacing) {
             content
         }
         .padding(showsSurface ? 2 : 0)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(showsSurface ? 0.05 : 0))
+                .fill(showsSurface ? (isDark ? Color.primary.opacity(0.05) : Color.black.opacity(0.045)) : Color.clear)
+        )
+        .overlay(
+            Group {
+                if showsSurface && !isDark {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.6)
+                }
+            }
         )
     }
 }

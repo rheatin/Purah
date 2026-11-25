@@ -1075,5 +1075,11 @@ extension LocalizationTables {
         "ai.stepped.inputPlaceholder": "拖入檔案／文字，或輸入後按 ↩ 使用 %@…",
         "ai.stepped.pasteAndRun": "貼上並執行",
         "common.cancel": "取消",
+        "general.appearance.card": "外觀模式",
+        "general.appearance.title": "介面外觀",
+        "general.appearance.subtitle": "跟隨 macOS 系統外觀，或將 Purah 單獨鎖定為深色／淺色毛玻璃。",
+        "general.appearance.system": "跟隨系統",
+        "general.appearance.dark": "深色",
+        "general.appearance.light": "淺色",
     ]
 }

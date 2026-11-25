@@ -115,12 +115,14 @@ public struct DropShelfDrawerView: View {
     private var isMoveTargeted: Bool { activeDropZone == .move }
     private var isAirDropTargeted: Bool { activeDropZone == .airDrop }
 
+    @Environment(\.colorScheme) private var colorScheme
+
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
     private var shelfColor: Color {
-        palette.podColor(for: "shelf")
+        palette.podInkColor(for: "shelf", colorScheme: colorScheme)
     }
 
     public init(state: ShelfPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {
@@ -461,7 +463,7 @@ public struct DropShelfDrawerView: View {
             )
         }
         .padding(ShelfDropZoneGeometry.padding)
-        .background(Color.black.opacity(0.60))
+        .background(colorScheme == .dark ? Color.black.opacity(0.60) : Color.white.opacity(0.72))
         .cornerRadius(10)
         .animation(PurahMotionPolicy.surface, value: activeZone)
     }
@@ -599,20 +601,30 @@ public struct DropShelfDrawerView: View {
         isCompact: Bool,
         showsHint: Bool
     ) -> some View {
+        let isDark = colorScheme == .dark
+        let effectiveTint = tint.adaptiveInk(for: colorScheme)
         ZStack {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isTargeted ? tint.opacity(0.28) : Color(hex: "#10131A").opacity(0.92))
+                .fill(
+                    isTargeted
+                        ? effectiveTint.opacity(isDark ? 0.28 : 0.14)
+                        : (isDark ? Color(hex: "#10131A").opacity(0.92) : Color.white.opacity(0.92))
+                )
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .strokeBorder(style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.2, dash: [6, 4]))
-                .foregroundColor(isTargeted ? tint : Color.white.opacity(0.35))
+                .foregroundColor(
+                    isTargeted
+                        ? effectiveTint
+                        : (isDark ? Color.white.opacity(0.35) : Color.black.opacity(0.18))
+                )
             if isCompact {
                 HStack(spacing: 6) {
                     Image(systemName: icon)
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
+                        .foregroundColor(isTargeted ? effectiveTint : (isDark ? Color.white.opacity(0.85) : Color.primary.opacity(0.82)))
                     Text(titleKey.localized)
                         .font(.system(size: 10, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
+                        .foregroundColor(isDark ? .white : .primary)
                         .lineLimit(1)
                 }
                 .padding(.horizontal, 8)
@@ -621,10 +633,10 @@ public struct DropShelfDrawerView: View {
                 VStack(spacing: showsHint ? 2 : 5) {
                     Image(systemName: icon)
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(isTargeted ? tint : Color.white.opacity(0.85))
+                        .foregroundColor(isTargeted ? effectiveTint : (isDark ? Color.white.opacity(0.85) : Color.primary.opacity(0.82)))
                     Text(titleKey.localized)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
+                        .foregroundColor(isDark ? .white : .primary)
                         .multilineTextAlignment(.center)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -632,7 +644,7 @@ public struct DropShelfDrawerView: View {
                     if showsHint {
                         Text(hintKey.localized)
                             .font(.system(size: 9.5))
-                            .foregroundColor(Color.white.opacity(0.6))
+                            .foregroundColor(isDark ? Color.white.opacity(0.6) : Color.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
                             .padding(.horizontal, 8)

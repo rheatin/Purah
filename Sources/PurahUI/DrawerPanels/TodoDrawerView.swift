@@ -9,16 +9,17 @@ struct TodoOverviewRow: View {
     let state: TodoPluginState
     let store: PurahWorkspaceStore
     @State private var isHovered = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette { ThemeManager.shared.palette }
-    private var podColor: Color { palette.podColor(for: "todo") }
+    private var podColor: Color { palette.podInkColor(for: "todo", colorScheme: colorScheme) }
     private var isDone: Bool { todo.isCompleted }
     private var urgency: (tintColorHex: String?, badge: String?) {
         TodoPlugin.urgencyPresentation(for: todo)
     }
     private var effectiveColor: Color {
         if let hex = urgency.tintColorHex {
-            return Color(hex: hex)
+            return Color(hex: hex).adaptiveInk(for: colorScheme)
         }
         return podColor
     }
@@ -173,13 +174,14 @@ struct TodoOverviewRow: View {
 public struct TodoDrawerView: View {
     public let state: TodoPluginState
     public let store: PurahWorkspaceStore
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
     private var podColor: Color {
-        palette.podColor(for: "todo") // Amber gold for reminders
+        palette.podInkColor(for: "todo", colorScheme: colorScheme) // Amber gold for reminders
     }
 
     /// Reminders access is a system permission, not a setting. Without it the

@@ -8,6 +8,7 @@ import PurahCore
 public struct OptionalGlow: ViewModifier {
     public let color: Color
     public let enabled: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(color: Color, enabled: Bool) {
         self.color = color
@@ -16,9 +17,14 @@ public struct OptionalGlow: ViewModifier {
 
     public func body(content: Content) -> some View {
         if enabled {
-            content
-                .shadow(color: color.opacity(0.8), radius: 3)
-                .shadow(color: color.opacity(0.4), radius: 6)
+            if colorScheme == .dark {
+                content
+                    .shadow(color: color.opacity(0.8), radius: 3)
+                    .shadow(color: color.opacity(0.4), radius: 6)
+            } else {
+                content
+                    .shadow(color: color.adaptiveInk(for: .light).opacity(0.22), radius: 2.5)
+            }
         } else {
             content
         }

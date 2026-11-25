@@ -445,23 +445,26 @@ public struct HardwareVitalsDrawerView: View {
     }
 
     private func thermalColor(for label: String) -> Color {
-        switch label.lowercased() {
-        case "nominal": return palette.primaryAccent
-        case "fair": return VitalsColorResolver.warningYellow
-        case "serious": return Color(hex: "#FF9F0A")
-        case "critical": return palette.dangerAccent
-        default: return palette.primaryAccent
-        }
+        let base: Color = {
+            switch label.lowercased() {
+            case "nominal": return palette.primaryAccent
+            case "fair": return VitalsColorResolver.warningYellow
+            case "serious": return Color(hex: "#FF9F0A")
+            case "critical": return palette.dangerAccent
+            default: return palette.primaryAccent
+            }
+        }()
+        return base.adaptiveInk(for: colorScheme)
     }
 
     public var body: some View {
         let metrics = vitals.metrics
-        let cpuColor = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        let gpuColor = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        let ramColor = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        let diskColor = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
-        let netColor = VitalsColorResolver.color(for: .network, vitals: metrics, thresholds: effectiveThresholds, palette: palette)
+        let cpuColor = VitalsColorResolver.color(for: .cpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette).adaptiveInk(for: colorScheme)
+        let gpuColor = VitalsColorResolver.color(for: .gpu, vitals: metrics, thresholds: effectiveThresholds, palette: palette).adaptiveInk(for: colorScheme)
+        let ramColor = VitalsColorResolver.color(for: .ram, vitals: metrics, thresholds: effectiveThresholds, palette: palette).adaptiveInk(for: colorScheme)
+        let diskColor = VitalsColorResolver.color(for: .disk, vitals: metrics, thresholds: effectiveThresholds, palette: palette).adaptiveInk(for: colorScheme)
+        let powerColor = VitalsColorResolver.color(for: .power, vitals: metrics, thresholds: effectiveThresholds, palette: palette).adaptiveInk(for: colorScheme)
+        let netColor = VitalsColorResolver.color(for: .network, vitals: metrics, thresholds: effectiveThresholds, palette: palette).adaptiveInk(for: colorScheme)
 
         PurahAdaptiveTierDrawer(
             tiers: [

@@ -11,13 +11,14 @@ public struct TodoItemDrawerView: View {
     public let height: CGFloat
     public let store: PurahWorkspaceStore
     public let onTogglePin: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
     private var podColor: Color {
-        palette.podColor(for: "todo") // Vibrant amber gold for reminders
+        palette.podInkColor(for: "todo", colorScheme: colorScheme) // Vibrant amber gold for reminders
     }
 
     public init(

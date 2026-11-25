@@ -12,6 +12,7 @@ public struct SteppedRailContainerView: View {
     public let store: PurahWorkspaceStore
     public let startY: CGFloat
     public let screenHeight: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -455,9 +456,10 @@ public struct SteppedRailContainerView: View {
         rowH: CGFloat,
         tintColor: Color
     ) -> some View {
-        HStack(alignment: .center, spacing: 6) {
+        let inkColor = tintColor.adaptiveInk(for: colorScheme)
+        return HStack(alignment: .center, spacing: 6) {
             Circle()
-                .fill(tintColor)
+                .fill(inkColor)
                 .frame(width: 6, height: 6)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -486,7 +488,7 @@ public struct SteppedRailContainerView: View {
                 Text(value)
                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
-                    .foregroundColor(tintColor)
+                    .foregroundColor(inkColor)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .fixedSize(horizontal: true, vertical: false)
@@ -503,6 +505,8 @@ public struct SteppedRailContainerView: View {
         rowH: CGFloat,
         tintColor: Color
     ) -> some View {
+        let inkColor = tintColor.adaptiveInk(for: colorScheme)
+        let isDark = colorScheme == .dark
         let iconSize = min(26.0 * scale, rowH)
         let titleSize = 13 * scale
         let subtitleSize = 11 * scale
@@ -510,19 +514,19 @@ public struct SteppedRailContainerView: View {
 
         return HStack(spacing: 6 * scale) {
             RoundedRectangle(cornerRadius: 8 * scale, style: .continuous)
-                .fill(tintColor.opacity(0.18))
+                .fill(inkColor.opacity(isDark ? 0.18 : 0.12))
                 .frame(width: iconSize, height: iconSize)
                 .overlay(
                     Image(systemName: subItem.systemIcon)
                         .font(.system(size: 14 * scale, weight: .semibold))
-                        .foregroundColor(tintColor)
+                        .foregroundColor(inkColor)
                 )
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 4 * scale) {
                     Text(subItem.title)
                         .font(.system(size: titleSize, weight: .semibold, design: .rounded))
-                        .foregroundColor(palette.style == .native ? Color.primary : .white)
+                        .foregroundColor(Color.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(1.0 / max(scale, 1.0))
                         .truncationMode(.tail)
@@ -539,8 +543,8 @@ public struct SteppedRailContainerView: View {
                             .fixedSize(horizontal: true, vertical: false)
                             .padding(.horizontal, 4 * scale)
                             .padding(.vertical, 1)
-                            .background(Capsule().fill(tintColor.opacity(0.2)))
-                            .foregroundColor(tintColor)
+                            .background(Capsule().fill(inkColor.opacity(isDark ? 0.20 : 0.12)))
+                            .foregroundColor(inkColor)
                     }
                 }
 

@@ -12,6 +12,7 @@ public struct ScriptRunwayDrawerView: View {
     @State private var hoveredActionId: String? = nil
     @State private var armedActionId: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     private var runway: ScriptRunwayService {
         ScriptRunwayService.shared
     }
@@ -30,7 +31,7 @@ public struct ScriptRunwayDrawerView: View {
     }
 
     public var body: some View {
-        let scriptColor = palette.podColor(for: "scripts")
+        let scriptColor = palette.podInkColor(for: "scripts", colorScheme: colorScheme)
 
         VStack(alignment: .leading, spacing: PurahItemRhythm.sectionGap) {
             PurahScrollableBody {

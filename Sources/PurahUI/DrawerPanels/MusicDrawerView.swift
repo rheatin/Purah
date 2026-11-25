@@ -13,13 +13,14 @@ public struct MusicDrawerView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubbedProgress: Double = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
     private var musicColor: Color {
-        palette.podColor(for: "music", store: store)
+        palette.podInkColor(for: "music", store: store, colorScheme: colorScheme)
     }
 
     public init(state: MusicPluginState, store: PurahWorkspaceStore = PurahWorkspaceStore()) {

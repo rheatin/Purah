@@ -1117,5 +1117,11 @@ extension LocalizationTables {
         "help.cdToFinder": "cd into the frontmost Finder window directory",
         "help.fetchCatalog": "Fetch the latest plugin catalog",
         "help.noCatalogSource": "No catalog source is configured in this build",
+        "general.appearance.card": "Appearance",
+        "general.appearance.title": "Interface Appearance",
+        "general.appearance.subtitle": "Follow macOS system appearance or lock Purah to Dark or Light glass.",
+        "general.appearance.system": "System",
+        "general.appearance.dark": "Dark",
+        "general.appearance.light": "Light",
     ]
 }

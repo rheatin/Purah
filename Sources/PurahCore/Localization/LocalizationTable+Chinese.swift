@@ -1117,5 +1117,11 @@ extension LocalizationTables {
         "help.cdToFinder": "cd 到最前访达窗口目录",
         "help.fetchCatalog": "获取最新插件目录",
         "help.noCatalogSource": "此构建未配置目录源",
+        "general.appearance.card": "外观模式",
+        "general.appearance.title": "界面外观",
+        "general.appearance.subtitle": "跟随 macOS 系统外观，或将 Purah 单独锁定为深色 / 浅色毛玻璃。",
+        "general.appearance.system": "跟随系统",
+        "general.appearance.dark": "深色",
+        "general.appearance.light": "浅色",
     ]
 }

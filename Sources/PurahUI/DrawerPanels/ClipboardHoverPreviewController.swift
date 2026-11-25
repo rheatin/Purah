@@ -12,6 +12,10 @@ public struct ClipboardHoverApertureView: View {
     public let palette: ThemePalette
     public var isPinned: Bool = false
     public var onClosePinned: (() -> Void)? = nil
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isDark: Bool { colorScheme == .dark }
+    private var tokens: PurahSurfaceTokens { PurahSurfaceTokens(colorScheme: colorScheme) }
 
     public init(item: ClipboardItem, palette: ThemePalette, isPinned: Bool = false, onClosePinned: (() -> Void)? = nil) {
         self.item = item
@@ -48,13 +52,30 @@ public struct ClipboardHoverApertureView: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(NSColor.windowBackgroundColor).opacity(0.92))
-                .overlay(
+            ZStack {
+                if isDark {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(Color.white.opacity(0.20), lineWidth: 1)
-                )
-                .shadow(color: Color.black.opacity(0.45), radius: 18, x: 0, y: 8)
+                        .fill(Color(NSColor.windowBackgroundColor).opacity(0.92))
+                } else {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.regularMaterial)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.white.opacity(0.68))
+                }
+            }
+            .overlay(
+                ZStack {
+                    if !isDark {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.75), lineWidth: 1.0)
+                            .padding(0.75)
+                    }
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(tokens.hairlineBorder, lineWidth: 0.9)
+                }
+            )
+            .shadow(color: tokens.ambientShadow, radius: 18, x: 0, y: 8)
+            .shadow(color: isDark ? .clear : tokens.contactShadow, radius: 3, x: 0, y: 1)
         )
         .frame(minWidth: 260)
     }
@@ -188,11 +209,11 @@ public struct ClipboardHoverApertureView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 340, maxHeight: 240)
-                    .background(Color.black.opacity(0.45))
+                    .background(isDark ? Color.black.opacity(0.45) : Color.black.opacity(0.05))
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            .stroke(tokens.cardBorder, lineWidth: 0.9)
                     )
             }
 
@@ -246,11 +267,11 @@ public struct ClipboardHoverApertureView: View {
                     .foregroundColor(palette.style == .native ? .primary : .white)
             }
             .frame(maxWidth: 360, maxHeight: 220)
-            .background(Color.black.opacity(0.20))
+            .background(isDark ? Color.black.opacity(0.20) : Color.black.opacity(0.04))
             .cornerRadius(6)
             .overlay(
                 RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                    .stroke(tokens.cardBorder, lineWidth: 0.9)
             )
 
             HStack {
@@ -270,14 +291,15 @@ public struct ClipboardHoverApertureView: View {
 
     @ViewBuilder
     private func filePreview(file: ShelfFileItem, url: URL) -> some View {
+        let shelfInk = palette.podInkColor(for: "shelf", colorScheme: colorScheme)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: DropShelfDrawerView.iconForExtension(file.fileExtension))
-                    .foregroundColor(palette.podColor(for: "shelf"))
+                    .foregroundColor(shelfInk)
                     .font(.caption)
                 Text(file.name)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? .primary : .white)
+                    .foregroundColor(.primary)
                     .lineLimit(1)
                 Spacer()
                 let ext = (file.fileExtension.isEmpty ? url.pathExtension : file.fileExtension).uppercased()
@@ -286,8 +308,8 @@ public struct ClipboardHoverApertureView: View {
                         .font(.system(size: 9.5, weight: .bold, design: .monospaced))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(palette.podColor(for: "shelf").opacity(0.18))
-                        .foregroundColor(palette.podColor(for: "shelf"))
+                        .background(shelfInk.opacity(isDark ? 0.18 : 0.12))
+                        .foregroundColor(shelfInk)
                         .cornerRadius(4)
                 }
 
@@ -317,8 +339,10 @@ public struct ClipboardHoverApertureView: View {
 private struct FilePreviewThumbnailView: View {
     let url: URL
     @State private var thumbnail: NSImage? = nil
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
+        let isDark = colorScheme == .dark
         let baseImage = thumbnail
             ?? ShelfThumbnailCache.shared.cachedThumbnail(for: url.standardizedFileURL.path, size: CGSize(width: 240, height: 180))
             ?? ShelfThumbnailCache.shared.cachedThumbnail(for: url.standardizedFileURL.path)
@@ -330,11 +354,11 @@ private struct FilePreviewThumbnailView: View {
             .frame(maxWidth: 240, maxHeight: 180)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(8)
-            .background(Color.black.opacity(0.25))
+            .background(isDark ? Color.black.opacity(0.25) : Color.black.opacity(0.045))
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(isDark ? Color.white.opacity(0.12) : Color.black.opacity(0.085), lineWidth: 0.9)
             )
             .onAppear {
                 ShelfThumbnailCache.shared.loadThumbnail(for: url, size: CGSize(width: 240, height: 180)) { img in

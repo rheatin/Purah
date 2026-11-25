@@ -167,7 +167,8 @@ struct LocalizationTests {
             // +1: music.activatePlayer
             // +1: the shelf's quota warning when starred files alone exceed it.
             // +35: external plugin marketplace scaffold and git install sheets.
-            .traditionalChinese: 1065
+            // +6: appearance mode settings card (System / Dark / Light).
+            .traditionalChinese: 1071
         ]
 
         for (language, expected) in pinnedCoverage {

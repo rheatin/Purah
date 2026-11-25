@@ -72,6 +72,29 @@ public struct GeneralSettingsView: View {
                     }
                 }
 
+                // 1b. Appearance Mode Card (System / Dark / Light)
+                PurahSettingsCard(title: "general.appearance.card".localized, icon: "circle.lefthalf.filled", usesNeutralIcon: true) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("general.appearance.title".localized)
+                                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                                .foregroundColor(Color.primary)
+                            Text("general.appearance.subtitle".localized)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        PurahThemedSegmentedPicker(
+                            options: AppAppearanceMode.allCases,
+                            selection: Binding(
+                                get: { ThemeManager.shared.appearanceMode },
+                                set: { ThemeManager.shared.appearanceMode = $0 }
+                            ),
+                            titleForOption: { $0.localizationKey.localized },
+                            iconForOption: { $0.systemIcon }
+                        )
+                    }
+                }
+
                 // 2. Display & Multi-Monitor Card
                 PurahSettingsCard(title: "general.display.card".localized, icon: "display.2", usesNeutralIcon: true) {
                     HStack {

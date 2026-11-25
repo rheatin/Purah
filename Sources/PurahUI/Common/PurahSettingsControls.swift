@@ -12,6 +12,7 @@ public struct PurahSettingsCard<Content: View>: View {
     public let icon: String
     public let usesNeutralIcon: Bool
     @ViewBuilder public let content: () -> Content
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -47,12 +48,13 @@ public struct PurahSettingsCard<Content: View>: View {
         // Fill the column rather than sizing to content: a card that hugs its
         // widest row makes the cards beside it different widths.
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(palette.surfaceBackground)
+        .background(colorScheme == .dark ? palette.surfaceBackground : Color(nsColor: .controlBackgroundColor))
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(palette.borderColor.opacity(0.35), lineWidth: 1)
+                .stroke(colorScheme == .dark ? palette.borderColor.opacity(0.35) : Color.black.opacity(0.085), lineWidth: 1)
         )
+        .shadow(color: colorScheme == .dark ? .clear : Color.black.opacity(0.03), radius: 3, x: 0, y: 1)
     }
 }
 
@@ -62,6 +64,7 @@ public struct PurahThemedSegmentedPicker<T: Hashable>: View {
     public let titleForOption: (T) -> String
     public let iconForOption: ((T) -> String?)?
     @Binding public var selection: T
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -97,7 +100,7 @@ public struct PurahThemedSegmentedPicker<T: Hashable>: View {
                             .font(.system(size: 11, weight: isSelected ? .semibold : .medium, design: .rounded))
                             .lineLimit(1)
                     }
-                    .foregroundColor(isSelected ? (palette.style == .native ? palette.primaryAccent : .white) : .secondary)
+                    .foregroundColor(isSelected ? palette.primaryAccent.adaptiveInk(for: colorScheme) : .secondary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .frame(maxWidth: .infinity)
@@ -106,11 +109,16 @@ public struct PurahThemedSegmentedPicker<T: Hashable>: View {
                         ZStack {
                             if isSelected {
                                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(palette.surfaceBackground)
-                                    .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
+                                    .fill(colorScheme == .dark ? palette.surfaceBackground : Color.white)
+                                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.10), radius: 2, x: 0, y: 1)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .stroke(palette.primaryAccent.opacity(0.35), lineWidth: 1)
+                                            .stroke(
+                                                colorScheme == .dark
+                                                    ? palette.primaryAccent.opacity(0.35)
+                                                    : Color.black.opacity(0.06),
+                                                lineWidth: 0.8
+                                            )
                                     )
                             }
                         }
@@ -120,11 +128,11 @@ public struct PurahThemedSegmentedPicker<T: Hashable>: View {
             }
         }
         .padding(2)
-        .background(Color.primary.opacity(0.06))
+        .background(colorScheme == .dark ? Color.primary.opacity(0.06) : Color.black.opacity(0.055))
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(palette.borderColor.opacity(0.3), lineWidth: 1)
+                .stroke(colorScheme == .dark ? palette.borderColor.opacity(0.3) : Color.black.opacity(0.07), lineWidth: 0.8)
         )
     }
 }

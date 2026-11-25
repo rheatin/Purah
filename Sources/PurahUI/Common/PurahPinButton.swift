@@ -11,6 +11,11 @@ public struct PurahPinButton: View {
     /// header chrome — hover fill while resting, tint fill while pinned.
     public let showsDisc: Bool
     public let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var effectiveTint: Color {
+        tintColor.adaptiveInk(for: colorScheme)
+    }
 
     public init(
         isPinned: Bool,
@@ -45,7 +50,7 @@ public struct PurahPinButton: View {
         Button(action: perform) {
             ZStack {
                 Circle()
-                    .fill(isPinned ? tintColor.opacity(0.18) : Color.primary.opacity(0.06))
+                    .fill(isPinned ? effectiveTint.opacity(colorScheme == .dark ? 0.18 : 0.14) : Color.primary.opacity(0.06))
                     .frame(width: size, height: size)
 
                 pinGlyph(pointSize: size < 20 ? 8 : 9.5)
@@ -67,7 +72,7 @@ public struct PurahPinButton: View {
 
     private func pinGlyph(pointSize: CGFloat) -> some View {
         Image(systemName: isPinned ? "pin.fill" : "pin")
-            .foregroundColor(isPinned ? tintColor : .secondary)
+            .foregroundColor(isPinned ? effectiveTint : .secondary)
             .font(.system(size: pointSize, weight: .semibold))
             .rotationEffect(.degrees(isPinned ? -25 : 0))
             .scaleEffect(isPinned ? 1.15 : 1.0)

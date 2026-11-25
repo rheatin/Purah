@@ -864,6 +864,7 @@ public struct MarkdownCodeBlockView: View {
     public let code: String
     public let accentColor: Color
     @State private var isCopied: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(language: String, code: String, accentColor: Color) {
         self.language = language
@@ -874,14 +875,16 @@ public struct MarkdownCodeBlockView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Top Bar
+            let effectiveAccent = accentColor.adaptiveInk(for: colorScheme)
+            let isDark = colorScheme == .dark
             HStack {
                 HStack(spacing: 4) {
                     Image(systemName: "curlybraces")
                         .font(.system(size: 8.5, weight: .bold))
-                        .foregroundColor(accentColor.opacity(0.85))
+                        .foregroundColor(effectiveAccent.opacity(0.85))
                     Text(language.isEmpty ? "code" : language)
                         .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                        .foregroundColor(accentColor.opacity(0.85))
+                        .foregroundColor(effectiveAccent.opacity(0.85))
                 }
                 Spacer()
                 Button {
@@ -905,7 +908,7 @@ public struct MarkdownCodeBlockView: View {
                     }
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.06))
+                    .background(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.05))
                     .cornerRadius(4)
                     .foregroundColor(isCopied ? .green : .secondary)
                 }
@@ -915,7 +918,7 @@ public struct MarkdownCodeBlockView: View {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(accentColor.opacity(0.12))
+            .background(effectiveAccent.opacity(isDark ? 0.12 : 0.08))
 
             // Body
             ScrollView(.horizontal, showsIndicators: false) {
@@ -926,12 +929,12 @@ public struct MarkdownCodeBlockView: View {
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Color.black.opacity(0.25))
+            .background(isDark ? Color.black.opacity(0.25) : Color.black.opacity(0.04))
         }
         .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .stroke(accentColor.opacity(0.25), lineWidth: 1)
+                .stroke(accentColor.adaptiveInk(for: colorScheme).opacity(colorScheme == .dark ? 0.25 : 0.18), lineWidth: 1)
         )
         .padding(.vertical, 2)
     }
@@ -949,13 +952,14 @@ public struct QuickNoteDrawerView: View {
     @State private var isCopied: Bool = false
     @State private var isExported: Bool = false
     @State private var isShowingTips: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
     }
 
     private var noteColor: Color {
-        palette.podColor(for: "notes")
+        palette.podInkColor(for: "notes", colorScheme: colorScheme)
     }
 
     private var currentText: String {

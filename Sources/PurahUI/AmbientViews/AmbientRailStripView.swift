@@ -8,6 +8,7 @@ public struct AmbientRailStripView: View {
     public let store: PurahWorkspaceStore
     @State private var dropdownPanelFrames: [CGRect] = []
     @State private var hostWindowRef = AmbientRailStripWindowReference()
+    @Environment(\.colorScheme) private var colorScheme
 
     private var palette: ThemePalette {
         ThemeManager.shared.palette
@@ -457,15 +458,16 @@ public struct AmbientRailStripView: View {
     @ViewBuilder
     private func pluginDrawerCard(plugin: any PurahPodPlugin, pod: SlotPod, context: PurahPluginContext, totalHeight: CGFloat) -> some View {
         let color = context.accentColor
+        let inkColor = color.adaptiveInk(for: colorScheme)
         let isPinned = context.isPinned
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: plugin.manifest.systemIcon)
-                    .foregroundColor(color)
+                    .foregroundColor(inkColor)
                     .font(.caption)
                 Text(plugin.manifest.displayName)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundColor(palette.style == .native ? Color.primary : .white)
+                    .foregroundColor(Color.primary)
                     // A drawer header is one row. With a long accessory (a note
                     // filename) this used to wrap onto a second line and squeeze
                     // the card; the title keeps its room and the accessory

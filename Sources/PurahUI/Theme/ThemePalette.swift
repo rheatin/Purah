@@ -49,6 +49,20 @@ public struct ThemePalette: Sendable {
         return primaryAccent
     }
 
+    /// Returns a contrast-safe foreground/icon accent for the given appearance.
+    /// Dark mode keeps the luminous neon rail palette verbatim; Light mode
+    /// automatically deepens high-luminance hues (yellow, mint, cyan, lavender)
+    /// so text, badges, and icons achieve crisp readability on frosted light glass.
+    @MainActor
+    public func podInkColor(for podId: String, store: PurahWorkspaceStore? = nil, colorScheme: ColorScheme) -> Color {
+        podColor(for: podId, store: store).adaptiveInk(for: colorScheme)
+    }
+
+    /// Semantic surface, border, and elevation tokens tuned per color scheme.
+    public static func surfaceTokens(for colorScheme: ColorScheme) -> PurahSurfaceTokens {
+        PurahSurfaceTokens(colorScheme: colorScheme)
+    }
+
     public static func palette(for style: AppThemeStyle = .native) -> ThemePalette {
         ThemePalette(
             style: .native,
@@ -76,17 +90,19 @@ public struct ThemePalette: Sendable {
 public extension Color {
     @MainActor
     static func readableTagTint(hex: String) -> Color {
-        let background = NSColor(ThemeManager.shared.palette.surfaceBackground)
-            .usingColorSpace(.sRGB)
-        let components = background.map {
-            HexColor.Components(
-                red: Double($0.redComponent),
-                green: Double($0.greenComponent),
-                blue: Double($0.blueComponent),
-                alpha: Double($0.alphaComponent)
-            )
-        } ?? HexColor.Components(red: 1, green: 1, blue: 1, alpha: 1)
-        return Color(hex: TagTintContrast.adjustedHex(hex: hex, background: components))
+        let isDark = NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if isDark {
+            return Color(hex: hex)
+        }
+        return Color(hex: TagTintContrast.adjustedHex(hex: hex, background: TagTintContrast.lightGlassReference))
+    }
+
+    /// Adapts a vibrant accent color so it remains crisp and legible as foreground
+    /// text, icons, or badges on Light-mode frosted glass while leaving Dark mode
+    /// completely unchanged.
+    func adaptiveInk(for colorScheme: ColorScheme) -> Color {
+        guard colorScheme == .light else { return self }
+        return LightInkContrastCache.shared.adapted(self)
     }
 
     init(hex: String) {
@@ -142,7 +158,14 @@ public extension Color {
 
 /// Keeps a tag's identity but gives its text enough contrast on light surfaces.
 public enum TagTintContrast {
-    public static let minimumRatio = 4.5
+    public static let minimumRatio = 4.6
+    /// Reference luminance of a Light-mode frosted porcelain drawer surface (#F4F5F8).
+    public static let lightGlassReference = HexColor.Components(
+        red: 0.956,
+        green: 0.961,
+        blue: 0.973,
+        alpha: 1.0
+    )
 
     public static func adjustedHex(
         hex: String,
@@ -202,5 +225,107 @@ public enum TagTintContrast {
 
     private static func byte(_ component: Double) -> Int {
         min(255, max(0, Int((component * 255).rounded())))
+    }
+}
+
+/// Fast thread-safe cache for adapting arbitrary SwiftUI colors into crisp
+/// Light-mode foreground inks (WCAG >= 4.6 against frosted light glass).
+private final class LightInkContrastCache: @unchecked Sendable {
+    static let shared = LightInkContrastCache()
+    private let lock = NSLock()
+    private var cache: [String: Color] = [:]
+
+    func adapted(_ color: Color) -> Color {
+        guard let hex = color.toHex() else { return color }
+        lock.lock()
+        if let hit = cache[hex] {
+            lock.unlock()
+            return hit
+        }
+        lock.unlock()
+
+        let adjusted = TagTintContrast.adjustedHex(hex: hex, background: TagTintContrast.lightGlassReference)
+        let result = adjusted == hex ? color : Color(hex: adjusted)
+
+        lock.lock()
+        cache[hex] = result
+        lock.unlock()
+        return result
+    }
+}
+
+/// Unified Dark/Light semantic surface, border, and elevation tokens so drawers,
+/// HUD strips, cards, and settings share one cohesive macOS visual language.
+public struct PurahSurfaceTokens: Sendable {
+    public let colorScheme: ColorScheme
+    public var isDark: Bool { colorScheme == .dark }
+
+    public init(colorScheme: ColorScheme) {
+        self.colorScheme = colorScheme
+    }
+
+    /// Elevated floating overlay panel (Sculptor rail HUD, hover preview, dock).
+    public var hudFill: Color {
+        isDark ? Color.black.opacity(0.46) : Color.white.opacity(0.76)
+    }
+
+    /// Stronger floating badge/banner fill (dock pills, drop overlays, tooltips).
+    public var hudStrongFill: Color {
+        isDark ? Color.black.opacity(0.64) : Color.white.opacity(0.88)
+    }
+
+    /// Subtle raised card surface inside drawers and settings panels.
+    public var cardFill: Color {
+        isDark ? Color.primary.opacity(0.035) : Color.white.opacity(0.66)
+    }
+
+    /// Secondary neutral chip / pill / control plate fill.
+    public var controlFill: Color {
+        isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.055)
+    }
+
+    /// Elevated control pill fill (e.g. header action group or hovered pill).
+    public var controlElevatedFill: Color {
+        isDark ? Color.white.opacity(0.15) : Color.black.opacity(0.085)
+    }
+
+    /// Subtle hairline outer border for drawers and HUD surfaces.
+    public var hairlineBorder: Color {
+        isDark ? Color.white.opacity(0.16) : Color.black.opacity(0.11)
+    }
+
+    /// Subtle inner specular highlight along glass edges.
+    public var innerSpecularBorder: Color {
+        isDark ? Color.white.opacity(0.08) : Color.white.opacity(0.78)
+    }
+
+    /// Crisp card border inside a drawer or settings panel.
+    public var cardBorder: Color {
+        isDark ? Color.white.opacity(0.11) : Color.black.opacity(0.085)
+    }
+
+    /// Primary ink for HUD / overlay controls.
+    public var hudPrimaryInk: Color {
+        isDark ? .white : Color(red: 0.11, green: 0.13, blue: 0.17)
+    }
+
+    /// Secondary muted ink for HUD / overlay captions.
+    public var hudSecondaryInk: Color {
+        isDark ? Color.white.opacity(0.72) : Color(red: 0.34, green: 0.38, blue: 0.46)
+    }
+
+    /// Ambient drop shadow color.
+    public var ambientShadow: Color {
+        isDark ? Color.black.opacity(0.38) : Color.black.opacity(0.10)
+    }
+
+    /// Crisp contact shadow color for light-mode elevation.
+    public var contactShadow: Color {
+        isDark ? Color.black.opacity(0.24) : Color.black.opacity(0.06)
+    }
+
+    /// Semantic destructive red with crisp contrast in both schemes.
+    public var destructiveInk: Color {
+        Color(hex: isDark ? "#F87171" : "#DC2626")
     }
 }
